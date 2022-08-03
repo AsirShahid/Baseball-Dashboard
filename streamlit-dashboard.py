@@ -57,9 +57,11 @@ st.set_page_config(page_title="Baseball Stats", page_icon=":baseball:", layout="
 team_player=["Team", "Player"]
 
 with st.sidebar:
-    team_or_player = st.radio("Do you want to see the stats for teams or players?", team_player)
-    
-if team_or_player == "Team":
+    # Have user pick if they want team stats or player stats
+    team_or_player = st.selectbox("", ["Team Stats", "Player Stats"])
+
+# Is "Team" in team_or_player?
+if "Team" in team_or_player:
 
     seasons=[]
 
@@ -133,11 +135,16 @@ if team_or_player == "Team":
         y_axis_stat_list=pitching_cols
 
     with st.sidebar:
-        x_axis_stat = st.sidebar.selectbox("Select a stat on the x-axis", x_axis_stat_list)
-        y_axis_stat = st.sidebar.selectbox("Select a stat on the y-axis", y_axis_stat_list)
+        # Have user select the x-axis stat
+        x_axis_stat = st.sidebar.selectbox("Select the x-axis stat", x_axis_stat_list)
+        # Have user select the y-axis stat
+        y_axis_stat = st.sidebar.selectbox("Select the y-axis stat", y_axis_stat_list)
 
-        v_mean_line=st.sidebar.checkbox("Vertical mean line?", True)
-        h_mean_line=st.sidebar.checkbox("Horizontal mean line?", True)
+        # Have user pick if they want vertical mean lines
+        v_mean_line=st.sidebar.checkbox("Vertical mean line", True)
+
+        # Have user pick if they want horizontal mean lines
+        h_mean_line=st.sidebar.checkbox("Horizontal mean line", True)
 
     if batting_or_pitching_xaxis=="Batting":
         xaxis_stat=batting[x_axis_stat]
@@ -208,7 +215,7 @@ if team_or_player == "Team":
 
 
 
-if team_or_player == "Player":
+if "Player" in team_or_player:
 
     seasons=[]
 
