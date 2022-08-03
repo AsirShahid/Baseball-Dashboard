@@ -9,6 +9,8 @@ from pybaseball import pitching_stats
 from pybaseball import fielding_stats
 import pandas as pd
 import os
+# Import sleep
+from time import sleep
 
 pyb.cache.disable()
 
@@ -50,11 +52,16 @@ if not os.path.exists(os.path.join(os.getcwd(), 'all_pitching_stats')):
 #     pitching_stats(i, qual=0).to_csv('./all_pitching_stats/'+str(i)+'.csv')
 #     print(f"Generated CSVs for the {i} season")
 
-team_batting(year).to_csv('./team_batting/'+str(year)+'.csv')
-team_pitching(year).to_csv('./team_pitching/'+str(year)+'.csv')
-team_fielding(year).to_csv('./team_fielding/'+str(year)+'.csv')
-batting_stats(year).to_csv('./qualified_batting_stats/'+str(year)+'.csv')
-pitching_stats(year).to_csv('./qualified_pitching_stats/'+str(year)+'.csv')
-batting_stats(year, qual=0).to_csv('./all_batting_stats/'+str(year)+'.csv')
-pitching_stats(year, qual=0).to_csv('./all_pitching_stats/'+str(year)+'.csv')
-print(f"Generated CSVs for the {year} season")
+# Loop through the csv generation every four hours
+
+while True:
+
+    team_batting(year).to_csv('./team_batting/'+str(year)+'.csv')
+    team_pitching(year).to_csv('./team_pitching/'+str(year)+'.csv')
+    team_fielding(year).to_csv('./team_fielding/'+str(year)+'.csv')
+    batting_stats(year).to_csv('./qualified_batting_stats/'+str(year)+'.csv')
+    pitching_stats(year).to_csv('./qualified_pitching_stats/'+str(year)+'.csv')
+    batting_stats(year, qual=0).to_csv('./all_batting_stats/'+str(year)+'.csv')
+    pitching_stats(year, qual=0).to_csv('./all_pitching_stats/'+str(year)+'.csv')
+
+    sleep(14400)
