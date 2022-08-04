@@ -58,7 +58,7 @@ team_player=["Team", "Player"]
 
 with st.sidebar:
     # Have user pick if they want team stats or player stats
-    team_or_player = st.selectbox("", ["Team Stats", "Player Stats"])
+    team_or_player = st.radio("", ["Team Stats", "Player Stats"])
 
 # Is "Team" in team_or_player?
 if "Team" in team_or_player:
@@ -148,14 +148,15 @@ if "Team" in team_or_player:
 
     if batting_or_pitching_xaxis=="Batting":
         xaxis_stat=batting[x_axis_stat]
+        zeros=[0]*len(batting)
     elif batting_or_pitching_xaxis=="Pitching":
         xaxis_stat=pitching[x_axis_stat]
+        zeros=[0]*len(pitching)
     if batting_or_pitching_yaxis=="Batting":
         yaxis_stat=batting[y_axis_stat]
     elif batting_or_pitching_yaxis=="Pitching":
         yaxis_stat=pitching[y_axis_stat]
 
-    zeros=[0]*len(xaxis_stat)
 
     if logos_or_names=="Logos":
 
@@ -316,6 +317,28 @@ if "Player" in team_or_player:
 
         if min_pa=="Qualified":
 
+            teams_list=[]
+            # Append all teams to teams_list
+            # Sort teams alphabetically
+            for i in batting["Team"].unique().tolist():
+                teams_list.append(i)
+            teams_list.sort()
+            # Add "All Teams" to the top of the list
+            teams_list.insert(0, "All Teams")
+            # Remove - - - from teams_list
+            teams_list.remove("- - -")
+
+            # Allow user to select teams
+            selected_team=st.sidebar.selectbox("Team:", teams_list)
+
+            # If user selects "All Teams", show all teams
+            # If user selects a team, show only that team
+            if selected_team=="All Teams":
+                batting=batting
+            else:
+                batting=batting[batting["Team"]==selected_team]
+          
+
             zeros=[0]*len(batting)
 
             fig = px.scatter(x=batting[xaxis_stat], y=batting[yaxis_stat], text=batting["Name"], size=zeros,
@@ -336,6 +359,28 @@ if "Player" in team_or_player:
         # If Not qualified, select batters with minimum PAs
         elif min_pa != "Qualified":
             batting=pd.read_csv(f"./all_batting_stats/{season}.csv")
+
+            teams_list=[]
+            # Append all teams to teams_list
+            # Sort teams alphabetically
+            for i in batting["Team"].unique().tolist():
+                teams_list.append(i)
+            teams_list.sort()
+            # Add "All Teams" to the top of the list
+            # Remove - - - from teams_list
+            teams_list.remove("- - -")
+            teams_list.insert(0, "All Teams")
+
+            # Allow user to select teams
+            selected_team=st.sidebar.selectbox("Team:", teams_list)
+
+            # If user selects "All Teams", show all teams
+            # If user selects a team, show only that team
+            if selected_team=="All Teams":
+                batting=batting
+            else:
+                batting=batting[batting["Team"]==selected_team]
+
             # remove first column
  #           batting = batting.drop(batting.columns[0], axis=1)
 
@@ -409,6 +454,9 @@ if "Player" in team_or_player:
             fig.update_yaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False, zerolinecolor='#3D3D3D')
 
             st.plotly_chart(fig, use_container_width=True, sharing="streamlit")
+
+
+st.write("---")
 
 st.markdown("""
     The data is provided by [pybaseball](https://pypi.org/project/pybaseball/)  and the plots are generated using [matplotlib](https://matplotlib.org/) and [plotly](https://plotly.com/python/).""")
