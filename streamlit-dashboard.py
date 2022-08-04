@@ -318,15 +318,19 @@ if "Player" in team_or_player:
         if min_pa=="Qualified":
 
             teams_list=[]
+
             # Append all teams to teams_list
             # Sort teams alphabetically
             for i in batting["Team"].unique().tolist():
                 teams_list.append(i)
             teams_list.sort()
+
             # Add "All Teams" to the top of the list
             teams_list.insert(0, "All Teams")
+
             # Remove - - - from teams_list
-            teams_list.remove("- - -")
+            if "- - -" in teams_list:
+                teams_list.remove("- - -")
 
             # Allow user to select teams
             selected_team=st.sidebar.selectbox("Team:", teams_list)
@@ -361,15 +365,20 @@ if "Player" in team_or_player:
             batting=pd.read_csv(f"./all_batting_stats/{season}.csv")
 
             teams_list=[]
+
             # Append all teams to teams_list
             # Sort teams alphabetically
             for i in batting["Team"].unique().tolist():
                 teams_list.append(i)
             teams_list.sort()
+
             # Add "All Teams" to the top of the list
-            # Remove - - - from teams_list
-            teams_list.remove("- - -")
             teams_list.insert(0, "All Teams")
+
+            # If  - - - is in teams_list remove it
+            if "- - -" in teams_list:
+                teams_list.remove("- - -")
+
 
             # Allow user to select teams
             selected_team=st.sidebar.selectbox("Team:", teams_list)
@@ -409,6 +418,29 @@ if "Player" in team_or_player:
 
         if min_ip=="Qualified":
 
+            teams_list=[]
+            # Append all teams to teams_list
+            # Sort teams alphabetically
+            for i in pitching["Team"].unique().tolist():
+                teams_list.append(i)
+            teams_list.sort()
+            # Add "All Teams" to the top of the list
+            teams_list.insert(0, "All Teams")
+
+            # Remove - - - from teams_list
+            if "- - -" in teams_list:
+                teams_list.remove("- - -")
+
+            # Allow user to select teams
+            selected_team=st.sidebar.selectbox("Team:", teams_list)
+
+            # If user selects "All Teams", show all teams
+            # If user selects a team, show only that team
+            if selected_team=="All Teams":
+                pitching=pitching
+            else:
+                pitching=pitching[pitching["Team"]==selected_team]
+
             zeros=[0]*len(pitching)
 
             fig = px.scatter(x=pitching[xaxis_stat], y=pitching[yaxis_stat], text=pitching["Name"], size=zeros,
@@ -432,6 +464,26 @@ if "Player" in team_or_player:
         elif min_ip != "Qualified":
 
             pitching=pd.read_csv(f"./all_pitching_stats/{season}.csv")
+
+            teams_list=[]
+            # Append all teams to teams_list
+            # Sort teams alphabetically
+            for i in pitching["Team"].unique().tolist():
+                teams_list.append(i)
+            teams_list.sort()
+
+            # Add "All Teams" to the top of the list
+
+            teams_list.insert(0, "All Teams")
+
+            # If  - - - is in teams_list remove it
+            if "- - -" in teams_list:
+                teams_list.remove("- - -")
+
+            # Allow user to select teams
+            selected_team=st.sidebar.selectbox("Team:", teams_list)
+
+            
             # remove first column
 #            pitching = pitching.drop(pitching.columns[0], axis=1)
             # only keep pitchers with minimum IP
