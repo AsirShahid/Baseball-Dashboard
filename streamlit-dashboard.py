@@ -511,4 +511,4 @@ if "Player" in team_or_player:
 st.write("---")
 
 st.markdown("""
-    The data is provided by [pybaseball](https://pypi.org/project/pybaseball/)  and the plots are generated using [matplotlib](https://matplotlib.org/) and [plotly](https://plotly.com/python/).""")
+    The data is provided by [pybaseball](https://pypi.org/project/pybaseball/)  and [Fangraphs](https://www.fangraphs.com/). The plots are generated using [matplotlib](https://matplotlib.org/) and [plotly](https://plotly.com/python/).""")
