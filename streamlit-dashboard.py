@@ -326,6 +326,8 @@ if "Player" in team_or_player:
             teams_list.sort()
 
             # Add "All Teams" to the top of the list
+            teams_list.insert(0, "NL")
+            teams_list.insert(0, "AL")
             teams_list.insert(0, "All Teams")
 
             # Remove - - - from teams_list
@@ -339,6 +341,14 @@ if "Player" in team_or_player:
             # If user selects a team, show only that team
             if selected_team=="All Teams":
                 batting=batting
+            elif selected_team=="NL":
+                # Show only NL teams
+                # NL teams are ARI, ATL, CHC, CIN, COL, LAD, MIA, MIL, NYM, PHI, PIT, SDP, SFG, STL, WAS
+                batting=batting[batting["Team"].isin(["ARI", "ATL", "CHC", "CIN", "COL", "LAD", "MIA", "MIL", "NYM", "PHI", "PIT", "SDP", "SFG", "STL", "WAS"])]
+            elif selected_team=="AL":
+                # Show only AL teams
+                # AL teams are BAL, BOS, CHW, CLE, DET, HOU, LAA, KCR, MIN, NYY, OAK, SEA, TOR, TEX, TOR
+                batting=batting[batting["Team"].isin(["BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR", "MIN", "NYY", "OAK", "SEA", "TOR", "TEX", "TOR"])]
             else:
                 batting=batting[batting["Team"]==selected_team]
           
@@ -373,6 +383,8 @@ if "Player" in team_or_player:
             teams_list.sort()
 
             # Add "All Teams" to the top of the list
+            teams_list.insert(0, "NL")
+            teams_list.insert(0, "AL")
             teams_list.insert(0, "All Teams")
 
             # If  - - - is in teams_list remove it
@@ -387,6 +399,14 @@ if "Player" in team_or_player:
             # If user selects a team, show only that team
             if selected_team=="All Teams":
                 batting=batting
+            elif selected_team=="NL":
+                # Show only NL teams
+                # NL teams are ARI, ATL, CHC, CIN, COL, LAD, MIA, MIL, NYM, PHI, PIT, SDP, SFG, STL, WAS
+                batting=batting[batting["Team"].isin(["ARI", "ATL", "CHC", "CIN", "COL", "LAD", "MIA", "MIL", "NYM", "PHI", "PIT", "SDP", "SFG", "STL", "WAS"])]
+            elif selected_team=="AL":
+                # Show only AL teams
+                # AL teams are BAL, BOS, CHW, CLE, DET, HOU, LAA, KCR, MIN, NYY, OAK, SEA, TOR, TEX, TOR
+                batting=batting[batting["Team"].isin(["BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR", "MIN", "NYY", "OAK", "SEA", "TOR", "TEX", "TOR"])]
             else:
                 batting=batting[batting["Team"]==selected_team]
 
