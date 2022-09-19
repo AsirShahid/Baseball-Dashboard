@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+convert diamondbacks.png -resize 500x500 diamondbacks-resizedmatplotlib.png
+convert braves.png -resize 500x500 braves-resizedmatplotlib.png
+convert orioles.png -resize 500x500 orioles-resizedmatplotlib.png
+convert redsox.png -resize 500x500 redsox-resizedmatplotlib.png
+convert cubs.png -resize 500x500 cubs-resizedmatplotlib.png
+convert whitesox.png -resize 500x500 whitesox-resizedmatplotlib.png
+convert reds.png -resize 500x500 reds-resizedmatplotlib.png
+convert guardians.png -resize 500x500 guardians-resizedmatplotlib.png
+convert rockies.png -resize 500x500 rockies-resizedmatplotlib.png
+convert tigers.png -resize 500x500 tigers-resizedmatplotlib.png
+convert astros.png -resize 500x500 astros-resizedmatplotlib.png
+convert royals.png -resize 500x500 royals-resizedmatplotlib.png
+convert angels.png -resize 500x500 angels-resizedmatplotlib.png
+convert dodgers.png -resize 500x500 dodgers-resizedmatplotlib.png
+convert marlins.png -resize 500x500 marlins-resizedmatplotlib.png
+convert brewers.png -resize 500x500 brewers-resizedmatplotlib.png
+convert twins.png -resize 500x500 twins-resizedmatplotlib.png
+convert mets.png -resize 500x500 mets-resizedmatplotlib.png
+convert yankees.png -resize 500x500 yankees-resizedmatplotlib.png
+convert athletics.png -resize 500x500 athletics-resizedmatplotlib.png
+convert phillies.png -resize 500x500 phillies-resizedmatplotlib.png
+convert pirates.png -resize 500x500 pirates-resizedmatplotlib.png
+convert padres.png -resize 500x500 padres-resizedmatplotlib.png
+convert mariners.png -resize 500x500 mariners-resizedmatplotlib.png
+convert giants.png -resize 500x500 giants-resizedmatplotlib.png
+convert cardinals.png -resize 500x500 cardinals-resizedmatplotlib.png
+convert rays.png -resize 500x500 rays-resizedmatplotlib.png
+convert rangers.png -resize 500x500 rangers-resizedmatplotlib.png
+convert bluejays.png -resize 500x500 bluejays-resizedmatplotlib.png
+convert nationals.png -resize 500x500 nationals-resizedmatplotlib.png
