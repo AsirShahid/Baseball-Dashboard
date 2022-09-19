@@ -58,7 +58,9 @@ team_player=["Team", "Player"]
 
 with st.sidebar:
     # Have user pick if they want team stats or player stats
-    team_or_player = st.radio("", ["Team Stats", "Player Stats"])
+    team_or_player = st.radio("", ["Team Stats", "Player Stats"], key="ts_or_ps")
+
+    # Set URL parameter based on user input
 
 # Is "Team" in team_or_player?
 if "Team" in team_or_player:
