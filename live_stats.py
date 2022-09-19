@@ -6,6 +6,7 @@ import requests
 import bs4
 from bs4 import BeautifulSoup
 import pandas as pd
+import pybaseball as pyb
 
 # Find current year
 import datetime
@@ -97,7 +98,28 @@ while True:
         if all_live_pitching_df[column].str.contains('%').any():
             all_live_pitching_df[column] = all_live_pitching_df[column].str.replace('%', '').astype(float)
 
+
+    # Pybaseball qualified batting stats
+
+    pybaseball_qualified_batting_df = pyb.batting_stats(year)
+    pybaseball_qualified_pitching_df = pyb.pitching_stats(year)
+    pybaseball_all_pitching_df = pyb.pitching_stats(year, qual=0)
+    pybaseball_all_batting_df = pyb.batting_stats(year, qual=0)
+
+    null_columns=[]
+
+    for column in qualified_batting_df:
+        if qualified_batting_df[column].isnull().all():
+            null_columns.append(column)
+
+    # If column in null_columns, set qualified_batting_df[column] to pybaseball_qualified_batting_df[column] based on value in Name column
+
+    for column in null_columns:
+        for index, row in qualified_batting_df.iterrows():
+            qualified_batting_df.loc[qualified_batting_df['Name'] == pybaseball_qualified_batting_df.loc[index, 'Name'], column] = pybaseball_qualified_batting_df.loc[index, column]
+
     # export to csv
+
     qualified_batting_df.to_csv(f"./qualified_batting_stats/{year}.csv", index=False)
     qualified_pitching_df.to_csv(f"./qualified_pitching_stats/{year}.csv", index=False)
     all_live_batting_df.to_csv(f"./all_batting_stats/{year}.csv", index=False)
