@@ -52,7 +52,7 @@ paths = [
     './Logos/giants-resizedmatplotlib.png',
 ]
 
-st.set_page_config(page_title="Baseball Stats", page_icon=":baseball:", layout="wide")
+st.set_page_config(page_title="Baseball Scatter Plots", page_icon=":baseball:", layout="wide")
 
 team_player=["Team", "Player"]
 
@@ -237,6 +237,10 @@ if "Player" in team_or_player:
 #    batting = batting.drop(batting.columns[0], axis=1)
 #    pitching = pitching.drop(pitching.columns[0], axis=1)
 
+    # Create a column for WAR/650 PAs
+
+    batting["WAR/650 PAs"]=batting["WAR"]/batting["PA"]*650
+
     batting_cols=batting.columns.to_list()
     batting_cols.remove("WAR")
     batting_cols.remove("wRC+")
@@ -353,7 +357,7 @@ if "Player" in team_or_player:
                 batting=batting[batting["Team"].isin(["BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR", "MIN", "NYY", "OAK", "SEA", "TOR", "TEX", "TOR"])]
             else:
                 batting=batting[batting["Team"]==selected_team]
-          
+
 
             zeros=[0]*len(batting)
 
@@ -375,6 +379,14 @@ if "Player" in team_or_player:
         # If Not qualified, select batters with minimum PAs
         elif min_pa != "Qualified":
             batting=pd.read_csv(f"./all_batting_stats/{season}.csv")
+
+            # Create a column for WAR/650 PAs
+
+            batting["WAR/650 PAs"]=batting["WAR"]/batting["PA"]*650
+
+            # Round WAR/650 PAs to 2 decimal places
+
+            batting["WAR/650 PAs"]=batting["WAR/650 PAs"].round(2)
 
             teams_list=[]
 
