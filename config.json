@@ -1,0 +1,13 @@
+{
+    "start_year": 1871,
+    "current_year": 2024,
+    "team_batting_dir": "team_batting",
+    "team_pitching_dir": "team_pitching",
+    "team_fielding_dir": "team_fielding",
+    "qualified_batting_dir": "qualified_batting_stats",
+    "qualified_pitching_dir": "qualified_pitching_stats",
+    "all_batting_dir": "all_batting_stats",
+    "all_pitching_dir": "all_pitching_stats",
+    "update_interval": 14400,
+    "request_delay": 5
+}

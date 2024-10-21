@@ -1,548 +1,273 @@
-#!/usr/bin/env python3
-
 import matplotlib.pyplot as plt
-import pybaseball as pyb
-from pybaseball import team_batting
-from pybaseball import team_pitching
-from pybaseball import batting_stats
-from pybaseball import pitching_stats
 import plotly.graph_objects as go
 import plotly.express as px
 import streamlit as st
 import pandas as pd
 import numpy as np
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+import json
+from pathlib import Path
 
-pyb.cache.disable()
+# Load configuration
+with open('config.json', 'r') as f:
+    config = json.load(f)
+
+st.set_page_config(page_title="Baseball Dashboard", page_icon=":baseball:", layout="wide")
+
+# Custom CSS to improve sidebar appearance
+st.markdown("""
+<style>
+    .sidebar .sidebar-content {
+        background-image: linear-gradient(#2e7bcf,#2e7bcf);
+        color: white;
+    }
+    .sidebar .sidebar-content .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+    .sidebar .sidebar-content .stRadio > label {
+        color: white;
+        font-weight: bold;
+    }
+    .sidebar .sidebar-content .stSelectbox > label {
+        color: white;
+        font-weight: bold;
+    }
+    .sidebar .sidebar-content .stCheckbox > label {
+        color: white;
+    }
+    .sidebar .sidebar-content .stExpander {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        margin-bottom: 0.5rem;
+    }
+    .sidebar .sidebar-content .stExpander > div > div > div > div {
+        color: white !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+@st.cache_data
+def load_data(file_path):
+    try:
+        return pd.read_csv(file_path)
+    except FileNotFoundError:
+        st.error(f"File not found: {file_path}")
+        return pd.DataFrame()
 
 def getImage(path, zoom=0.055):
     return OffsetImage(plt.imread(path), zoom=zoom)
 
-paths = [
-    './Logos/angels-resizedmatplotlib.png',
-    './Logos/orioles-resizedmatplotlib.png',
-    './Logos/redsox-resizedmatplotlib.png',
-    './Logos/whitesox-resizedmatplotlib.png',
-    './Logos/guardians-resizedmatplotlib.png',
-    './Logos/tigers-resizedmatplotlib.png',
-    './Logos/royals-resizedmatplotlib.png',
-    './Logos/twins-resizedmatplotlib.png',
-    './Logos/yankees-resizedmatplotlib.png',
-    './Logos/athletics-resizedmatplotlib.png',
-    './Logos/mariners-resizedmatplotlib.png',
-    './Logos/rays-resizedmatplotlib.png',
-    './Logos/rangers-resizedmatplotlib.png',
-    './Logos/bluejays-resizedmatplotlib.png',
+paths = [Path(f"./Logos/{team}-resizedmatplotlib.png") for team in [
+    'angels', 'orioles', 'redsox', 'whitesox', 'guardians', 'tigers', 'royals', 'twins', 'yankees',
+    'athletics', 'mariners', 'rays', 'rangers', 'bluejays', 'diamondbacks', 'braves', 'cubs', 'reds',
+    'rockies', 'marlins', 'astros', 'dodgers', 'brewers', 'nationals', 'mets', 'phillies', 'pirates',
+    'cardinals', 'padres', 'giants'
+]]
 
-    './Logos/diamondbacks-resizedmatplotlib.png',
-    './Logos/braves-resizedmatplotlib.png',
-    './Logos/cubs-resizedmatplotlib.png',
-    './Logos/reds-resizedmatplotlib.png',
-    './Logos/rockies-resizedmatplotlib.png',
-    './Logos/marlins-resizedmatplotlib.png',
-    './Logos/astros-resizedmatplotlib.png',
-    './Logos/dodgers-resizedmatplotlib.png',
-    './Logos/brewers-resizedmatplotlib.png',
-    './Logos/nationals-resizedmatplotlib.png',
-    './Logos/mets-resizedmatplotlib.png',
-    './Logos/phillies-resizedmatplotlib.png',
-    './Logos/pirates-resizedmatplotlib.png',
-    './Logos/cardinals-resizedmatplotlib.png',
-    './Logos/padres-resizedmatplotlib.png',
-    './Logos/giants-resizedmatplotlib.png',
-]
+def process_columns(columns):
+    cols = columns.tolist()
+    for col in ["WAR", "wRC+", "SIERA"]:
+        if col in cols:
+            cols.remove(col)
+            cols.insert(0, col)
+    for col in ["Team", "Season", "Dollars", "Name", "IDfg", "Unnamed: 0"]:
+        if col in cols:
+            cols.remove(col)
+    return cols
 
-st.set_page_config(page_title="Baseball Scatter Plots", page_icon=":baseball:", layout="wide")
-
-team_player=["Team", "Player"]
-
-with st.sidebar:
-    # Have user pick if they want team stats or player stats
-    team_or_player = st.radio("", ["Team Stats", "Player Stats"], key="ts_or_ps")
-
-    # Set URL parameter based on user input
-
-# Is "Team" in team_or_player?
-if "Team" in team_or_player:
-
-    seasons=[]
-
-    for i in range(2022,1997,-1):
-        seasons.append(i)
-
+def main():
+    st.title("Baseball Statistics Dashboard")
 
     with st.sidebar:
+        st.header("Dashboard Controls")
+        view_option = st.radio("Select View", ["Team Stats", "Player Stats"], help="Choose between team or player statistics")
 
-        season = st.sidebar.selectbox("Select a season", seasons)
+    if view_option == "Team Stats":
+        team_stats()
+    else:
+        player_stats()
 
-        logos_or_names = st.sidebar.radio("Do you want to see the logos or the names of the teams?", ["Logos", "Names"])
-
-        batting_or_pitching_xaxis = st.radio("Do you want to see the batting or pitching stats on the x-axis?", ["Batting", "Pitching"])
-
-        batting_or_pitching_yaxis = st.radio("Do you want to see the batting or pitching stats on the y-axis?", ["Batting", "Pitching"], 1)
-
-    # Add season as a parameter to the url if it is used
-
-    pitching=pd.read_csv(f"./team_pitching/{season}.csv")
-
-    # If pitching["teamIDfg"] exists then sort by teamIDfg
-    if "teamIDfg" in pitching.columns:
-        pitching.sort_values(by="teamIDfg", inplace=True)
-
-    batting=pd.read_csv(f"./team_batting/{season}.csv")
-    # If batting["teamIDfg"] exists then sort by teamIDfg
-    if "teamIDfg" in batting.columns:
-        batting.sort_values(by="teamIDfg", inplace=True)
-
-    # Remove first column
-    pitching = pitching.drop(pitching.columns[0], axis=1)
-    batting = batting.drop(batting.columns[0], axis=1)
-
-    batting_cols=batting.columns.to_list()
-
-    # If the columns exist then remove them
-    if "WAR" in batting_cols:
-        batting_cols.remove("WAR")
-
-    batting_cols.insert(0, "WAR")
-
-    if "Dol" in batting_cols:
-        batting_cols.remove("Dol")
-    if "Team" in batting_cols:
-        batting_cols.remove("Team")
-    if "Season" in batting_cols:
-        batting_cols.remove("Season")
-
-    pitching_cols=pitching.columns.to_list()
-
-    if "WAR" in pitching_cols:
-        pitching_cols.remove("WAR")
-
-    pitching_cols.insert(0, "WAR")
-
-    if "Dollars" in pitching_cols:
-        pitching_cols.remove("Dollars")
-    if "Team" in pitching_cols:
-        pitching_cols.remove("Team")
-    if "Season" in pitching_cols:
-        pitching_cols.remove("Season")
-
-    if batting_or_pitching_xaxis=="Batting":
-        x_axis_stat_list=batting_cols
-    if batting_or_pitching_xaxis=="Pitching":
-        x_axis_stat_list=pitching_cols
-    if batting_or_pitching_yaxis=="Batting":
-        y_axis_stat_list=batting_cols
-    if batting_or_pitching_yaxis=="Pitching":
-        y_axis_stat_list=pitching_cols
+def team_stats():
+    seasons = list(range(config['current_year'], 1997, -1))
 
     with st.sidebar:
-        # Have user select the x-axis stat
-        x_axis_stat = st.sidebar.selectbox("Select the x-axis stat", x_axis_stat_list)
-        # Have user select the y-axis stat
-        y_axis_stat = st.sidebar.selectbox("Select the y-axis stat", y_axis_stat_list)
+        with st.expander("🔧 General Settings", expanded=True):
+            season = st.selectbox("Select Season", seasons, help="Choose the season for which you want to view statistics")
+            logos_or_names = st.radio("Display Teams As", ["Logos", "Names"], help="Choose how teams should be represented on the plot")
 
-        # Have user pick if they want vertical mean lines
-        v_mean_line=st.sidebar.checkbox("Vertical mean line", True)
+        with st.expander("📊 Axis Settings", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                batting_or_pitching_xaxis = st.radio("X-axis Stats", ["Batting", "Pitching"], help="Select the type of statistics for the X-axis")
+            with col2:
+                batting_or_pitching_yaxis = st.radio("Y-axis Stats", ["Batting", "Pitching"], index=1, help="Select the type of statistics for the Y-axis")
 
-        # Have user pick if they want horizontal mean lines
-        h_mean_line=st.sidebar.checkbox("Horizontal mean line", True)
+    pitching = load_data(f"{config['team_pitching_dir']}/{season}.csv")
+    batting = load_data(f"{config['team_batting_dir']}/{season}.csv")
 
-    if batting_or_pitching_xaxis=="Batting":
-        xaxis_stat=batting[x_axis_stat]
-        zeros=[0]*len(batting)
-    elif batting_or_pitching_xaxis=="Pitching":
-        xaxis_stat=pitching[x_axis_stat]
-        zeros=[0]*len(pitching)
-    if batting_or_pitching_yaxis=="Batting":
-        yaxis_stat=batting[y_axis_stat]
-    elif batting_or_pitching_yaxis=="Pitching":
-        yaxis_stat=pitching[y_axis_stat]
+    if pitching.empty or batting.empty:
+        st.error("Failed to load data. Please check your data files.")
+        return
 
+    pitching = pitching.sort_values(by="teamIDfg") if "teamIDfg" in pitching.columns else pitching
+    batting = batting.sort_values(by="teamIDfg") if "teamIDfg" in batting.columns else batting
 
-    if logos_or_names=="Logos":
+    batting_cols = process_columns(batting.columns)
+    pitching_cols = process_columns(pitching.columns)
 
-        plt.figure(figsize=(50,50))
-        fig, ax = plt.subplots()
-        ax.scatter(xaxis_stat, yaxis_stat, s=0)
-
-        for x0, y0, path in zip(xaxis_stat, yaxis_stat, paths):
-            ab = AnnotationBbox(getImage(path), (x0, y0), frameon=False)
-            ax.add_artist(ab)
-
-        plt.title("Team Stats")
-
-        plt.xlabel(f"{batting_or_pitching_xaxis} {x_axis_stat}")
-        plt.ylabel(f"{batting_or_pitching_yaxis} {y_axis_stat}")
-
-
-        if h_mean_line:
-            plt.axhline(y=yaxis_stat.mean(), color='w', linestyle='--')
-        if v_mean_line:
-            plt.axvline(x=xaxis_stat.mean(), color='w', linestyle='--')
-
-        plt.style.use("dark_background")
-
-        plt.show()
-
-        st.pyplot(plt)
-
-    elif logos_or_names=="Names":
-
-        fig = px.scatter(x=xaxis_stat, y=yaxis_stat, text=batting["Team"],
-                         labels={"x": f"{batting_or_pitching_xaxis} {x_axis_stat}", "y": f"{batting_or_pitching_yaxis} {y_axis_stat}", "text": "Team"},
-                         size=zeros)
-
-        if h_mean_line:
-            fig.add_hline(y=yaxis_stat.mean(), line_color='white', line_dash='dash')
-        if v_mean_line:
-            fig.add_vline(x=xaxis_stat.mean(), line_color='white', line_dash='dash')
-
-        fig.update_layout(title="Team Stats", title_x=0.5)
-
-        fig.update_xaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False, zerolinecolor='#3D3D3D')
-        fig.update_yaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False, zerolinecolor='#3D3D3D')
-
-        fig.update_layout(
-            font=dict(
-#                family="Courier New, monospace",
-                size=22,
-#                color="#7f7f7f"
-            )
-        )
-
-        # Increase size of plotly graph
-        # fig.update_layout(height=800, width=800)
-
-        st.plotly_chart(fig, use_container_width=True, sharing="streamlit")
-
-
-
-if "Player" in team_or_player:
-
-    seasons=[]
-
-    for i in range(2022,1870,-1):
-        seasons.append(i)
+    x_axis_stat_list = batting_cols if batting_or_pitching_xaxis == "Batting" else pitching_cols
+    y_axis_stat_list = batting_cols if batting_or_pitching_yaxis == "Batting" else pitching_cols
 
     with st.sidebar:
-        season = st.sidebar.selectbox("Select a season", seasons)
+        with st.expander("📈 Plot Settings", expanded=True):
+            x_axis_stat = st.selectbox("X-axis Stat", x_axis_stat_list, help="Choose the statistic for the X-axis")
+            y_axis_stat = st.selectbox("Y-axis Stat", y_axis_stat_list, help="Choose the statistic for the Y-axis")
+            v_mean_line = st.checkbox("Show Vertical Mean Line", True, help="Display a vertical line at the mean X value")
+            h_mean_line = st.checkbox("Show Horizontal Mean Line", True, help="Display a horizontal line at the mean Y value")
 
-    batting=pd.read_csv(f"./qualified_batting_stats/{season}.csv")
-    pitching=pd.read_csv(f"./qualified_pitching_stats/{season}.csv")
-#    batting=batting.dropna(inplace=True, how="all")
-#    pitching=pitching.dropna(inplace=True, how="all")
+    xaxis_stat = batting[x_axis_stat] if batting_or_pitching_xaxis == "Batting" else pitching[x_axis_stat]
+    yaxis_stat = batting[y_axis_stat] if batting_or_pitching_yaxis == "Batting" else pitching[y_axis_stat]
 
-    # Remove first column
-#    batting = batting.drop(batting.columns[0], axis=1)
-#    pitching = pitching.drop(pitching.columns[0], axis=1)
+    if logos_or_names == "Logos":
+        plot_team_logos(xaxis_stat, yaxis_stat, x_axis_stat, y_axis_stat, batting_or_pitching_xaxis, batting_or_pitching_yaxis, v_mean_line, h_mean_line)
+    else:
+        plot_team_names(xaxis_stat, yaxis_stat, x_axis_stat, y_axis_stat, batting_or_pitching_xaxis, batting_or_pitching_yaxis, v_mean_line, h_mean_line, batting)
 
-    # Create a column for WAR/650 PAs
-
-    batting["WAR/650 PAs"]=batting["WAR"]/batting["PA"]*650
-
-    batting_cols=batting.columns.to_list()
-    batting_cols.remove("WAR")
-    batting_cols.remove("wRC+")
-    batting_cols.insert(0, "WAR")
-    batting_cols.insert(1, "wRC+")
-
-    # If column exists, remove it
-    if "Team" in batting_cols:
-        batting_cols.remove("Team")
-    if "Season" in batting_cols:
-        batting_cols.remove("Season")
-    if "Dollars" in batting_cols:
-        batting_cols.remove("Dol")
-    if "Name" in batting_cols:
-        batting_cols.remove("Name")
-    if "Season" in batting_cols:
-        batting_cols.remove("Season")
-    if "IDfg" in batting_cols:
-        batting_cols.remove("IDfg")
-    if "Unnamed: 0" in batting_cols:
-        batting_cols.remove("Unnamed: 0")
-
-    pitching_cols=pitching.columns.to_list()
-    pitching_cols.remove("WAR")
-    pitching_cols.remove("SIERA")
-    pitching_cols.insert(0, "WAR")
-    pitching_cols.insert(1, "SIERA")
-    pitching_cols.remove("Dollars")
-    #
-    # If column exists, remove it
-    if "Team" in batting_cols:
-        batting_cols.remove("Team")
-    if "Season" in batting_cols:
-        batting_cols.remove("Season")
-    if "Dollars" in batting_cols:
-        batting_cols.remove("Dollars")
-    if "Name" in batting_cols:
-        batting_cols.remove("Name")
-    if "Season" in batting_cols:
-        batting_cols.remove("Season")
-    if "IDfg" in batting_cols:
-        batting_cols.remove("IDfg")
-    if "Unnamed: 0" in batting_cols:
-        batting_cols.remove("Unnamed: 0")
-
-    min_pas=["Qualified"]
-    # Append numbers from 0 to 700 going up by 10 to min_pas
-    for i in range(0,700,10):
-        min_pas.append(i)
-
-    min_ip=["Qualified"]
-    # Append numbers from 0 to 250 going up by 10 to min_ip
-    for i in range(0,300,10):
-        min_ip.append(i)
-
-
-    batting["Name"]=batting["Name"].str.split(" ").str[0].str[0] + ". " + batting["Name"].str.split(" ").str[1]
-
-    pitching["Name"]=pitching["Name"].str.split(" ").str[0].str[0] + ". " + pitching["Name"].str.split(" ").str[1]
+def player_stats():
+    seasons = list(range(config['current_year'], 1870, -1))
 
     with st.sidebar:
-        batters_or_pitchers=st.radio("Do you want to see the stats for batters or pitchers?", ["Batters", "Pitchers"])
-
-#        only_qualified=st.sidebar.checkbox("Only show qualified players?", True)
-
-#        if only_qualified:
-#            if batters_or_pitchers=="Batters":
-#                batting=batting_stats(season)
-#            elif batters_or_pitchers=="Pitchers":
-#                pitching=pitching_stats(season)
-
-    if batters_or_pitchers=="Batters":
-
-        with st.sidebar:
-            xaxis_stat = st.sidebar.selectbox("Select a stat for the x-axis", batting_cols)
-            yaxis_stat = st.sidebar.selectbox("Select a stat for the y-axis", batting_cols, 1)
-
-            # Select Box for minimum PAs
-            min_pa = st.sidebar.selectbox("Minimum PA", min_pas)
-
-        if min_pa=="Qualified":
-
-            teams_list=[]
-
-            # Append all teams to teams_list
-            # Sort teams alphabetically
-            for i in batting["Team"].unique().tolist():
-                teams_list.append(i)
-            teams_list.sort()
-
-            # Add "All Teams" to the top of the list
-            teams_list.insert(0, "NL")
-            teams_list.insert(0, "AL")
-            teams_list.insert(0, "All Teams")
-
-            # Remove - - - from teams_list
-            if "- - -" in teams_list:
-                teams_list.remove("- - -")
-
-            # Allow user to select teams
-            selected_team=st.sidebar.selectbox("Team:", teams_list)
-
-            # If user selects "All Teams", show all teams
-            # If user selects a team, show only that team
-            if selected_team=="All Teams":
-                batting=batting
-            elif selected_team=="NL":
-                # Show only NL teams
-                # NL teams are ARI, ATL, CHC, CIN, COL, LAD, MIA, MIL, NYM, PHI, PIT, SDP, SFG, STL, WAS
-                batting=batting[batting["Team"].isin(["ARI", "ATL", "CHC", "CIN", "COL", "LAD", "MIA", "MIL", "NYM", "PHI", "PIT", "SDP", "SFG", "STL", "WAS"])]
-            elif selected_team=="AL":
-                # Show only AL teams
-                # AL teams are BAL, BOS, CHW, CLE, DET, HOU, LAA, KCR, MIN, NYY, OAK, SEA, TOR, TEX, TOR
-                batting=batting[batting["Team"].isin(["BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR", "MIN", "NYY", "OAK", "SEA", "TOR", "TEX", "TOR"])]
-            else:
-                batting=batting[batting["Team"]==selected_team]
-
-
-            zeros=[0]*len(batting)
-
-            fig = px.scatter(x=batting[xaxis_stat], y=batting[yaxis_stat], text=batting["Name"], size=zeros,
-                             labels={"x": f"{xaxis_stat}", "y": f"{yaxis_stat}"})
-
-            # Increase size of x axis and y axis labels
-            fig.update_xaxes(title=f"{xaxis_stat}", title_font=dict(size=22))
-            fig.update_yaxes(title=f"{yaxis_stat}", title_font=dict(size=22))
-
-            # Increase size of title
-            fig.update_layout(title=f"{xaxis_stat} vs {yaxis_stat}", title_font=dict(size=26), title_x=0.5)
-
-            fig.update_xaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False, zerolinecolor='#3D3D3D')
-            fig.update_yaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False, zerolinecolor='#3D3D3D')
-
-            st.plotly_chart(fig, use_container_width=True, sharing="streamlit")
-
-        # If Not qualified, select batters with minimum PAs
-        elif min_pa != "Qualified":
-            batting=pd.read_csv(f"./all_batting_stats/{season}.csv")
-
-            # Create a column for WAR/650 PAs
-
-            batting["WAR/650 PAs"]=batting["WAR"]/batting["PA"]*650
-
-            # Round WAR/650 PAs to 2 decimal places
-
-            batting["WAR/650 PAs"]=batting["WAR/650 PAs"].round(2)
-
-            teams_list=[]
-
-            # Append all teams to teams_list
-            # Sort teams alphabetically
-            for i in batting["Team"].unique().tolist():
-                teams_list.append(i)
-            teams_list.sort()
-
-            # Add "All Teams" to the top of the list
-            teams_list.insert(0, "NL")
-            teams_list.insert(0, "AL")
-            teams_list.insert(0, "All Teams")
-
-            # If  - - - is in teams_list remove it
-            if "- - -" in teams_list:
-                teams_list.remove("- - -")
-
-
-            # Allow user to select teams
-            selected_team=st.sidebar.selectbox("Team:", teams_list)
-
-            # If user selects "All Teams", show all teams
-            # If user selects a team, show only that team
-            if selected_team=="All Teams":
-                batting=batting
-            elif selected_team=="NL":
-                # Show only NL teams
-                # NL teams are ARI, ATL, CHC, CIN, COL, LAD, MIA, MIL, NYM, PHI, PIT, SDP, SFG, STL, WAS
-                batting=batting[batting["Team"].isin(["ARI", "ATL", "CHC", "CIN", "COL", "LAD", "MIA", "MIL", "NYM", "PHI", "PIT", "SDP", "SFG", "STL", "WAS"])]
-            elif selected_team=="AL":
-                # Show only AL teams
-                # AL teams are BAL, BOS, CHW, CLE, DET, HOU, LAA, KCR, MIN, NYY, OAK, SEA, TOR, TEX, TOR
-                batting=batting[batting["Team"].isin(["BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR", "MIN", "NYY", "OAK", "SEA", "TOR", "TEX", "TOR"])]
-            else:
-                batting=batting[batting["Team"]==selected_team]
-
-            # remove first column
- #           batting = batting.drop(batting.columns[0], axis=1)
-
-            # only keep batters with minimum PAs
-            batting=batting[batting["PA"]>=min_pa]
-            batting["Name"]=batting["Name"].str.split(" ").str[0].str[0] + ". " + batting["Name"].str.split(" ").str[1]
-
-            zeros=[0]*len(batting)
-
-            fig = px.scatter(x=batting[xaxis_stat], y=batting[yaxis_stat], text=batting["Name"], size=zeros,
-                                labels={"x": f"{xaxis_stat}", "y": f"{yaxis_stat}"})
-
-
-            fig.update_xaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False, zerolinecolor='#3D3D3D')
-            fig.update_yaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False, zerolinecolor='#3D3D3D')
-
-            st.plotly_chart(fig, use_container_width=True, sharing="streamlit")
-
-    elif batters_or_pitchers =="Pitchers":
-
-        with st.sidebar:
-            xaxis_stat = st.sidebar.selectbox("Select a stat for the x-axis", pitching_cols)
-            yaxis_stat = st.sidebar.selectbox("Select a stat for the y-axis", pitching_cols, 1)
-            # Select Box for minimum IP
-            min_ip = st.sidebar.selectbox("Minimum IP", min_ip)
-
-        if min_ip=="Qualified":
-
-            teams_list=[]
-            # Append all teams to teams_list
-            # Sort teams alphabetically
-            for i in pitching["Team"].unique().tolist():
-                teams_list.append(i)
-            teams_list.sort()
-            # Add "All Teams" to the top of the list
-            teams_list.insert(0, "All Teams")
-
-            # Remove - - - from teams_list
-            if "- - -" in teams_list:
-                teams_list.remove("- - -")
-
-            # Allow user to select teams
-            selected_team=st.sidebar.selectbox("Team:", teams_list)
-
-            # If user selects "All Teams", show all teams
-            # If user selects a team, show only that team
-            if selected_team=="All Teams":
-                pitching=pitching
-            else:
-                pitching=pitching[pitching["Team"]==selected_team]
-
-            zeros=[0]*len(pitching)
-
-            fig = px.scatter(x=pitching[xaxis_stat], y=pitching[yaxis_stat], text=pitching["Name"], size=zeros,
-                            labels={"x": f"{xaxis_stat}", "y": f"{yaxis_stat}"})
-
-            # Increase size of x axis and y axis labels
-            fig.update_xaxes(title=f"{xaxis_stat}", title_font=dict(size=22))
-            fig.update_yaxes(title=f"{yaxis_stat}", title_font=dict(size=22))
-
-            # Increase size of title
-            fig.update_layout(title=f"{xaxis_stat} vs {yaxis_stat}", title_font=dict(size=26), title_x=0.5)
-
-            fig.update_xaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False, zerolinecolor='#3D3D3D')
-            fig.update_yaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False, zerolinecolor='#3D3D3D')
-
-            # Edit URL based on the selected
-
-            st.plotly_chart(fig, use_container_width=True, sharing="streamlit")
-
-        # If Not qualified, select pitchers with minimum IP
-        elif min_ip != "Qualified":
-
-            pitching=pd.read_csv(f"./all_pitching_stats/{season}.csv")
-
-            teams_list=[]
-            # Append all teams to teams_list
-            # Sort teams alphabetically
-            for i in pitching["Team"].unique().tolist():
-                teams_list.append(i)
-            teams_list.sort()
-
-            # Add "All Teams" to the top of the list
-
-            teams_list.insert(0, "All Teams")
-
-            # If  - - - is in teams_list remove it
-            if "- - -" in teams_list:
-                teams_list.remove("- - -")
-
-            # Allow user to select teams
-            selected_team=st.sidebar.selectbox("Team:", teams_list)
-
-            
-            # remove first column
-#            pitching = pitching.drop(pitching.columns[0], axis=1)
-            # only keep pitchers with minimum IP
-            pitching=pitching[pitching["IP"]>=min_ip]
-            pitching["Name"]=pitching["Name"].str.split(" ").str[0].str[0] + ". " + pitching["Name"].str.split(" ").str[1]
-
-            zeros=[0]*len(pitching)
-
-            fig = px.scatter(x=pitching[xaxis_stat], y=pitching[yaxis_stat], text=pitching["Name"], size=zeros,
-                            labels={"x": f"{xaxis_stat}", "y": f"{yaxis_stat}"})
-
-            # Increase size of x axis and y axis labels
-            fig.update_xaxes(title=f"{xaxis_stat}", title_font=dict(size=22))
-            fig.update_yaxes(title=f"{yaxis_stat}", title_font=dict(size=22))
-
-            # Increase size of title
-            fig.update_layout(title=f"{xaxis_stat} vs {yaxis_stat}", title_font=dict(size=26), title_x=0.5)
-
-            fig.update_xaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False, zerolinecolor='#3D3D3D')
-            fig.update_yaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False, zerolinecolor='#3D3D3D')
-
-            st.plotly_chart(fig, use_container_width=True, sharing="streamlit")
-
+        with st.expander("🔧 General Settings", expanded=True):
+            season = st.selectbox("Select Season", seasons, help="Choose the season for which you want to view statistics")
+            batters_or_pitchers = st.radio("Stats Type", ["Batters", "Pitchers"], help="Choose between batting or pitching statistics")
+
+    if batters_or_pitchers == "Batters":
+        player_batting_stats(season)
+    else:
+        player_pitching_stats(season)
+
+def player_batting_stats(season):
+    batting = load_data(f"{config['qualified_batting_dir']}/{season}.csv")
+    if batting.empty:
+        st.error("Failed to load batting data. Please check your data files.")
+        return
+
+    batting["WAR/650 PAs"] = (batting["WAR"] / batting["PA"] * 650).round(2)
+    batting_cols = process_columns(batting.columns)
+
+    min_pas = ["Qualified"] + list(range(0, 700, 10))
+
+    with st.sidebar:
+        with st.expander("📊 Plot Settings", expanded=True):
+            xaxis_stat = st.selectbox("X-axis Stat", batting_cols, help="Choose the statistic for the X-axis")
+            yaxis_stat = st.selectbox("Y-axis Stat", batting_cols, index=1, help="Choose the statistic for the Y-axis")
+            min_pa = st.selectbox("Minimum PA", min_pas, help="Set the minimum number of plate appearances")
+
+    batting, selected_team = filter_data(batting, min_pa)
+
+    plot_player_stats(batting, xaxis_stat, yaxis_stat, "Batting")
+
+def player_pitching_stats(season):
+    pitching = load_data(f"{config['qualified_pitching_dir']}/{season}.csv")
+    if pitching.empty:
+        st.error("Failed to load pitching data. Please check your data files.")
+        return
+
+    pitching_cols = process_columns(pitching.columns)
+
+    min_ip = ["Qualified"] + list(range(0, 300, 10))
+
+    with st.sidebar:
+        with st.expander("📊 Plot Settings", expanded=True):
+            xaxis_stat = st.selectbox("X-axis Stat", pitching_cols, help="Choose the statistic for the X-axis")
+            yaxis_stat = st.selectbox("Y-axis Stat", pitching_cols, index=1, help="Choose the statistic for the Y-axis")
+            min_ip_value = st.selectbox("Minimum IP", min_ip, help="Set the minimum number of innings pitched")
+
+    pitching, selected_team = filter_data(pitching, min_ip_value, "IP")
+
+    plot_player_stats(pitching, xaxis_stat, yaxis_stat, "Pitching")
+
+def filter_data(data, min_value, column="PA"):
+    teams_list = sorted(data["Team"].unique().tolist())
+    teams_list = ["All Teams", "AL", "NL"] + teams_list
+    if "- - -" in teams_list:
+        teams_list.remove("- - -")
+
+    selected_team = st.sidebar.selectbox("Team:", teams_list, help="Filter players by team")
+
+    if min_value != "Qualified":
+        data = load_data(f"{config['all_batting_dir'] if column == 'PA' else config['all_pitching_dir']}/{data['Season'].iloc[0]}.csv")
+        data = data[data[column] >= min_value]
+
+    if selected_team == "All Teams":
+        pass
+    elif selected_team == "NL":
+        data = data[data["Team"].isin(["ARI", "ATL", "CHC", "CIN", "COL", "LAD", "MIA", "MIL", "NYM", "PHI", "PIT", "SDP", "SFG", "STL", "WAS"])]
+    elif selected_team == "AL":
+        data = data[data["Team"].isin(["BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR", "MIN", "NYY", "OAK", "SEA", "TOR", "TEX", "TOR"])]
+    else:
+        data = data[data["Team"] == selected_team]
+
+    data["Name"] = data["Name"].str.split(" ").str[0].str[0] + ". " + data["Name"].str.split(" ").str[1]
+    return data, selected_team
+
+def plot_team_logos(xaxis_stat, yaxis_stat, x_axis_stat, y_axis_stat, batting_or_pitching_xaxis, batting_or_pitching_yaxis, v_mean_line, h_mean_line):
+    plt.figure(figsize=(50, 50))
+    fig, ax = plt.subplots()
+    ax.scatter(xaxis_stat, yaxis_stat, s=0)
+
+    for x0, y0, path in zip(xaxis_stat, yaxis_stat, paths):
+        ab = AnnotationBbox(getImage(path), (x0, y0), frameon=False)
+        ax.add_artist(ab)
+
+    plt.title("Team Stats")
+    plt.xlabel(f"{batting_or_pitching_xaxis} {x_axis_stat}")
+    plt.ylabel(f"{batting_or_pitching_yaxis} {y_axis_stat}")
+
+    if h_mean_line:
+        plt.axhline(y=yaxis_stat.mean(), color='w', linestyle='--')
+    if v_mean_line:
+        plt.axvline(x=xaxis_stat.mean(), color='w', linestyle='--')
+
+    plt.style.use("dark_background")
+    st.pyplot(plt)
+
+def plot_team_names(xaxis_stat, yaxis_stat, x_axis_stat, y_axis_stat, batting_or_pitching_xaxis, batting_or_pitching_yaxis, v_mean_line, h_mean_line, batting):
+    fig = px.scatter(x=xaxis_stat, y=yaxis_stat, text=batting["Team"],
+                     labels={"x": f"{batting_or_pitching_xaxis} {x_axis_stat}", "y": f"{batting_or_pitching_yaxis} {y_axis_stat}", "text": "Team"},
+                     size=[0]*len(batting))
+
+    if h_mean_line:
+        fig.add_hline(y=yaxis_stat.mean(), line_color='white', line_dash='dash')
+    if v_mean_line:
+        fig.add_vline(x=xaxis_stat.mean(), line_color='white', line_dash='dash')
+
+    fig.update_layout(title="Team Stats", title_x=0.5, font=dict(size=22))
+    fig.update_xaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False)
+    fig.update_yaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False)
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def plot_player_stats(data, xaxis_stat, yaxis_stat, stat_type):
+    fig = px.scatter(x=data[xaxis_stat], y=data[yaxis_stat], text=data["Name"],
+                     labels={"x": f"{xaxis_stat}", "y": f"{yaxis_stat}"},
+                     size=[0]*len(data))
+
+    fig.update_xaxes(title=f"{xaxis_stat}", title_font=dict(size=22))
+    fig.update_yaxes(title=f"{yaxis_stat}", title_font=dict(size=22))
+    fig.update_layout(title=f"{xaxis_stat} vs {yaxis_stat}", title_font=dict(size=26), title_x=0.5)
+    fig.update_xaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False)
+    fig.update_yaxes(showgrid=True, gridwidth=0.5, gridcolor='#3D3D3D', zeroline=False)
+
+    st.plotly_chart(fig, use_container_width=True)
+
+if __name__ == "__main__":
+    main()
 
 st.write("---")
-
-st.markdown("""
-    The data is provided by [pybaseball](https://pypi.org/project/pybaseball/)  and [Fangraphs](https://www.fangraphs.com/). The plots are generated using [matplotlib](https://matplotlib.org/) and [plotly](https://plotly.com/python/).""")
+st.markdown(f"""
+    The data is provided by [Fangraphs](https://www.fangraphs.com/) and processed using [pybaseball](https://pypi.org/project/pybaseball/).
+    The plots are generated using [matplotlib](https://matplotlib.org/) and [plotly](https://plotly.com/python/).
+    Data is current as of the {config['current_year']} season.
+""")

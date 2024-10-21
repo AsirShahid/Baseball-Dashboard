@@ -1,67 +1,74 @@
 #!/usr/bin/env python3
 
 import pybaseball as pyb
-from pybaseball import team_batting
-from pybaseball import team_pitching
-from pybaseball import team_fielding
-from pybaseball import batting_stats
-from pybaseball import pitching_stats
-from pybaseball import fielding_stats
+from pybaseball import team_batting, team_pitching, team_fielding, batting_stats, pitching_stats
 import pandas as pd
-import os
-# Import sleep
+from pathlib import Path
 from time import sleep
+import datetime
+import logging
+import json
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Disable pybaseball cache
 pyb.cache.disable()
 
-# Find year
-import datetime
-year = datetime.datetime.now().year
+# Load configuration
+def load_config():
+    with open('config.json', 'r') as f:
+        return json.load(f)
 
-# if team_batting directory does not exist, create it
-if not os.path.exists(os.path.join(os.getcwd(), 'team_batting')):
-    os.makedirs(os.path.join(os.getcwd(), 'team_batting'))
-# if team_pitching directory does not exist, create it
-if not os.path.exists(os.path.join(os.getcwd(), 'team_pitching')):
-    os.makedirs(os.path.join(os.getcwd(), 'team_pitching'))
-# if team_fielding directory does not exist, create it
-if not os.path.exists(os.path.join(os.getcwd(), 'team_fielding')):
-    os.makedirs(os.path.join(os.getcwd(), 'team_fielding'))
-# if qualified_batting_stats directory does not exist, create it
-if not os.path.exists(os.path.join(os.getcwd(), 'qualified_batting_stats')):
-    os.makedirs(os.path.join(os.getcwd(), 'qualified_batting_stats'))
-# if qualified_pitching_stats directory does not exist, create it
-if not os.path.exists(os.path.join(os.getcwd(), 'qualified_pitching_stats')):
-    os.makedirs(os.path.join(os.getcwd(), 'qualified_pitching_stats'))
-# if all_batting_stats directory does not exist, create it
-if not os.path.exists(os.path.join(os.getcwd(), 'all_batting_stats')):
-    os.makedirs(os.path.join(os.getcwd(), 'all_batting_stats'))
-# if all_pitching_stats directory does not exist, create it
-if not os.path.exists(os.path.join(os.getcwd(), 'all_pitching_stats')):
-    os.makedirs(os.path.join(os.getcwd(), 'all_pitching_stats'))
+# Create directories if they don't exist
+def create_directories(directories):
+    for directory in directories:
+        Path(directory).mkdir(parents=True, exist_ok=True)
 
-# Get team batting data from 1871 to current year
-# for i in range(year,1870, -1):
-# # Turn data into csv file in their own directory
-#     team_batting(i).to_csv('./team_batting/'+str(i)+'.csv')
-#     team_pitching(i).to_csv('./team_pitching/'+str(i)+'.csv')
-#     team_fielding(i).to_csv('./team_fielding/'+str(i)+'.csv')
-#     batting_stats(i).to_csv('./qualified_batting_stats/'+str(i)+'.csv')
-#     pitching_stats(i).to_csv('./qualified_pitching_stats/'+str(i)+'.csv')
-#     batting_stats(i, qual=0).to_csv('./all_batting_stats/'+str(i)+'.csv')
-#     pitching_stats(i, qual=0).to_csv('./all_pitching_stats/'+str(i)+'.csv')
-#     print(f"Generated CSVs for the {i} season")
+# Generate CSV for a specific statistic
+def generate_csv(func, year, directory, qual=None):
+    try:
+        if qual is not None:
+            df = func(year, qual=qual)
+        else:
+            df = func(year)
+        df.to_csv(Path(directory) / f"{year}.csv")
+        logging.info(f"Generated CSV for {func.__name__} - {year}")
+    except Exception as e:
+        logging.error(f"Error generating CSV for {func.__name__} - {year}: {str(e)}")
 
-# Loop through the csv generation every four hours
+# Main function to generate all CSVs
+def generate_all_csvs(start_year, end_year, config):
+    for year in range(end_year, start_year - 1, -1):
+        generate_csv(team_batting, year, config['team_batting_dir'])
+        generate_csv(team_pitching, year, config['team_pitching_dir'])
+        generate_csv(team_fielding, year, config['team_fielding_dir'])
+        generate_csv(batting_stats, year, config['qualified_batting_dir'])
+        generate_csv(pitching_stats, year, config['qualified_pitching_dir'])
+        generate_csv(batting_stats, year, config['all_batting_dir'], qual=0)
+        generate_csv(pitching_stats, year, config['all_pitching_dir'], qual=0)
 
-while True:
+# Main execution
+if __name__ == "__main__":
+    config = load_config()
+    
+    create_directories([
+        config['team_batting_dir'],
+        config['team_pitching_dir'],
+        config['team_fielding_dir'],
+        config['qualified_batting_dir'],
+        config['qualified_pitching_dir'],
+        config['all_batting_dir'],
+        config['all_pitching_dir']
+    ])
 
-    team_batting(year).to_csv('./team_batting/'+str(year)+'.csv')
-    team_pitching(year).to_csv('./team_pitching/'+str(year)+'.csv')
-    team_fielding(year).to_csv('./team_fielding/'+str(year)+'.csv')
-    batting_stats(year).to_csv('./qualified_batting_stats/'+str(year)+'.csv')
-    pitching_stats(year).to_csv('./qualified_pitching_stats/'+str(year)+'.csv')
-    batting_stats(year, qual=0).to_csv('./all_batting_stats/'+str(year)+'.csv')
-    pitching_stats(year, qual=0).to_csv('./all_pitching_stats/'+str(year)+'.csv')
+    current_year = datetime.datetime.now().year
+    
+    # Generate historical data
+    generate_all_csvs(config['start_year'], current_year, config)
 
-    sleep(14400)
+    # Continuous update loop
+    while True:
+        generate_all_csvs(current_year, current_year, config)
+        logging.info(f"Sleeping for {config['update_interval']} seconds")
+        sleep(config['update_interval'])
