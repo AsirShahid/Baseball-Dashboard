@@ -76,12 +76,19 @@ def process_columns(columns):
             cols.remove(col)
     return cols
 
+def get_query_param(name, default=None):
+    """Get a query parameter value, returning the default if not found"""
+    return st.query_params.get(name, default)
+
 def main():
     st.title("Baseball Statistics Dashboard")
 
     with st.sidebar:
         st.header("Dashboard Controls")
-        view_option = st.radio("Select View", ["Team Stats", "Player Stats"], help="Choose between team or player statistics")
+        view_option = st.radio("Select View", ["Team Stats", "Player Stats"], 
+                             index=0 if get_query_param("view") != "Player Stats" else 1,
+                             help="Choose between team or player statistics")
+        st.query_params["view"] = view_option
 
     if view_option == "Team Stats":
         team_stats()
@@ -90,18 +97,40 @@ def main():
 
 def team_stats():
     seasons = list(range(config['current_year'], 1997, -1))
+    
+    # Get initial values from URL parameters
+    initial_season = int(get_query_param("season", seasons[0]))
+    initial_display = get_query_param("display", "Logos")
+    initial_x_type = get_query_param("x_type", "Batting")
+    initial_y_type = get_query_param("y_type", "Pitching")
 
     with st.sidebar:
         with st.expander("🔧 General Settings", expanded=True):
-            season = st.selectbox("Select Season", seasons, help="Choose the season for which you want to view statistics")
-            logos_or_names = st.radio("Display Teams As", ["Logos", "Names"], help="Choose how teams should be represented on the plot")
+            season = st.selectbox("Select Season", seasons, 
+                                index=seasons.index(initial_season),
+                                help="Choose the season for which you want to view statistics")
+            logos_or_names = st.radio("Display Teams As", ["Logos", "Names"], 
+                                    index=0 if initial_display == "Logos" else 1,
+                                    help="Choose how teams should be represented on the plot")
 
         with st.expander("📊 Axis Settings", expanded=True):
             col1, col2 = st.columns(2)
             with col1:
-                batting_or_pitching_xaxis = st.radio("X-axis Stats", ["Batting", "Pitching"], help="Select the type of statistics for the X-axis")
+                batting_or_pitching_xaxis = st.radio("X-axis Stats", ["Batting", "Pitching"], 
+                                                   index=0 if initial_x_type == "Batting" else 1,
+                                                   help="Select the type of statistics for the X-axis")
             with col2:
-                batting_or_pitching_yaxis = st.radio("Y-axis Stats", ["Batting", "Pitching"], index=1, help="Select the type of statistics for the Y-axis")
+                batting_or_pitching_yaxis = st.radio("Y-axis Stats", ["Batting", "Pitching"], 
+                                                   index=0 if initial_y_type == "Batting" else 1,
+                                                   help="Select the type of statistics for the Y-axis")
+
+    # Update URL parameters
+    st.query_params.update({
+        "season": season,
+        "display": logos_or_names,
+        "x_type": batting_or_pitching_xaxis,
+        "y_type": batting_or_pitching_yaxis
+    })
 
     pitching = load_data(f"{config['team_pitching_dir']}/{season}.csv")
     batting = load_data(f"{config['team_batting_dir']}/{season}.csv")
@@ -119,12 +148,26 @@ def team_stats():
     x_axis_stat_list = batting_cols if batting_or_pitching_xaxis == "Batting" else pitching_cols
     y_axis_stat_list = batting_cols if batting_or_pitching_yaxis == "Batting" else pitching_cols
 
+    # Get initial stat selections from URL parameters
+    initial_x_stat = get_query_param("x_stat", x_axis_stat_list[0])
+    initial_y_stat = get_query_param("y_stat", y_axis_stat_list[0])
+
     with st.sidebar:
         with st.expander("📈 Plot Settings", expanded=True):
-            x_axis_stat = st.selectbox("X-axis Stat", x_axis_stat_list, help="Choose the statistic for the X-axis")
-            y_axis_stat = st.selectbox("Y-axis Stat", y_axis_stat_list, help="Choose the statistic for the Y-axis")
+            x_axis_stat = st.selectbox("X-axis Stat", x_axis_stat_list, 
+                                     index=x_axis_stat_list.index(initial_x_stat) if initial_x_stat in x_axis_stat_list else 0,
+                                     help="Choose the statistic for the X-axis")
+            y_axis_stat = st.selectbox("Y-axis Stat", y_axis_stat_list,
+                                     index=y_axis_stat_list.index(initial_y_stat) if initial_y_stat in y_axis_stat_list else 0,
+                                     help="Choose the statistic for the Y-axis")
             v_mean_line = st.checkbox("Show Vertical Mean Line", True, help="Display a vertical line at the mean X value")
             h_mean_line = st.checkbox("Show Horizontal Mean Line", True, help="Display a horizontal line at the mean Y value")
+
+    # Update URL parameters for stats
+    st.query_params.update({
+        "x_stat": x_axis_stat,
+        "y_stat": y_axis_stat
+    })
 
     xaxis_stat = batting[x_axis_stat] if batting_or_pitching_xaxis == "Batting" else pitching[x_axis_stat]
     yaxis_stat = batting[y_axis_stat] if batting_or_pitching_yaxis == "Batting" else pitching[y_axis_stat]
@@ -136,11 +179,23 @@ def team_stats():
 
 def player_stats():
     seasons = list(range(config['current_year'], 1870, -1))
+    
+    initial_season = int(get_query_param("season", seasons[0]))
+    initial_type = get_query_param("player_type", "Batters")
 
     with st.sidebar:
         with st.expander("🔧 General Settings", expanded=True):
-            season = st.selectbox("Select Season", seasons, help="Choose the season for which you want to view statistics")
-            batters_or_pitchers = st.radio("Stats Type", ["Batters", "Pitchers"], help="Choose between batting or pitching statistics")
+            season = st.selectbox("Select Season", seasons,
+                                index=seasons.index(initial_season),
+                                help="Choose the season for which you want to view statistics")
+            batters_or_pitchers = st.radio("Stats Type", ["Batters", "Pitchers"],
+                                         index=0 if initial_type == "Batters" else 1,
+                                         help="Choose between batting or pitching statistics")
+
+    st.query_params.update({
+        "season": season,
+        "player_type": batters_or_pitchers
+    })
 
     if batters_or_pitchers == "Batters":
         player_batting_stats(season)
@@ -157,12 +212,28 @@ def player_batting_stats(season):
     batting_cols = process_columns(batting.columns)
 
     min_pas = ["Qualified"] + list(range(0, 700, 10))
+    
+    initial_x_stat = get_query_param("x_stat", batting_cols[0])
+    initial_y_stat = get_query_param("y_stat", batting_cols[1])
+    initial_min_pa = get_query_param("min_pa", "Qualified")
 
     with st.sidebar:
         with st.expander("📊 Plot Settings", expanded=True):
-            xaxis_stat = st.selectbox("X-axis Stat", batting_cols, help="Choose the statistic for the X-axis")
-            yaxis_stat = st.selectbox("Y-axis Stat", batting_cols, index=1, help="Choose the statistic for the Y-axis")
-            min_pa = st.selectbox("Minimum PA", min_pas, help="Set the minimum number of plate appearances")
+            xaxis_stat = st.selectbox("X-axis Stat", batting_cols,
+                                    index=batting_cols.index(initial_x_stat) if initial_x_stat in batting_cols else 0,
+                                    help="Choose the statistic for the X-axis")
+            yaxis_stat = st.selectbox("Y-axis Stat", batting_cols,
+                                    index=batting_cols.index(initial_y_stat) if initial_y_stat in batting_cols else 1,
+                                    help="Choose the statistic for the Y-axis")
+            min_pa = st.selectbox("Minimum PA", min_pas,
+                                index=min_pas.index(initial_min_pa) if initial_min_pa in min_pas else 0,
+                                help="Set the minimum number of plate appearances")
+
+    st.query_params.update({
+        "x_stat": xaxis_stat,
+        "y_stat": yaxis_stat,
+        "min_pa": min_pa
+    })
 
     batting, selected_team = filter_data(batting, min_pa)
 
@@ -177,12 +248,28 @@ def player_pitching_stats(season):
     pitching_cols = process_columns(pitching.columns)
 
     min_ip = ["Qualified"] + list(range(0, 300, 10))
+    
+    initial_x_stat = get_query_param("x_stat", pitching_cols[0])
+    initial_y_stat = get_query_param("y_stat", pitching_cols[1])
+    initial_min_ip = get_query_param("min_ip", "Qualified")
 
     with st.sidebar:
         with st.expander("📊 Plot Settings", expanded=True):
-            xaxis_stat = st.selectbox("X-axis Stat", pitching_cols, help="Choose the statistic for the X-axis")
-            yaxis_stat = st.selectbox("Y-axis Stat", pitching_cols, index=1, help="Choose the statistic for the Y-axis")
-            min_ip_value = st.selectbox("Minimum IP", min_ip, help="Set the minimum number of innings pitched")
+            xaxis_stat = st.selectbox("X-axis Stat", pitching_cols,
+                                    index=pitching_cols.index(initial_x_stat) if initial_x_stat in pitching_cols else 0,
+                                    help="Choose the statistic for the X-axis")
+            yaxis_stat = st.selectbox("Y-axis Stat", pitching_cols,
+                                    index=pitching_cols.index(initial_y_stat) if initial_y_stat in pitching_cols else 1,
+                                    help="Choose the statistic for the Y-axis")
+            min_ip_value = st.selectbox("Minimum IP", min_ip,
+                                      index=min_ip.index(initial_min_ip) if initial_min_ip in min_ip else 0,
+                                      help="Set the minimum number of innings pitched")
+
+    st.query_params.update({
+        "x_stat": xaxis_stat,
+        "y_stat": yaxis_stat,
+        "min_ip": min_ip_value
+    })
 
     pitching, selected_team = filter_data(pitching, min_ip_value, "IP")
 
@@ -194,7 +281,12 @@ def filter_data(data, min_value, column="PA"):
     if "- - -" in teams_list:
         teams_list.remove("- - -")
 
-    selected_team = st.sidebar.selectbox("Team:", teams_list, help="Filter players by team")
+    initial_team = get_query_param("team", "All Teams")
+    selected_team = st.sidebar.selectbox("Team:", teams_list,
+                                       index=teams_list.index(initial_team) if initial_team in teams_list else 0,
+                                       help="Filter players by team")
+    
+    st.query_params["team"] = selected_team
 
     if min_value != "Qualified":
         data = load_data(f"{config['all_batting_dir'] if column == 'PA' else config['all_pitching_dir']}/{data['Season'].iloc[0]}.csv")
