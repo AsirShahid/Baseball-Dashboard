@@ -1,7 +1,8 @@
+dash
+dash-bootstrap-components
 matplotlib
 pybaseball
 plotly
-streamlit
 pandas
 numpy
 beautifulsoup4
