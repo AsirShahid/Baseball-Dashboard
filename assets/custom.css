@@ -1,0 +1,162 @@
+/* ── dcc.Dropdown dark-mode override ─────────────────────────────────────── */
+
+/* The control (always visible) */
+.Select-control {
+    background-color: #21262d !important;
+    border-color: #30363d !important;
+    color: #c9d1d9 !important;
+    border-radius: 6px !important;
+}
+.Select-control:hover {
+    box-shadow: none !important;
+    border-color: #58a6ff !important;
+}
+
+/* Placeholder text */
+.Select-placeholder {
+    color: #8b949e !important;
+}
+
+/* Selected value */
+.Select-value-label,
+.Select-value {
+    color: #c9d1d9 !important;
+}
+
+/* The text input inside the dropdown */
+.Select-input > input {
+    color: #c9d1d9 !important;
+    background: transparent !important;
+}
+
+/* Arrow */
+.Select-arrow-zone .Select-arrow {
+    border-top-color: #8b949e !important;
+}
+.is-open .Select-arrow-zone .Select-arrow {
+    border-bottom-color: #8b949e !important;
+    border-top-color: transparent !important;
+}
+
+/* Clear button */
+.Select-clear-zone,
+.Select-clear {
+    color: #8b949e !important;
+}
+.Select-clear-zone:hover {
+    color: #f85149 !important;
+}
+
+/* Focused state */
+.Select.is-focused .Select-control,
+.Select.is-focused:not(.is-open) .Select-control {
+    background-color: #21262d !important;
+    border-color: #58a6ff !important;
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15) !important;
+}
+
+/* Open state */
+.Select.is-open .Select-control {
+    background-color: #21262d !important;
+    border-color: #58a6ff !important;
+    border-bottom-right-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+}
+
+/* The dropdown menu */
+.Select-menu-outer {
+    background-color: #161b22 !important;
+    border: 1px solid #30363d !important;
+    border-top: none !important;
+    border-bottom-right-radius: 6px !important;
+    border-bottom-left-radius: 6px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+    z-index: 9999 !important;
+}
+
+.Select-menu {
+    background-color: #161b22 !important;
+}
+
+/* Options */
+.Select-option,
+.VirtualizedSelectOption {
+    background-color: #161b22 !important;
+    color: #c9d1d9 !important;
+    cursor: pointer !important;
+    padding: 8px 12px !important;
+}
+.Select-option:hover,
+.VirtualizedSelectOption:hover {
+    background-color: #21262d !important;
+    color: #f0f6fc !important;
+}
+.Select-option.is-focused,
+.VirtualizedSelectFocusedOption {
+    background-color: #21262d !important;
+    color: #f0f6fc !important;
+}
+.Select-option.is-selected,
+.VirtualizedSelectSelectedOption {
+    background-color: #1f6feb !important;
+    color: #f0f6fc !important;
+    font-weight: 600 !important;
+}
+.Select-option.is-disabled {
+    color: #484f58 !important;
+    cursor: not-allowed !important;
+}
+
+/* No results message */
+.Select-noresults {
+    background-color: #161b22 !important;
+    color: #8b949e !important;
+    padding: 8px 12px !important;
+}
+
+/* Multi-select tags */
+.Select--multi .Select-value {
+    background-color: #1f6feb !important;
+    border-color: #388bfd !important;
+    color: #f0f6fc !important;
+    border-radius: 4px !important;
+}
+.Select--multi .Select-value-icon {
+    border-right-color: #388bfd !important;
+    color: #c9d1d9 !important;
+}
+
+/* ── Sidebar scrollbar ────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+    width: 5px;
+}
+::-webkit-scrollbar-track {
+    background: #010409;
+}
+::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #58a6ff;
+}
+
+/* ── Checklist & RadioItems tweak ────────────────────────────────────────── */
+
+.form-check-input:checked {
+    background-color: #1f6feb !important;
+    border-color: #388bfd !important;
+}
+
+/* ── Plotly modebar in dark theme ────────────────────────────────────────── */
+
+.modebar-container {
+    background: transparent !important;
+}
+.modebar-btn path {
+    fill: #8b949e !important;
+}
+.modebar-btn:hover path {
+    fill: #c9d1d9 !important;
+}
