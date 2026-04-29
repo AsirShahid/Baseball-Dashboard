@@ -1,129 +1,156 @@
 #!/usr/bin/env python3
+"""Pull live FanGraphs leaderboards on a loop and write them to CSV.
 
-# Parsing live data from Fangraphs
+Backfills any all-null columns from pybaseball, since FanGraphs occasionally
+omits stats from the HTML that the API still returns.
+"""
 
-import requests
-import bs4
-from bs4 import BeautifulSoup
-import pandas as pd
-import pybaseball as pyb
-
-# Find current year
 import datetime
-now = datetime.datetime.now()
-year = now.year
-
-# Import sleep time
+import json
+import logging
+import signal
+import sys
+from pathlib import Path
 from time import sleep
 
-# Loop over everything using a for loop and sleep for an hour between each iteration
+import pandas as pd
+import pybaseball as pyb
+import requests
+from bs4 import BeautifulSoup
 
-while True:
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+log = logging.getLogger("live_stats")
 
-    qualified_live_batting=f"https://www.fangraphs.com/leaders.aspx?pos=all&stats=bat&lg=all&qual=y&type=c,-1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318&season={year}&month=33&season1={year}&ind=0&team=&rost=&age=0&filter=&players=&startdate=&enddate=&page=1_5000"
-    qualified_live_pitching=f"https://www.fangraphs.com/leaders.aspx?pos=all&stats=pit&lg=all&qual=y&type=c,-1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332&season={year}&month=33&season1={year}&ind=0&team=0&rost=0&age=0&filter=&players=0&startdate=&enddate=&page=1_5000"
-    all_live_batting=f"https://www.fangraphs.com/leaders.aspx?pos=all&stats=bat&lg=all&qual=0&type=c,-1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318&season={year}&month=33&season1={year}&ind=0&team=0&rost=0&age=0&filter=&players=0&startdate=&enddate=&page=1_5000"
-    all_live_pitching=f"https://www.fangraphs.com/leaders.aspx?pos=all&stats=pit&lg=all&qual=0&type=c,-1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332&season={year}&month=33&season1={year}&ind=0&team=0&rost=0&age=0&filter=&players=0&startdate=&enddate=&page=1_5000"
-#    live_team_batting=f"https://www.fangraphs.com/leaders.aspx?pos=all&stats=bat&lg=all&qual=0&type=c,-1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318&season={year}&month=33&season1={year}&ind=0&team=0,ts&rost=&age=0&filter=&players=0&startdate=&enddate="
-#    live_team_pitching=f"https://www.fangraphs.com/leaders.aspx?pos=all&stats=pit&lg=all&qual=0&type=c,-1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332&season={year}&month=33&season1={year}&ind=0&team=0,ts&rost=0&age=0&filter=&players=0&startdate=&enddate="
+CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
+LEADERBOARD_TABLE_ID = "LeaderBoard1_dg1_ctl00"
 
-
-    table_class="RadGrid RadGrid_FanGraphs"
-
-    # Get the data from Fangraphs
-    qualified_batting_data = requests.get(qualified_live_batting)
-    qualified_pitching_data = requests.get(qualified_live_pitching)
-    all_live_batting_data = requests.get(all_live_batting)
-    all_live_pitching_data = requests.get(all_live_pitching)
-
-    qualified_batting_soup = BeautifulSoup(qualified_batting_data.text, 'html.parser')
-    qualified_pitching_soup = BeautifulSoup(qualified_pitching_data.text, 'html.parser')
-    all_live_batting_soup = BeautifulSoup(all_live_batting_data.text, 'html.parser')
-    all_live_pitching_soup = BeautifulSoup(all_live_pitching_data.text, 'html.parser')
-
-    qualified_batting_table=qualified_batting_soup.find('table', {"id": "LeaderBoard1_dg1_ctl00"})
-    qualified_pitching_table=qualified_pitching_soup.find('table', {"id": "LeaderBoard1_dg1_ctl00"})
-    all_live_batting_table=all_live_batting_soup.find('table', {"id": "LeaderBoard1_dg1_ctl00"})
-    all_live_pitching_table=all_live_pitching_soup.find('table', {"id": "LeaderBoard1_dg1_ctl00"})
-
-    qualified_batting_df=pd.read_html(str(qualified_batting_table))[0]
-    qualified_pitching_df=pd.read_html(str(qualified_pitching_table))[0]
-    all_live_batting_df=pd.read_html(str(all_live_batting_table))[0]
-    all_live_pitching_df=pd.read_html(str(all_live_pitching_table))[0]
-
-    # Remove last row
-    qualified_batting_df = qualified_batting_df.drop(qualified_batting_df.index[-1])
-    qualified_pitching_df = qualified_pitching_df.drop(qualified_pitching_df.index[-1])
-    all_live_batting_df = all_live_batting_df.drop(all_live_batting_df.index[-1])
-    all_live_pitching_df = all_live_pitching_df.drop(all_live_pitching_df.index[-1])
-
-    # Turn dataframe columns into list
-    qualified_batting_df_columns = qualified_batting_df.columns.tolist()
-    qualified_pitching_df_columns = qualified_pitching_df.columns.tolist()
-    all_live_batting_df_columns = all_live_batting_df.columns.tolist()
-    all_live_pitching_df_columns = all_live_pitching_df.columns.tolist()
-
-    # split the data in the column tuple and only keep the second item in the list
-    qualified_batting_df_columns = [x[1] for x in qualified_batting_df_columns]
-    qualified_pitching_df_columns = [x[1] for x in qualified_pitching_df_columns]
-    all_live_batting_df_columns = [x[1] for x in all_live_batting_df_columns]
-    all_live_pitching_df_columns = [x[1] for x in all_live_pitching_df_columns]
-
-    # assign new column names
-    qualified_batting_df.columns = qualified_batting_df_columns
-    qualified_pitching_df.columns = qualified_pitching_df_columns
-    all_live_batting_df.columns = all_live_batting_df_columns
-    all_live_pitching_df.columns = all_live_pitching_df_columns
+# Build the giant `type=c,...` query string once.
+_STAT_IDS_BAT = "c,-1," + ",".join(str(i) for i in range(3, 319))
+_STAT_IDS_PIT = "c,-1," + ",".join(str(i) for i in range(3, 333))
 
 
-    # remove first column
-    qualified_batting_df = qualified_batting_df.drop(qualified_batting_df.columns[0], axis=1)
-    qualified_pitching_df = qualified_pitching_df.drop(qualified_pitching_df.columns[0], axis=1)
-    all_live_batting_df = all_live_batting_df.drop(all_live_batting_df.columns[0], axis=1)
-    all_live_pitching_df = all_live_pitching_df.drop(all_live_pitching_df.columns[0], axis=1)
-
-    # Clean up columns with %
-    # Check is qualified_batting_df[column] contains % using str.contains
-    # If it does, remove the % and convert the column to float
-    for column in qualified_batting_df:
-        if qualified_batting_df[column].str.contains('%').any():
-            qualified_batting_df[column] = qualified_batting_df[column].str.replace('%', '').astype(float)
-    for column in qualified_pitching_df:
-        if qualified_pitching_df[column].str.contains('%').any():
-            qualified_pitching_df[column] = qualified_pitching_df[column].str.replace('%', '').astype(float)
-    for column in all_live_batting_df:
-        if all_live_batting_df[column].str.contains('%').any():
-            all_live_batting_df[column] = all_live_batting_df[column].str.replace('%', '').astype(float)
-    for column in all_live_pitching_df:
-        if all_live_pitching_df[column].str.contains('%').any():
-            all_live_pitching_df[column] = all_live_pitching_df[column].str.replace('%', '').astype(float)
+def fangraphs_url(stats: str, qual: str, type_ids: str, year: int) -> str:
+    return (
+        "https://www.fangraphs.com/leaders.aspx"
+        f"?pos=all&stats={stats}&lg=all&qual={qual}&type={type_ids}"
+        f"&season={year}&month=33&season1={year}&ind=0&team=0&rost=0"
+        "&age=0&filter=&players=0&startdate=&enddate=&page=1_5000"
+    )
 
 
-    # Pybaseball qualified batting stats
+def load_config() -> dict:
+    with CONFIG_PATH.open() as f:
+        return json.load(f)
 
-    pybaseball_qualified_batting_df = pyb.batting_stats(year)
-    pybaseball_qualified_pitching_df = pyb.pitching_stats(year)
-    pybaseball_all_pitching_df = pyb.pitching_stats(year, qual=0)
-    pybaseball_all_batting_df = pyb.batting_stats(year, qual=0)
 
-    null_columns=[]
+def fetch_leaderboard(url: str, timeout: int = 30) -> pd.DataFrame | None:
+    """Fetch a FanGraphs leaderboard page and return its main table as a DataFrame."""
+    try:
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        log.error("Request failed: %s", e)
+        return None
 
-    for column in qualified_batting_df:
-        if qualified_batting_df[column].isnull().all():
-            null_columns.append(column)
+    soup = BeautifulSoup(resp.text, "html.parser")
+    table = soup.find("table", {"id": LEADERBOARD_TABLE_ID})
+    if table is None:
+        log.error("Leaderboard table not found at %s", url)
+        return None
 
-    # If column in null_columns, set qualified_batting_df[column] to pybaseball_qualified_batting_df[column] based on value in Name column
+    try:
+        df = pd.read_html(str(table))[0]
+    except ValueError as e:
+        log.error("Failed to parse leaderboard table: %s", e)
+        return None
 
-    for column in null_columns:
-        for index, row in qualified_batting_df.iterrows():
-            qualified_batting_df.loc[qualified_batting_df['Name'] == pybaseball_qualified_batting_df.loc[index, 'Name'], column] = pybaseball_qualified_batting_df.loc[index, column]
+    # Flatten MultiIndex columns ("Header", "Stat") -> "Stat"
+    df.columns = [c[1] if isinstance(c, tuple) else c for c in df.columns]
 
-    # export to csv
+    # Drop pagination footer row and the leading row-number column
+    if len(df) > 0:
+        df = df.iloc[:-1]
+    df = df.drop(df.columns[0], axis=1)
 
-    qualified_batting_df.to_csv(f"./qualified_batting_stats/{year}.csv", index=False)
-    qualified_pitching_df.to_csv(f"./qualified_pitching_stats/{year}.csv", index=False)
-    all_live_batting_df.to_csv(f"./all_batting_stats/{year}.csv", index=False)
-    all_live_pitching_df.to_csv(f"./all_pitching_stats/{year}.csv", index=False)
+    # Strip "%" from percentage columns and coerce to float
+    for col in df.columns:
+        series = df[col]
+        if series.dtype == object and series.astype(str).str.contains("%").any():
+            df[col] = series.astype(str).str.replace("%", "", regex=False).astype(float)
 
-    # sleep for an hour
-    sleep(3600)
+    return df.reset_index(drop=True)
+
+
+def backfill_null_columns(df: pd.DataFrame, fallback: pd.DataFrame) -> pd.DataFrame:
+    """For columns that are entirely null in df, copy values from fallback by Name."""
+    if "Name" not in df.columns or "Name" not in fallback.columns:
+        return df
+    null_cols = [c for c in df.columns if df[c].isnull().all() and c in fallback.columns]
+    if not null_cols:
+        return df
+    log.info("Backfilling %d column(s) from pybaseball: %s", len(null_cols), null_cols)
+    fallback_indexed = fallback.set_index("Name")[null_cols]
+    df = df.set_index("Name")
+    df.update(fallback_indexed)
+    return df.reset_index()
+
+
+def write_csv(df: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(path, index=False)
+    log.info("Wrote %d rows -> %s", len(df), path)
+
+
+def update_once(year: int, config: dict) -> None:
+    targets = [
+        ("qualified batting",  "bat", "y", _STAT_IDS_BAT, config["qualified_batting_dir"], pyb.batting_stats),
+        ("qualified pitching", "pit", "y", _STAT_IDS_PIT, config["qualified_pitching_dir"], pyb.pitching_stats),
+        ("all batting",        "bat", "0", _STAT_IDS_BAT, config["all_batting_dir"],       lambda y: pyb.batting_stats(y, qual=0)),
+        ("all pitching",       "pit", "0", _STAT_IDS_PIT, config["all_pitching_dir"],      lambda y: pyb.pitching_stats(y, qual=0)),
+    ]
+
+    for label, stats, qual, type_ids, out_dir, pyb_fn in targets:
+        log.info("Fetching %s leaderboard for %d", label, year)
+        df = fetch_leaderboard(fangraphs_url(stats, qual, type_ids, year))
+        if df is None:
+            log.warning("Skipping %s for %d", label, year)
+            continue
+
+        try:
+            fallback = pyb_fn(year)
+            df = backfill_null_columns(df, fallback)
+        except Exception as e:
+            log.warning("pybaseball backfill failed for %s: %s", label, e)
+
+        write_csv(df, Path(out_dir) / f"{year}.csv")
+
+
+def install_signal_handlers() -> None:
+    def shutdown(signum, _frame):
+        log.info("Received signal %d, exiting.", signum)
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
+
+
+def main() -> None:
+    install_signal_handlers()
+    config = load_config()
+    interval = int(config.get("update_interval", 3600))
+
+    while True:
+        year = datetime.datetime.now().year
+        try:
+            update_once(year, config)
+        except Exception:
+            log.exception("Update cycle failed; will retry after interval")
+        log.info("Sleeping %ds", interval)
+        sleep(interval)
+
+
+if __name__ == "__main__":
+    main()
