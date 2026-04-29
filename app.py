@@ -43,11 +43,26 @@ PLAYER_SEASONS = list(range(config["current_year"], 1870, -1))
 MIN_PA_LIST    = ["Qualified"] + list(range(0, 701, 10))
 MIN_IP_LIST    = ["Qualified"] + list(range(0, 301, 10))
 
-PLOT_BG    = "#0d1117"
-PAPER_BG   = "#0d1117"
-GRID_COLOR = "#21262d"
-ACCENT     = "#58a6ff"
-TEXT_COLOR = "#c9d1d9"
+PLOT_BG    = "#0b0f17"
+PAPER_BG   = "#0b0f17"
+GRID_COLOR = "#1f2630"
+AXIS_LINE  = "#2a3340"
+ACCENT     = "#7aa2f7"
+TEXT_COLOR = "#e6edf3"
+MUTED      = "#7d8590"
+PANEL_BG   = "#070a10"
+
+# MLB team primary colors for player scatter coloring
+TEAM_COLORS = {
+    "ARI": "#A71930", "ATL": "#CE1141", "BAL": "#DF4601", "BOS": "#BD3039",
+    "CHC": "#0E3386", "CHW": "#27251F", "CIN": "#C6011F", "CLE": "#00385D",
+    "COL": "#33006F", "DET": "#0C2340", "HOU": "#EB6E1F", "KCR": "#004687",
+    "LAA": "#BA0021", "LAD": "#005A9C", "MIA": "#00A3E0", "MIL": "#12284B",
+    "MIN": "#002B5C", "NYM": "#FF5910", "NYY": "#003087", "OAK": "#003831",
+    "PHI": "#E81828", "PIT": "#FDB827", "SDP": "#2F241D", "SEA": "#0C2C56",
+    "SFG": "#FD5A1E", "STL": "#C41E3A", "TBR": "#092C5C", "TEX": "#003278",
+    "TOR": "#134A8E", "WAS": "#AB0003",
+}
 
 # ── Data helpers ──────────────────────────────────────────────────────────────
 
@@ -116,24 +131,38 @@ def opts(values: list) -> list:
 
 def make_label(text: str):
     return html.P(text, className="text-uppercase fw-semibold mb-1 mt-3",
-                  style={"fontSize": "0.7rem", "letterSpacing": "0.08em",
-                         "color": "#8b949e"})
+                  style={"fontSize": "0.68rem", "letterSpacing": "0.1em",
+                         "color": MUTED})
 
 
 def base_layout() -> dict:
+    axis = dict(
+        gridcolor=GRID_COLOR,
+        gridwidth=1,
+        zeroline=False,
+        showline=True,
+        linecolor=AXIS_LINE,
+        linewidth=1,
+        tickfont=dict(color=MUTED, size=11),
+        title_font=dict(color=TEXT_COLOR, size=13),
+        ticks="outside",
+        ticklen=4,
+        tickcolor=AXIS_LINE,
+    )
     return dict(
         plot_bgcolor=PLOT_BG,
         paper_bgcolor=PAPER_BG,
-        font=dict(color=TEXT_COLOR, size=13),
-        xaxis=dict(gridcolor=GRID_COLOR, zeroline=False,
-                   showline=True, linecolor="#30363d"),
-        yaxis=dict(gridcolor=GRID_COLOR, zeroline=False,
-                   showline=True, linecolor="#30363d"),
-        hoverlabel=dict(bgcolor="#161b22", bordercolor="#30363d",
-                        font_color=TEXT_COLOR),
-        margin=dict(l=60, r=30, t=60, b=60),
+        font=dict(color=TEXT_COLOR, size=13,
+                  family="-apple-system, BlinkMacSystemFont, 'Segoe UI', "
+                         "Inter, Roboto, sans-serif"),
+        xaxis=axis,
+        yaxis=axis,
+        hoverlabel=dict(bgcolor="#0f1620", bordercolor=AXIS_LINE,
+                        font_color=TEXT_COLOR, font_size=12),
+        margin=dict(l=70, r=30, t=30, b=60),
         title_x=0.5,
         title_font=dict(size=18, color=TEXT_COLOR),
+        transition=dict(duration=350, easing="cubic-in-out"),
     )
 
 
@@ -153,17 +182,17 @@ server = app.server
 SIDEBAR_STYLE = {
     "height": "100vh",
     "overflowY": "auto",
-    "padding": "1.25rem 1rem",
-    "backgroundColor": "#010409",
-    "borderRight": "1px solid #21262d",
+    "padding": "1.5rem 1.1rem",
+    "backgroundColor": PANEL_BG,
+    "borderRight": f"1px solid {GRID_COLOR}",
     "position": "sticky",
     "top": 0,
 }
 
 CONTENT_STYLE = {
     "minHeight": "100vh",
-    "padding": "1.5rem 2rem",
-    "backgroundColor": "#0d1117",
+    "padding": "1.75rem 2.25rem",
+    "backgroundColor": PLOT_BG,
 }
 
 
@@ -201,15 +230,17 @@ def serve_layout():
             # ── Sidebar ───────────────────────────────────────────────────────
             dbc.Col(html.Div([
                 html.Div([
-                    html.Span("⚾ ", style={"fontSize": "1.3rem"}),
+                    html.Span("⚾ ", style={"fontSize": "1.4rem"}),
                     html.Span("Baseball Dashboard",
-                              style={"fontWeight": 700, "fontSize": "1.05rem",
-                                     "color": "#f0f6fc"}),
+                              style={"fontWeight": 700, "fontSize": "1.1rem",
+                                     "color": "#f0f6fc",
+                                     "letterSpacing": "-0.01em"}),
                 ], className="text-center mb-1"),
                 html.P("Statistics Explorer", className="text-center mb-3",
-                       style={"color": "#8b949e", "fontSize": "0.8rem"}),
+                       style={"color": MUTED, "fontSize": "0.78rem",
+                              "letterSpacing": "0.05em"}),
 
-                html.Hr(style={"borderColor": "#21262d",
+                html.Hr(style={"borderColor": GRID_COLOR,
                                "margin": "0.5rem 0 0.75rem"}),
 
                 make_label("View"),
@@ -222,7 +253,7 @@ def serve_layout():
                     className="mb-1",
                 ),
 
-                html.Hr(style={"borderColor": "#21262d", "margin": "0.75rem 0"}),
+                html.Hr(style={"borderColor": GRID_COLOR, "margin": "0.75rem 0"}),
 
                 # ── Team Stats controls ───────────────────────────────────────
                 html.Div(id="team-controls", children=[
@@ -302,12 +333,12 @@ def serve_layout():
                                  clearable=False, className="mb-1"),
                 ]),
 
-                html.Hr(style={"borderColor": "#21262d",
+                html.Hr(style={"borderColor": GRID_COLOR,
                                "margin": "1rem 0 0.5rem"}),
                 html.P([
                     html.I(className="bi bi-link-45deg me-1"),
                     "URL updates automatically — copy to share.",
-                ], style={"color": "#8b949e", "fontSize": "0.75rem"},
+                ], style={"color": MUTED, "fontSize": "0.74rem"},
                    className="mb-0"),
 
             ], style=SIDEBAR_STYLE), width=3, className="p-0"),
@@ -323,21 +354,21 @@ def serve_layout():
                     style={"height": "78vh"},
                 ),
                 html.Div(id="data-info",
-                         style={"color": "#8b949e", "fontSize": "0.8rem",
+                         style={"color": MUTED, "fontSize": "0.78rem",
                                 "marginTop": "0.5rem"}),
             ], style=CONTENT_STYLE), width=9, className="p-0"),
         ], className="g-0"),
 
         html.Footer([
-            html.Hr(style={"borderColor": "#21262d"}),
+            html.Hr(style={"borderColor": GRID_COLOR, "margin": 0}),
             html.P([
                 "Data from ",
                 html.A("Fangraphs", href="https://www.fangraphs.com/",
-                       style={"color": ACCENT}),
+                       style={"color": ACCENT, "textDecoration": "none"}),
                 " via pybaseball · Visualized with Plotly Dash",
             ], className="text-center mb-0",
-               style={"color": "#8b949e", "fontSize": "0.8rem"}),
-        ], className="py-2 px-4", style={"backgroundColor": "#010409"}),
+               style={"color": MUTED, "fontSize": "0.78rem"}),
+        ], className="py-3 px-4", style={"backgroundColor": PANEL_BG}),
     ])
 
 
@@ -593,8 +624,12 @@ def render(view, t_season, display, x_type, y_type, x_stat, y_stat, mean_lines,
 
 def page_header(title: str, subtitle: str = ""):
     return html.Div([
-        html.H4(title, className="mb-0", style={"color": "#f0f6fc"}),
-        (html.Small(subtitle, style={"color": "#8b949e"}) if subtitle else None),
+        html.H4(title, className="mb-1",
+                style={"color": "#f0f6fc", "fontWeight": 600,
+                       "letterSpacing": "-0.01em"}),
+        (html.Small(subtitle,
+                    style={"color": MUTED, "fontSize": "0.82rem"})
+         if subtitle else None),
     ])
 
 
@@ -685,13 +720,20 @@ def render_team(season, display, x_type, y_type, x_stat, y_stat, mean_lines):
             yaxis_range=[y_lo, y_hi],
         )
     else:
+        marker_colors = [TEAM_COLORS.get(str(t), ACCENT) for t in teams]
         fig.add_trace(go.Scatter(
             x=x_vals, y=y_vals,
             mode="markers+text",
             text=teams,
             textposition="top center",
-            textfont=dict(size=11, color=TEXT_COLOR),
-            marker=dict(size=8, color=ACCENT, opacity=0.85),
+            textfont=dict(size=11, color=TEXT_COLOR,
+                          family="Inter, -apple-system, sans-serif"),
+            marker=dict(
+                size=14,
+                color=marker_colors,
+                opacity=0.95,
+                line=dict(color="rgba(255,255,255,0.85)", width=1.5),
+            ),
             hovertemplate=(f"<b>%{{text}}</b><br>"
                            f"{x_type} {x_stat}: %{{x:.2f}}<br>"
                            f"{y_type} {y_stat}: %{{y:.2f}}"
@@ -699,17 +741,21 @@ def render_team(season, display, x_type, y_type, x_stat, y_stat, mean_lines):
         ))
 
     if show_h:
-        mean_y = float(x_vals.mean() if False else y_vals.mean())
-        fig.add_hline(y=mean_y, line_dash="dash",
-                      line_color="rgba(240,246,252,0.3)",
-                      annotation_text=f"Avg: {mean_y:.2f}",
-                      annotation_font_color="#8b949e")
+        mean_y = float(y_vals.mean())
+        fig.add_hline(y=mean_y, line_dash="dot",
+                      line_color="rgba(122,162,247,0.45)",
+                      line_width=1.5,
+                      annotation_text=f"avg {mean_y:.2f}",
+                      annotation_position="top right",
+                      annotation_font=dict(color=MUTED, size=11))
     if show_v:
         mean_x = float(x_vals.mean())
-        fig.add_vline(x=mean_x, line_dash="dash",
-                      line_color="rgba(240,246,252,0.3)",
-                      annotation_text=f"Avg: {mean_x:.2f}",
-                      annotation_font_color="#8b949e")
+        fig.add_vline(x=mean_x, line_dash="dot",
+                      line_color="rgba(122,162,247,0.45)",
+                      line_width=1.5,
+                      annotation_text=f"avg {mean_x:.2f}",
+                      annotation_position="top right",
+                      annotation_font=dict(color=MUTED, size=11))
 
     fig.update_layout(
         **base_layout(),
@@ -776,21 +822,32 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team):
         hover_name="Name",
         hover_data={x_stat: True, y_stat: True, "Team": True, "Label": False},
         color=("Team" if use_color else None),
+        color_discrete_map=TEAM_COLORS if use_color else None,
         template="plotly_dark",
     )
     fig.update_traces(
         mode="markers+text",
         textposition="top center",
-        textfont=dict(size=9, color=TEXT_COLOR),
-        marker=dict(size=7, opacity=0.85),
+        textfont=dict(size=10, color=TEXT_COLOR,
+                      family="Inter, -apple-system, sans-serif"),
+        marker=dict(
+            size=10,
+            opacity=0.92,
+            line=dict(color="rgba(255,255,255,0.6)", width=0.8),
+        ),
     )
     fig.update_layout(
         **base_layout(),
         xaxis_title=x_stat,
         yaxis_title=y_stat,
         showlegend=use_color and team in ("AL", "NL"),
-        legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#21262d",
-                    borderwidth=1),
+        legend=dict(
+            bgcolor="rgba(11,15,23,0.7)",
+            bordercolor=AXIS_LINE,
+            borderwidth=1,
+            font=dict(color=TEXT_COLOR, size=11),
+            itemsizing="constant",
+        ),
     )
 
     min_info = ("Qualified" if use_qualified else f"min {col} ≥ {min_val}")

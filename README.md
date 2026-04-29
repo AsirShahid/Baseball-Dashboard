@@ -16,7 +16,7 @@ This is an interactive web application for visualizing baseball data. It allows 
 
 1. Clone this repository:
    ```
-   git clone https://github.com/your-username/Baseball-Dashboard.git
+   git clone https://github.com/AsirShahid/Baseball-Dashboard.git
    cd Baseball-Dashboard
    ```
 
@@ -28,15 +28,20 @@ This is an interactive web application for visualizing baseball data. It allows 
 3. Update the data (optional):
    ```
    python baseball_csv_generator.py
-   python fangraphs_parser.py
+   python live_stats.py
    ```
 
-4. Run the Streamlit dashboard:
+4. Run the dashboard (Plotly Dash):
    ```
-   streamlit run streamlit-dashboard.py
+   python app.py
    ```
 
-5. Open your web browser and navigate to the URL provided by Streamlit (usually http://localhost:8501)
+   Or launch the dashboard alongside the background data updaters:
+   ```
+   ./launcher.sh
+   ```
+
+5. Open your web browser and navigate to http://localhost:8050
 
 ## Configuration
 
@@ -44,7 +49,7 @@ You can modify the `config.json` file to update settings such as the current yea
 
 ## Data Sources
 
-The data is provided by [Fangraphs](https://www.fangraphs.com/) and processed using [pybaseball](https://pypi.org/project/pybaseball/). The plots are generated using [matplotlib](https://matplotlib.org/) and [plotly](https://plotly.com/python/).
+The data is provided by [Fangraphs](https://www.fangraphs.com/) and processed using [pybaseball](https://pypi.org/project/pybaseball/). The plots are generated with [Plotly](https://plotly.com/python/) inside a [Dash](https://dash.plotly.com/) app.
 
 ## Contributing
 
