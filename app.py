@@ -2,7 +2,6 @@
 """Baseball Statistics Dashboard — Plotly Dash with shareable URL state."""
 
 import base64
-import datetime
 import functools
 import json
 import logging
@@ -31,8 +30,6 @@ logging.basicConfig(level=logging.INFO,
 with open("config.json") as f:
     config = json.load(f)
 
-_THIS_YEAR = datetime.datetime.now().year
-
 EXCLUDED_COLS = {"Team", "Season", "Dollars", "Name", "IDfg", "Unnamed: 0"}
 PRIORITY_COLS = ["WAR", "wRC+", "SIERA"]
 
@@ -52,9 +49,8 @@ TEAM_LOGO_MAP = {
     "SDP": "padres",   "SFG": "giants",
 }
 
-# Season ranges always extend to the actual current year
-TEAM_SEASONS   = list(range(max(config["current_year"], _THIS_YEAR), 1997, -1))
-PLAYER_SEASONS = list(range(max(config["current_year"], _THIS_YEAR), 1870, -1))
+TEAM_SEASONS   = list(range(config["current_year"], 1997, -1))
+PLAYER_SEASONS = list(range(config["current_year"], 1870, -1))
 MIN_PA_LIST    = ["Qualified"] + list(range(0, 701, 10))
 MIN_IP_LIST    = ["Qualified"] + list(range(0, 301, 10))
 
@@ -253,6 +249,54 @@ def compute_composite_rank(*series: pd.Series) -> pd.Series:
     """Average percentile rank across stat series, returned on a 0–100 scale."""
     ranks = [s.rank(pct=True, na_option="keep") for s in series]
     return pd.concat(ranks, axis=1).mean(axis=1).fillna(0.5) * 100
+
+
+def add_mean_planes_3d(fig, x_vals, y_vals, z_vals, show_x_plane, show_y_plane):
+    """Add semi-transparent mean reference planes to a 3D figure.
+
+    show_x_plane → plane at mean(x), perpendicular to the X axis
+    show_y_plane → plane at mean(y), perpendicular to the Y axis
+    The Z mean plane is always added (it's the new dimension in 3D mode).
+    """
+    xlo, xhi = float(x_vals.min()), float(x_vals.max())
+    ylo, yhi = float(y_vals.min()), float(y_vals.max())
+    zlo, zhi = float(z_vals.min()), float(z_vals.max())
+    xpad = (xhi - xlo) * 0.12 or 0.5
+    ypad = (yhi - ylo) * 0.12 or 0.5
+    zpad = (zhi - zlo) * 0.12 or 0.5
+    xlo -= xpad; xhi += xpad
+    ylo -= ypad; yhi += ypad
+    zlo -= zpad; zhi += zpad
+
+    _plane = dict(
+        colorscale=[[0, "rgba(122,162,247,0.18)"], [1, "rgba(122,162,247,0.18)"]],
+        showscale=False, hoverinfo="skip", showlegend=False,
+    )
+
+    if show_x_plane:
+        mx = float(x_vals.mean())
+        fig.add_trace(go.Surface(
+            x=[[mx, mx], [mx, mx]],
+            y=[[ylo, yhi], [ylo, yhi]],
+            z=[[zlo, zlo], [zhi, zhi]],
+            **_plane,
+        ))
+    if show_y_plane:
+        my = float(y_vals.mean())
+        fig.add_trace(go.Surface(
+            x=[[xlo, xhi], [xlo, xhi]],
+            y=[[my, my], [my, my]],
+            z=[[zlo, zlo], [zhi, zhi]],
+            **_plane,
+        ))
+    # Z mean plane always present — it's the axis the user just added
+    mz = float(z_vals.mean())
+    fig.add_trace(go.Surface(
+        x=[[xlo, xhi], [xlo, xhi]],
+        y=[[ylo, ylo], [yhi, yhi]],
+        z=[[mz, mz], [mz, mz]],
+        **_plane,
+    ))
 
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -853,8 +897,8 @@ def render_team(season, display, x_type, y_type, x_stat, y_stat, mean_lines,
             x_vals, y_vals, *([z_vals] if z_vals is not None else [])
         ).round(1)
 
-    show_v = "v" in mean_lines and not is_3d
-    show_h = "h" in mean_lines and not is_3d
+    show_v = "v" in mean_lines
+    show_h = "h" in mean_lines
 
     fig = go.Figure()
 
@@ -889,6 +933,7 @@ def render_team(season, display, x_type, y_type, x_stat, y_stat, mean_lines,
                 + hover_rank + "<extra></extra>"
             ),
         ))
+        add_mean_planes_3d(fig, x_vals, y_vals, z_vals, show_v, show_h)
         layout = base_layout_3d()
         layout["scene"]["xaxis"]["title"] = f"{x_type}: {x_stat}"
         layout["scene"]["yaxis"]["title"] = f"{y_type}: {y_stat}"
@@ -1082,6 +1127,10 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
             textfont=dict(size=9, color=TEXT_COLOR),
             marker=dict(size=5, opacity=0.9,
                         line=dict(color="rgba(255,255,255,0.4)", width=0.5)),
+        )
+        add_mean_planes_3d(fig,
+            df[x_stat].dropna(), df[y_stat].dropna(), df[z_stat].dropna(),
+            show_x_plane=True, show_y_plane=True,
         )
         layout = base_layout_3d()
         layout["scene"]["xaxis"]["title"] = x_stat
