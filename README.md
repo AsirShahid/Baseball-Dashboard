@@ -1,60 +1,77 @@
-# Baseball-Dashboard
+# Baseball Dashboard
 
-This is an interactive web application for visualizing baseball data. It allows you to create scatter plots for various baseball statistics, supporting both team and player data visualization.
+An interactive web application for visualizing baseball statistics. Build custom scatter plots — 2D or 3D — across hundreds of FanGraphs batting and pitching metrics for every team and player season from 1871 to present.
 
 ![wRC+ vs Barrel%](https://baseball.asir.dev/media/76f6cdc028d8719192f44385fbb26a5efabe730796a3aa741c7bc351.png)
 
 ## Features
 
-- Visualize team and player statistics from 1871 to 2024
-- Create custom scatter plots with user-selected X and Y axis statistics
-- Filter data by season, team, and minimum plate appearances/innings pitched
-- Display team data using either team logos or team names
-- Interactive plots with hover information
+- **Team and player views** — scatter any two (or three) stats against each other
+- **3D scatter plots** — add a Z-axis stat to switch to an interactive 3D chart
+- **Composite rank coloring** — color-code markers by average percentile rank across all selected axes (red → yellow → green)
+- **Mean reference lines / planes** — toggle average lines in 2D or semi-transparent planes in 3D
+- **Team logos or colored markers** — display teams as logos or team-colored dots
+- **Season filtering** — the year dropdown only shows seasons where the chosen stat actually has data (e.g. Exit Velocity only appears from 2015 onward)
+- **Shareable URLs** — every control is encoded in the URL so you can copy and share a specific view
+- **Auto-fetch via pybaseball** — if a season's CSV is missing the app fetches it live on first access
 
-## Setup and Running the Dashboard
+## Quick start
 
-1. Clone this repository:
-   ```
-   git clone https://github.com/AsirShahid/Baseball-Dashboard.git
-   cd Baseball-Dashboard
-   ```
+```bash
+git clone https://github.com/AsirShahid/Baseball-Dashboard.git
+cd Baseball-Dashboard
+./launcher.sh
+```
 
-2. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+`launcher.sh` creates a `.venv/` virtual environment and installs all dependencies automatically on first run, then starts the dashboard at **http://localhost:8050**.
 
-3. Update the data (optional):
-   ```
-   python baseball_csv_generator.py
-   python live_stats.py
-   ```
+> **Note:** On Arch Linux and other systems that enforce PEP 668 (`externally-managed-environment`), using a venv is required. `launcher.sh` handles this for you.
 
-4. Run the dashboard (Plotly Dash):
-   ```
-   python app.py
-   ```
+## Manual setup
 
-   Or launch the dashboard alongside the background data updaters:
-   ```
-   ./launcher.sh
-   ```
+If you prefer to manage things yourself:
 
-5. Open your web browser and navigate to http://localhost:8050
+```bash
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python app.py
+```
+
+## Updating data
+
+Historical CSVs ship with the repo. To fetch a specific range of seasons:
+
+```bash
+source .venv/bin/activate
+
+# Fetch 2025 and 2026 (skips seasons already on disk)
+python baseball_csv_generator.py --start 2025 --end 2026
+
+# Re-download a specific range regardless of what's cached
+python baseball_csv_generator.py --start 2020 --end 2026 --force
+
+# Fetch missing seasons then keep the current season refreshing every 4 h
+python baseball_csv_generator.py --start 2025 --watch
+```
+
+`launcher.sh` automatically runs the generator in `--watch` mode in the background, so the current season stays up to date while the dashboard is running.
 
 ## Configuration
 
-You can modify the `config.json` file to update settings such as the current year, data directories, and update intervals.
+Edit `config.json` to change:
 
-## Data Sources
+| Key | Default | Description |
+|---|---|---|
+| `current_year` | `2026` | Latest season shown in dropdowns |
+| `update_interval` | `14400` | Seconds between live-data refreshes (watch mode) |
+| `request_delay` | `5` | Seconds between pybaseball requests |
+| `*_dir` keys | various | Directories where CSVs are stored |
 
-The data is provided by [Fangraphs](https://www.fangraphs.com/) and processed using [pybaseball](https://pypi.org/project/pybaseball/). The plots are generated with [Plotly](https://plotly.com/python/) inside a [Dash](https://dash.plotly.com/) app.
+## Data sources
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+Stats are sourced from [FanGraphs](https://www.fangraphs.com/) via [pybaseball](https://pypi.org/project/pybaseball/). Charts are built with [Plotly](https://plotly.com/python/) inside a [Dash](https://dash.plotly.com/) app.
 
 ## License
 
-This project is open source and available under the [MIT License](LICENSE).
+MIT
