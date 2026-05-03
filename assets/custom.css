@@ -105,7 +105,11 @@
     font-size: 0.875rem !important;
 }
 .Select-option a,
-.VirtualizedSelectOption a {
+.Select-option a:visited,
+.Select-option a:hover,
+.VirtualizedSelectOption a,
+.VirtualizedSelectOption a:visited,
+.VirtualizedSelectOption a:hover {
     color: #c9d1d9 !important;
     text-decoration: none !important;
 }

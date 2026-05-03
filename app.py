@@ -15,6 +15,7 @@ try:
 except ImportError:
     _PIL = False
 
+import requests
 import dash
 from dash import dcc, html, Input, Output, State, no_update
 import dash_bootstrap_components as dbc
@@ -83,11 +84,12 @@ TEAM_COLORS = {
     "TOR": "#134A8E", "WAS": "#AB0003",
 }
 
-# ── pybaseball live-fetch mapping ─────────────────────────────────────────────
+# ── live-fetch: FanGraphs API for team stats, pybaseball for player stats ─────
 
-_DIR_TO_FETCH = {
-    config["team_batting_dir"]:      ("team_batting",    {}),
-    config["team_pitching_dir"]:     ("team_pitching",   {}),
+_FG_API = "https://www.fangraphs.com/api/leaders/major-league/data"
+
+_TEAM_DIRS   = {config["team_batting_dir"]: "bat", config["team_pitching_dir"]: "pit"}
+_PLAYER_DIRS = {
     config["qualified_batting_dir"]: ("batting_stats",   {}),
     config["all_batting_dir"]:       ("batting_stats",   {"qual": 0}),
     config["qualified_pitching_dir"]:("pitching_stats",  {}),
@@ -95,19 +97,49 @@ _DIR_TO_FETCH = {
 }
 
 
+def _fetch_team_fg(stats: str, year: int) -> pd.DataFrame | None:
+    params = dict(
+        pos="all", stats=stats, lg="all", qual=0, type=8,
+        season=year, month=0, season1=year, ind=0, team=0, rost=0, age=0,
+        filter="", players=0, startdate="", enddate="",
+        pageitems=2000, pagenum=1,
+    )
+    try:
+        resp = requests.get(_FG_API, params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+        if not data:
+            return None
+        df = pd.DataFrame(data)
+        if "Team" not in df.columns:
+            return None
+        return df.groupby("Team").sum(numeric_only=True).reset_index()
+    except Exception as exc:
+        logging.warning("FanGraphs team API failed (stats=%s year=%d): %s", stats, year, exc)
+        return None
+
+
 def _live_fetch(path: str) -> pd.DataFrame:
-    """Fetch a season's data via pybaseball and cache it as CSV."""
-    if not _PYBASEBALL:
-        return pd.DataFrame()
+    """Fetch a season's data and cache it as CSV."""
     p = Path(path)
     parent = p.parent.name
-    if parent not in _DIR_TO_FETCH:
-        return pd.DataFrame()
-    func_name, kwargs = _DIR_TO_FETCH[parent]
     try:
         year = int(p.stem)
     except ValueError:
         return pd.DataFrame()
+
+    if parent in _TEAM_DIRS:
+        df = _fetch_team_fg(_TEAM_DIRS[parent], year)
+        if df is not None:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(path)
+            logging.info("FanGraphs team API: cached %s", path)
+            return df
+        return pd.DataFrame()
+
+    if not _PYBASEBALL or parent not in _PLAYER_DIRS:
+        return pd.DataFrame()
+    func_name, kwargs = _PLAYER_DIRS[parent]
     try:
         pyb.cache.disable()
         func = getattr(pyb, func_name)
@@ -331,6 +363,7 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
     title="Baseball Dashboard",
     update_title=None,
+    assets_cache_max_age=0,
 )
 server = app.server
 

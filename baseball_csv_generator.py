@@ -20,15 +20,43 @@ import logging
 from pathlib import Path
 from time import sleep
 
+import pandas as pd
 import pybaseball as pyb
+import requests
 from pybaseball import (
-    team_batting, team_pitching, team_fielding,
     batting_stats, pitching_stats,
 )
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(levelname)s - %(message)s")
 pyb.cache.disable()
+
+_FG_API = "https://www.fangraphs.com/api/leaders/major-league/data"
+
+
+def _fetch_team_api(stats: str, year: int) -> pd.DataFrame | None:
+    """Fetch team-level stats from the FanGraphs JSON API."""
+    params = dict(
+        pos="all", stats=stats, lg="all", qual=0,
+        type=8, season=year, month=0, season1=year,
+        ind=0, team=0, rost=0, age=0,
+        filter="", players=0, startdate="", enddate="",
+        pageitems=2000, pagenum=1,
+    )
+    try:
+        resp = requests.get(_FG_API, params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+        if not data:
+            return None
+        df = pd.DataFrame(data)
+        # Aggregate to team level: sum counting stats, mean for rate stats
+        if "Team" not in df.columns:
+            return None
+        return df.groupby("Team").sum(numeric_only=True).reset_index()
+    except Exception as exc:
+        logging.warning("  Team API fetch failed (stats=%s year=%d): %s", stats, year, exc)
+        return None
 
 
 def load_config():
@@ -54,13 +82,25 @@ def generate_csv(func, year, directory, qual=None, skip_existing=True):
         logging.error("  ERROR %s/%d — %s", func.__name__, year, exc)
 
 
+def generate_team_csv(stats: str, year: int, directory: str, skip_existing: bool = True) -> None:
+    path = Path(directory) / f"{year}.csv"
+    if skip_existing and path.exists():
+        logging.info("  skip  %s/%d.csv (already exists)", directory, year)
+        return
+    df = _fetch_team_api(stats, year)
+    if df is not None:
+        df.to_csv(path)
+        logging.info("  saved %s/%d.csv  (%d rows)", directory, year, len(df))
+    else:
+        logging.warning("  skipped %s/%d.csv — FanGraphs API returned no data", directory, year)
+
+
 def fetch_years(start, end, config, skip_existing=True):
     delay = config.get("request_delay", 5)
     for year in range(end, start - 1, -1):
         logging.info("── %d ──────────────────────────", year)
-        generate_csv(team_batting,   year, config["team_batting_dir"],        skip_existing=skip_existing)
-        generate_csv(team_pitching,  year, config["team_pitching_dir"],       skip_existing=skip_existing)
-        generate_csv(team_fielding,  year, config["team_fielding_dir"],       skip_existing=skip_existing)
+        generate_team_csv("bat", year, config["team_batting_dir"],  skip_existing=skip_existing)
+        generate_team_csv("pit", year, config["team_pitching_dir"], skip_existing=skip_existing)
         generate_csv(batting_stats,  year, config["qualified_batting_dir"],   skip_existing=skip_existing)
         generate_csv(pitching_stats, year, config["qualified_pitching_dir"],  skip_existing=skip_existing)
         generate_csv(batting_stats,  year, config["all_batting_dir"],  qual=0, skip_existing=skip_existing)
@@ -94,7 +134,7 @@ if __name__ == "__main__":
 
     create_directories([
         config["team_batting_dir"],   config["team_pitching_dir"],
-        config["team_fielding_dir"],  config["qualified_batting_dir"],
+        config["qualified_batting_dir"],
         config["qualified_pitching_dir"], config["all_batting_dir"],
         config["all_pitching_dir"],
     ])
