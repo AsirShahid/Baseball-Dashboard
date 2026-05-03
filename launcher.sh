@@ -5,7 +5,15 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-PYTHON="${PYTHON:-python3}"
+# Create a virtual environment on first run, then always use it.
+VENV="${VENV:-.venv}"
+if [ ! -f "$VENV/bin/python" ]; then
+    echo "Setting up virtual environment at $VENV/ ..."
+    python3 -m venv "$VENV"
+    "$VENV/bin/pip" install --quiet -r requirements.txt
+    echo "Done."
+fi
+PYTHON="$VENV/bin/python"
 pids=()
 
 cleanup() {
