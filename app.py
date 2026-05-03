@@ -3,10 +3,17 @@
 
 import base64
 import functools
+import io
 import json
 import logging
 from pathlib import Path
 from urllib.parse import urlencode
+
+try:
+    from PIL import Image as _PILImage
+    _PIL = True
+except ImportError:
+    _PIL = False
 
 import dash
 from dash import dcc, html, Input, Output, State, no_update
@@ -151,13 +158,30 @@ def seasons_with_data(dir_key: str, stat: str) -> frozenset:
     return frozenset(result)
 
 
+_LOGO_SIZE = 160  # all logos normalised to this square (px) before encoding
+
+
 @functools.lru_cache(maxsize=64)
 def logo_b64(team: str) -> str | None:
     name = TEAM_LOGO_MAP.get(team)
     if not name:
         return None
+    path = f"./Logos/{name}-resizedmatplotlib.png"
     try:
-        with open(f"./Logos/{name}-resizedmatplotlib.png", "rb") as f:
+        if _PIL:
+            with _PILImage.open(path) as img:
+                img = img.convert("RGBA")
+                img.thumbnail((_LOGO_SIZE, _LOGO_SIZE), _PILImage.LANCZOS)
+                canvas = _PILImage.new("RGBA", (_LOGO_SIZE, _LOGO_SIZE), (0, 0, 0, 0))
+                canvas.paste(img,
+                             (((_LOGO_SIZE - img.width) // 2),
+                              ((_LOGO_SIZE - img.height) // 2)),
+                             img)
+            buf = io.BytesIO()
+            canvas.save(buf, format="PNG")
+            return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+        # Fallback: return the raw file unchanged
+        with open(path, "rb") as f:
             return "data:image/png;base64," + base64.b64encode(f.read()).decode()
     except Exception:
         return None
@@ -506,12 +530,17 @@ def serve_layout():
             # ── Main content ──────────────────────────────────────────────────
             dbc.Col(html.Div([
                 html.Div(id="chart-header", className="mb-3"),
-                dcc.Graph(
-                    id="main-graph",
-                    config={"displayModeBar": True,
-                            "modeBarButtonsToRemove": ["select2d", "lasso2d"],
-                            "toImageButtonOptions": {"format": "png", "scale": 2}},
-                    style={"height": "78vh"},
+                dcc.Loading(
+                    id="loading-graph",
+                    type="circle",
+                    color=ACCENT,
+                    children=dcc.Graph(
+                        id="main-graph",
+                        config={"displayModeBar": True,
+                                "modeBarButtonsToRemove": ["select2d", "lasso2d"],
+                                "toImageButtonOptions": {"format": "png", "scale": 2}},
+                        style={"height": "78vh"},
+                    ),
                 ),
                 html.Div(id="data-info",
                          style={"color": MUTED, "fontSize": "0.78rem",

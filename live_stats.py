@@ -115,15 +115,21 @@ def update_once(year: int, config: dict) -> None:
     for label, stats, qual, type_ids, out_dir, pyb_fn in targets:
         log.info("Fetching %s leaderboard for %d", label, year)
         df = fetch_leaderboard(fangraphs_url(stats, qual, type_ids, year))
-        if df is None:
-            log.warning("Skipping %s for %d", label, year)
-            continue
 
-        try:
-            fallback = pyb_fn(year)
-            df = backfill_null_columns(df, fallback)
-        except Exception as e:
-            log.warning("pybaseball backfill failed for %s: %s", label, e)
+        if df is None:
+            log.warning("HTML scrape failed for %s %d — falling back to pybaseball", label, year)
+            try:
+                df = pyb_fn(year)
+                log.info("pybaseball succeeded for %s %d (%d rows)", label, year, len(df))
+            except Exception as e:
+                log.error("pybaseball also failed for %s %d: %s", label, year, e)
+                continue
+        else:
+            try:
+                fallback = pyb_fn(year)
+                df = backfill_null_columns(df, fallback)
+            except Exception as e:
+                log.warning("pybaseball backfill failed for %s: %s", label, e)
 
         write_csv(df, Path(out_dir) / f"{year}.csv")
 

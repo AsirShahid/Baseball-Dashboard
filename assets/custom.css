@@ -1,9 +1,9 @@
 /* ── dcc.Dropdown dark-mode override ─────────────────────────────────────── */
 
-/* The control (always visible) */
+/* Closed control */
 .Select-control {
-    background-color: #21262d !important;
-    border-color: #30363d !important;
+    background-color: #161b22 !important;
+    border: 1px solid #30363d !important;
     color: #c9d1d9 !important;
     border-radius: 6px !important;
 }
@@ -12,79 +12,102 @@
     border-color: #58a6ff !important;
 }
 
-/* Placeholder text */
+/* Placeholder */
 .Select-placeholder {
-    color: #8b949e !important;
+    color: #6e7681 !important;
 }
 
-/* Selected value */
+/* Selected value text */
 .Select-value-label,
 .Select-value {
     color: #c9d1d9 !important;
+    background: transparent !important;
 }
 
-/* The text input inside the dropdown */
+/* Typing input inside the control */
+.Select-input,
 .Select-input > input {
     color: #c9d1d9 !important;
     background: transparent !important;
 }
 
-/* Arrow */
+/* Caret / arrow */
 .Select-arrow-zone .Select-arrow {
-    border-top-color: #8b949e !important;
+    border-top-color: #6e7681 !important;
 }
 .is-open .Select-arrow-zone .Select-arrow {
-    border-bottom-color: #8b949e !important;
+    border-bottom-color: #6e7681 !important;
     border-top-color: transparent !important;
 }
 
-/* Clear button */
+/* Clear (×) button */
 .Select-clear-zone,
 .Select-clear {
-    color: #8b949e !important;
+    color: #6e7681 !important;
 }
-.Select-clear-zone:hover {
-    color: #f85149 !important;
-}
+.Select-clear-zone:hover { color: #f85149 !important; }
 
-/* Focused state */
+/* Focused (keyboard / click) */
 .Select.is-focused .Select-control,
 .Select.is-focused:not(.is-open) .Select-control {
-    background-color: #21262d !important;
+    background-color: #161b22 !important;
     border-color: #58a6ff !important;
     box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15) !important;
 }
 
-/* Open state */
+/* Open state — control top border */
 .Select.is-open .Select-control {
-    background-color: #21262d !important;
+    background-color: #161b22 !important;
     border-color: #58a6ff !important;
     border-bottom-right-radius: 0 !important;
     border-bottom-left-radius: 0 !important;
 }
 
-/* The dropdown menu */
+/* ── Open dropdown panel ──────────────────────────────────────────────────── */
+
 .Select-menu-outer {
     background-color: #161b22 !important;
     border: 1px solid #30363d !important;
     border-top: none !important;
     border-bottom-right-radius: 6px !important;
     border-bottom-left-radius: 6px !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
     z-index: 9999 !important;
 }
 
 .Select-menu {
     background-color: #161b22 !important;
+    max-height: 260px !important;
 }
 
-/* Options */
+/* Search / filter input inside the open panel */
+.Select-search-box,
+.Select-search-box input,
+.Select-search-box > input,
+.Select-menu-outer input[type="text"] {
+    background-color: #0d1117 !important;
+    color: #c9d1d9 !important;
+    border: none !important;
+    border-bottom: 1px solid #30363d !important;
+    outline: none !important;
+    padding: 6px 10px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* Individual options — make sure links inside don't go purple */
 .Select-option,
 .VirtualizedSelectOption {
     background-color: #161b22 !important;
     color: #c9d1d9 !important;
     cursor: pointer !important;
-    padding: 8px 12px !important;
+    padding: 7px 12px !important;
+    font-size: 0.875rem !important;
+}
+.Select-option a,
+.VirtualizedSelectOption a {
+    color: #c9d1d9 !important;
+    text-decoration: none !important;
 }
 .Select-option:hover,
 .VirtualizedSelectOption:hover {
@@ -107,10 +130,10 @@
     cursor: not-allowed !important;
 }
 
-/* No results message */
+/* No results */
 .Select-noresults {
     background-color: #161b22 !important;
-    color: #8b949e !important;
+    color: #6e7681 !important;
     padding: 8px 12px !important;
 }
 
@@ -126,37 +149,29 @@
     color: #c9d1d9 !important;
 }
 
-/* ── Sidebar scrollbar ────────────────────────────────────────────────────── */
+/* ── Loading spinner overlay ─────────────────────────────────────────────── */
 
-::-webkit-scrollbar {
-    width: 5px;
-}
-::-webkit-scrollbar-track {
-    background: #010409;
-}
-::-webkit-scrollbar-thumb {
-    background: #30363d;
-    border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: #58a6ff;
+/* Keep the spinner centered over the plot without a white flash */
+._dash-loading {
+    background-color: transparent !important;
 }
 
-/* ── Checklist & RadioItems tweak ────────────────────────────────────────── */
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: #010409; }
+::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #58a6ff; }
+
+/* ── Checklist & RadioItems ──────────────────────────────────────────────── */
 
 .form-check-input:checked {
     background-color: #1f6feb !important;
     border-color: #388bfd !important;
 }
 
-/* ── Plotly modebar in dark theme ────────────────────────────────────────── */
+/* ── Plotly modebar ──────────────────────────────────────────────────────── */
 
-.modebar-container {
-    background: transparent !important;
-}
-.modebar-btn path {
-    fill: #8b949e !important;
-}
-.modebar-btn:hover path {
-    fill: #c9d1d9 !important;
-}
+.modebar-container { background: transparent !important; }
+.modebar-btn path { fill: #6e7681 !important; }
+.modebar-btn:hover path { fill: #c9d1d9 !important; }

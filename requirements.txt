@@ -1,6 +1,7 @@
 dash
 dash-bootstrap-components
 matplotlib
+Pillow
 pybaseball
 plotly
 pandas
