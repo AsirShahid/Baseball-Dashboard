@@ -34,6 +34,53 @@ pyb.cache.disable()
 _FG_API = "https://www.fangraphs.com/api/leaders/major-league/data"
 
 
+# Counting stats that should be SUMMED across players when aggregating to a
+# team. Anything else is treated as a rate stat and weighted-averaged by PA
+# (batters) or IP (pitchers).
+_COUNTING_STATS = frozenset({
+    "G", "GS", "WAR", "WPA", "RE24", "REW", "Clutch", "Pulls", "Events",
+    "Pitches", "Balls", "Strikes", "Barrels", "Events_pit",
+    # Batting counters
+    "PA", "AB", "H", "1B", "2B", "3B", "HR", "R", "RBI", "BB", "IBB",
+    "SO", "HBP", "SF", "SH", "GDP", "SB", "CS", "TB",
+    # Pitching counters
+    "IP", "W", "L", "SV", "BS", "HLD", "ER", "TBF",
+})
+
+
+def _aggregate_team(df: pd.DataFrame, stats: str) -> pd.DataFrame:
+    """Roll up player rows to one row per team.
+
+    Counting columns are summed; rate columns are weighted-averaged by PA
+    (batters) or IP (pitchers). This preserves correct team-level rate stats
+    instead of just summing wOBA/AVG/etc. across players.
+    """
+    weight_col = "PA" if stats == "bat" else "IP"
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if weight_col not in df.columns:
+        return df.groupby("Team")[numeric_cols].sum().reset_index()
+
+    rows = []
+    for team, grp in df.groupby("Team"):
+        weights = pd.to_numeric(grp[weight_col], errors="coerce").fillna(0)
+        total_w = float(weights.sum())
+        row = {"Team": team}
+        for c in numeric_cols:
+            vals = pd.to_numeric(grp[c], errors="coerce")
+            if c == weight_col or c in _COUNTING_STATS:
+                row[c] = vals.sum(skipna=True)
+            elif total_w > 0:
+                mask = vals.notna()
+                w = weights[mask]
+                v = vals[mask]
+                wsum = float(w.sum())
+                row[c] = (v * w).sum() / wsum if wsum > 0 else vals.mean()
+            else:
+                row[c] = vals.mean()
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
 def _fetch_team_api(stats: str, year: int) -> pd.DataFrame | None:
     """Fetch team-level stats from the FanGraphs JSON API."""
     params = dict(
@@ -50,10 +97,9 @@ def _fetch_team_api(stats: str, year: int) -> pd.DataFrame | None:
         if not data:
             return None
         df = pd.DataFrame(data)
-        # Aggregate to team level: sum counting stats, mean for rate stats
         if "Team" not in df.columns:
             return None
-        return df.groupby("Team").sum(numeric_only=True).reset_index()
+        return _aggregate_team(df, stats)
     except Exception as exc:
         logging.warning("  Team API fetch failed (stats=%s year=%d): %s", stats, year, exc)
         return None

@@ -1,39 +1,81 @@
-/* ── dcc.Dropdown dark-mode override ─────────────────────────────────────── */
+/* ── dcc.Dropdown dark-mode override ──────────────────────────────────────────
+   Dash 4.x (react-select v5) emits class names like .Select__control with a
+   double-underscore. Earlier Dash (react-select v1) used .Select-control with
+   a single dash. Selectors below cover BOTH so styling works regardless of
+   the underlying react-select version. */
 
 /* Closed control */
-.Select-control {
+.Select-control,
+.Select__control,
+.dash-dropdown .Select__control {
     background-color: #161b22 !important;
     border: 1px solid #30363d !important;
     color: #c9d1d9 !important;
     border-radius: 6px !important;
-}
-.Select-control:hover {
     box-shadow: none !important;
+    min-height: 38px !important;
+}
+.Select-control:hover,
+.Select__control:hover,
+.Select__control--is-focused {
     border-color: #58a6ff !important;
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15) !important;
+}
+
+/* Value container & internal layout (v5) */
+.Select__value-container,
+.Select__indicators {
+    background-color: #161b22 !important;
+    color: #c9d1d9 !important;
+}
+.Select__indicator-separator {
+    background-color: #30363d !important;
+}
+.Select__indicator,
+.Select__dropdown-indicator,
+.Select__clear-indicator {
+    color: #6e7681 !important;
+}
+.Select__indicator:hover,
+.Select__dropdown-indicator:hover {
+    color: #c9d1d9 !important;
 }
 
 /* Placeholder */
-.Select-placeholder {
+.Select-placeholder,
+.Select__placeholder {
     color: #6e7681 !important;
 }
 
-/* Selected value text */
+/* Selected value text (closed dropdown) */
 .Select-value-label,
 .Select-value,
-.Select-single-value,
-.dash-dropdown .Select-value-label {
+.Select__single-value,
+.Select-single-value {
     color: #c9d1d9 !important;
     background: transparent !important;
 }
 
-/* Typing input inside the control */
+/* Typing/search input — both inside the closed control AND inside the menu */
 .Select-input,
-.Select-input > input {
+.Select-input > input,
+.Select__input,
+.Select__input-container,
+.Select__input-container input,
+.Select-search-box,
+.Select-search-box input,
+.Select-menu-outer input,
+.Select__menu input,
+.Select__menu-list input,
+.dash-dropdown input {
+    background-color: transparent !important;
     color: #c9d1d9 !important;
-    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
 }
 
-/* Caret / arrow */
+/* Caret / arrow (v1) */
 .Select-arrow-zone .Select-arrow {
     border-top-color: #6e7681 !important;
 }
@@ -42,66 +84,44 @@
     border-top-color: transparent !important;
 }
 
-/* Clear (×) button */
+/* Clear (×) button (v1) */
 .Select-clear-zone,
 .Select-clear {
     color: #6e7681 !important;
 }
 .Select-clear-zone:hover { color: #f85149 !important; }
 
-/* Focused (keyboard / click) */
+/* Focused / open state (v1) */
 .Select.is-focused .Select-control,
-.Select.is-focused:not(.is-open) .Select-control {
-    background-color: #161b22 !important;
-    border-color: #58a6ff !important;
-    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15) !important;
-}
-
-/* Open state — control top border */
+.Select.is-focused:not(.is-open) .Select-control,
 .Select.is-open .Select-control {
     background-color: #161b22 !important;
     border-color: #58a6ff !important;
-    border-bottom-right-radius: 0 !important;
-    border-bottom-left-radius: 0 !important;
 }
 
-/* ── Open dropdown panel ──────────────────────────────────────────────────── */
+/* ── Open dropdown panel ─────────────────────────────────────────────────── */
 
-.Select-menu-outer {
+.Select-menu-outer,
+.Select__menu {
     background-color: #161b22 !important;
     border: 1px solid #30363d !important;
-    border-top: none !important;
-    border-bottom-right-radius: 6px !important;
-    border-bottom-left-radius: 6px !important;
+    border-radius: 6px !important;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
     z-index: 9999 !important;
+    margin-top: 4px !important;
+    overflow: hidden !important;
 }
 
-.Select-menu {
+.Select-menu,
+.Select__menu-list {
     background-color: #161b22 !important;
     max-height: 260px !important;
+    padding: 4px 0 !important;
 }
 
-/* Search / filter input inside the open panel */
-.Select-search-box,
-.Select-search-box input,
-.Select-search-box > input,
-.Select-menu-outer input[type="text"],
-.Select-menu-outer input[type="search"],
-.Select-menu-outer input,
-.dash-dropdown input {
-    background-color: #0d1117 !important;
-    color: #c9d1d9 !important;
-    border: none !important;
-    border-bottom: 1px solid #30363d !important;
-    outline: none !important;
-    padding: 6px 10px !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-/* Individual options — make sure links inside don't go purple */
+/* Individual options */
 .Select-option,
+.Select__option,
 .VirtualizedSelectOption {
     background-color: #161b22 !important;
     color: #c9d1d9 !important;
@@ -112,55 +132,65 @@
 .Select-option a,
 .Select-option a:visited,
 .Select-option a:hover,
-.VirtualizedSelectOption a,
-.VirtualizedSelectOption a:visited,
-.VirtualizedSelectOption a:hover {
+.Select__option a,
+.Select__option a:visited,
+.Select__option a:hover {
     color: #c9d1d9 !important;
     text-decoration: none !important;
 }
 .Select-option:hover,
-.VirtualizedSelectOption:hover {
-    background-color: #21262d !important;
-    color: #f0f6fc !important;
-}
-.Select-option.is-focused,
+.Select__option:hover,
+.Select__option--is-focused,
+.VirtualizedSelectOption:hover,
 .VirtualizedSelectFocusedOption {
     background-color: #21262d !important;
     color: #f0f6fc !important;
 }
 .Select-option.is-selected,
+.Select__option--is-selected,
 .VirtualizedSelectSelectedOption {
     background-color: #1f6feb !important;
     color: #f0f6fc !important;
     font-weight: 600 !important;
 }
-.Select-option.is-disabled {
+.Select-option.is-disabled,
+.Select__option--is-disabled {
     color: #484f58 !important;
     cursor: not-allowed !important;
+    background-color: #161b22 !important;
 }
 
 /* No results */
-.Select-noresults {
+.Select-noresults,
+.Select__menu-notice,
+.Select__menu-notice--no-options {
     background-color: #161b22 !important;
     color: #6e7681 !important;
     padding: 8px 12px !important;
 }
 
 /* Multi-select tags */
-.Select--multi .Select-value {
+.Select--multi .Select-value,
+.Select__multi-value {
     background-color: #1f6feb !important;
     border-color: #388bfd !important;
     color: #f0f6fc !important;
     border-radius: 4px !important;
 }
-.Select--multi .Select-value-icon {
-    border-right-color: #388bfd !important;
+.Select__multi-value__label {
+    color: #f0f6fc !important;
+}
+.Select--multi .Select-value-icon,
+.Select__multi-value__remove {
     color: #c9d1d9 !important;
+}
+.Select__multi-value__remove:hover {
+    background-color: #f85149 !important;
+    color: #fff !important;
 }
 
 /* ── Loading spinner overlay ─────────────────────────────────────────────── */
 
-/* Keep the spinner centered over the plot without a white flash */
 ._dash-loading {
     background-color: transparent !important;
 }
