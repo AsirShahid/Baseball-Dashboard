@@ -55,6 +55,11 @@ def _aggregate_team(df: pd.DataFrame, stats: str) -> pd.DataFrame:
     (batters) or IP (pitchers). This preserves correct team-level rate stats
     instead of just summing wOBA/AVG/etc. across players.
     """
+    # FanGraphs uses "- - -" as the Team value for players who were traded
+    # mid-season; aggregating those rows produces a phantom 31st team. Drop
+    # them before grouping.
+    df = df[~df["Team"].isin(["- - -", "", None])]
+
     weight_col = "PA" if stats == "bat" else "IP"
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     if weight_col not in df.columns:

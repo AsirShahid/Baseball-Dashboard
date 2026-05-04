@@ -1,41 +1,40 @@
-/* ── dcc.Dropdown dark-mode override ──────────────────────────────────────────
-   Targets multiple Dash versions: react-select v1 (.Select-control),
-   react-select v5 BEM (.Select__control), and Dash 4.x's potentially newer
-   component via attribute selectors. */
+/* ── Dash 4.x dropdown theming ────────────────────────────────────────────────
+   Dash 4 ships its own dropdown component (not react-select) and styles it
+   with CSS custom properties. The defaults are a light theme — overriding
+   the variables here makes every dropdown render dark with no class-name
+   guesswork. */
+:root {
+    --Dash-Fill-Inverse-Strong: #161b22;          /* dropdown / menu bg */
+    --Dash-Stroke-Strong: #30363d;                /* default border */
+    --Dash-Stroke-Weak: #21262d;
+    --Dash-Fill-Interactive-Strong: #58a6ff;      /* focus border / accent */
+    --Dash-Fill-Interactive-Weak: #21262d;        /* hover row */
+    --Dash-Text-Primary: #c9d1d9;
+    --Dash-Text-Strong: #c9d1d9;
+    --Dash-Text-Weak: #8b949e;
+    --Dash-Text-Disabled: #6e7681;
+    --Dash-Fill-Primary-Hover: #1c2128;
+    --Dash-Fill-Primary-Active: #21262d;
+    --Dash-Fill-Disabled: #21262d;
+    --Dash-Shading-Strong: rgba(0, 0, 0, 0.6);
+    --Dash-Shading-Weak: rgba(0, 0, 0, 0.4);
+}
 
-/* Brute-force fallback: any input or combobox inside a dash-dropdown
-   container should render dark, regardless of class naming. This is the
-   safety net that catches the open-menu search input in Dash 4.x where
-   exact class names are not yet stable. */
-.dash-dropdown input,
-.dash-dropdown input[type="text"],
-.dash-dropdown input[type="search"],
-.dash-dropdown [role="combobox"],
-.dash-dropdown [role="textbox"],
-.dash-dropdown [class*="search" i] input,
-.dash-dropdown [class*="search" i] {
-    background-color: #161b22 !important;
+/* The trigger (closed dropdown) and content (open menu) both pick up the
+   variables above, but a few tweaks make the look match the rest of the
+   sidebar. */
+.dash-dropdown,
+.dash-dropdown-content {
+    background: #161b22 !important;
     color: #c9d1d9 !important;
-    border-color: #30363d !important;
-    -webkit-text-fill-color: #c9d1d9 !important;
-    caret-color: #c9d1d9 !important;
 }
-.dash-dropdown input:focus,
-.dash-dropdown [role="combobox"]:focus,
-.dash-dropdown input:focus-visible {
-    border-color: #58a6ff !important;
-    outline: none !important;
-    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15) !important;
+.dash-dropdown-option:hover,
+.dash-dropdown-option[data-highlighted="true"],
+.dash-dropdown-option[aria-selected="true"] {
+    background: #21262d !important;
+    color: #f0f6fc !important;
 }
-/* Cancel the WebKit search-input affordances (magnifying glass / X overlay) */
-.dash-dropdown input[type="search"]::-webkit-search-decoration,
-.dash-dropdown input[type="search"]::-webkit-search-cancel-button,
-.dash-dropdown input[type="search"]::-webkit-search-results-button,
-.dash-dropdown input[type="search"]::-webkit-search-results-decoration {
-    -webkit-appearance: none;
-    appearance: none;
-}
-.dash-dropdown input::placeholder {
+.dash-dropdown-search::placeholder {
     color: #6e7681 !important;
 }
 
