@@ -69,17 +69,46 @@ def create_directories(directories):
         Path(d).mkdir(parents=True, exist_ok=True)
 
 
-def generate_csv(func, year, directory, qual=None, skip_existing=True):
+def _fetch_players_api(stats: str, qual: str | int, year: int) -> pd.DataFrame | None:
+    """Fetch individual player stats from the FanGraphs JSON API."""
+    params = dict(
+        pos="all", stats=stats, lg="all", qual=qual,
+        type=8, season=year, month=0, season1=year,
+        ind=0, team=0, rost=0, age=0,
+        filter="", players=0, startdate="", enddate="",
+        pageitems=2000, pagenum=1,
+    )
+    try:
+        resp = requests.get(_FG_API, params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+        if not data:
+            return None
+        df = pd.DataFrame(data)
+        logging.info("  API → %d rows, %d columns", len(df), len(df.columns))
+        return df
+    except Exception as exc:
+        logging.warning("  Players API fetch failed (stats=%s year=%d): %s", stats, year, exc)
+        return None
+
+
+def generate_csv(stats: str, qual: str | int, pyb_fn, year: int, directory: str,
+                 skip_existing: bool = True) -> None:
     path = Path(directory) / f"{year}.csv"
     if skip_existing and path.exists():
         logging.info("  skip  %s/%d.csv (already exists)", directory, year)
         return
-    try:
-        df = func(year) if qual is None else func(year, qual=qual)
-        df.to_csv(path)
-        logging.info("  saved %s/%d.csv  (%d rows)", directory, year, len(df))
-    except Exception as exc:
-        logging.error("  ERROR %s/%d — %s", func.__name__, year, exc)
+    df = _fetch_players_api(stats, qual, year)
+    if df is None:
+        logging.warning("  API failed — falling back to pybaseball")
+        try:
+            df = pyb_fn(year)
+            logging.info("  pybaseball → %d rows", len(df))
+        except Exception as exc:
+            logging.error("  ERROR fetch/%d — %s", year, exc)
+            return
+    df.to_csv(path)
+    logging.info("  saved %s/%d.csv  (%d rows)", directory, year, len(df))
 
 
 def generate_team_csv(stats: str, year: int, directory: str, skip_existing: bool = True) -> None:
@@ -101,10 +130,10 @@ def fetch_years(start, end, config, skip_existing=True):
         logging.info("── %d ──────────────────────────", year)
         generate_team_csv("bat", year, config["team_batting_dir"],  skip_existing=skip_existing)
         generate_team_csv("pit", year, config["team_pitching_dir"], skip_existing=skip_existing)
-        generate_csv(batting_stats,  year, config["qualified_batting_dir"],   skip_existing=skip_existing)
-        generate_csv(pitching_stats, year, config["qualified_pitching_dir"],  skip_existing=skip_existing)
-        generate_csv(batting_stats,  year, config["all_batting_dir"],  qual=0, skip_existing=skip_existing)
-        generate_csv(pitching_stats, year, config["all_pitching_dir"], qual=0, skip_existing=skip_existing)
+        generate_csv("bat", "y", batting_stats,  year, config["qualified_batting_dir"],  skip_existing=skip_existing)
+        generate_csv("pit", "y", pitching_stats, year, config["qualified_pitching_dir"], skip_existing=skip_existing)
+        generate_csv("bat",  0,  lambda y: batting_stats(y, qual=0),  year, config["all_batting_dir"],  skip_existing=skip_existing)
+        generate_csv("pit",  0,  lambda y: pitching_stats(y, qual=0), year, config["all_pitching_dir"], skip_existing=skip_existing)
         sleep(delay)
 
 

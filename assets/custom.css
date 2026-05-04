@@ -19,7 +19,9 @@
 
 /* Selected value text */
 .Select-value-label,
-.Select-value {
+.Select-value,
+.Select-single-value,
+.dash-dropdown .Select-value-label {
     color: #c9d1d9 !important;
     background: transparent !important;
 }
@@ -84,7 +86,10 @@
 .Select-search-box,
 .Select-search-box input,
 .Select-search-box > input,
-.Select-menu-outer input[type="text"] {
+.Select-menu-outer input[type="text"],
+.Select-menu-outer input[type="search"],
+.Select-menu-outer input,
+.dash-dropdown input {
     background-color: #0d1117 !important;
     color: #c9d1d9 !important;
     border: none !important;
