@@ -177,7 +177,6 @@ def load_csv(path: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-@functools.lru_cache(maxsize=256)
 def seasons_with_data(dir_key: str, stat: str) -> frozenset:
     result = set()
     for f in Path(config[dir_key]).glob("*.csv"):
@@ -680,7 +679,7 @@ def update_z_stat(z_type, season, current):
     Output("p-z-stat", "options"),
     Output("p-z-stat", "value"),
     Input("player-type",   "value"),
-    Input("player-season", "value"),
+    State("player-season", "value"),
     State("p-x-stat", "value"),
     State("p-y-stat", "value"),
     State("p-z-stat", "value"),
