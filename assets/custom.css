@@ -1,8 +1,43 @@
 /* ── dcc.Dropdown dark-mode override ──────────────────────────────────────────
-   Dash 4.x (react-select v5) emits class names like .Select__control with a
-   double-underscore. Earlier Dash (react-select v1) used .Select-control with
-   a single dash. Selectors below cover BOTH so styling works regardless of
-   the underlying react-select version. */
+   Targets multiple Dash versions: react-select v1 (.Select-control),
+   react-select v5 BEM (.Select__control), and Dash 4.x's potentially newer
+   component via attribute selectors. */
+
+/* Brute-force fallback: any input or combobox inside a dash-dropdown
+   container should render dark, regardless of class naming. This is the
+   safety net that catches the open-menu search input in Dash 4.x where
+   exact class names are not yet stable. */
+.dash-dropdown input,
+.dash-dropdown input[type="text"],
+.dash-dropdown input[type="search"],
+.dash-dropdown [role="combobox"],
+.dash-dropdown [role="textbox"],
+.dash-dropdown [class*="search" i] input,
+.dash-dropdown [class*="search" i] {
+    background-color: #161b22 !important;
+    color: #c9d1d9 !important;
+    border-color: #30363d !important;
+    -webkit-text-fill-color: #c9d1d9 !important;
+    caret-color: #c9d1d9 !important;
+}
+.dash-dropdown input:focus,
+.dash-dropdown [role="combobox"]:focus,
+.dash-dropdown input:focus-visible {
+    border-color: #58a6ff !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15) !important;
+}
+/* Cancel the WebKit search-input affordances (magnifying glass / X overlay) */
+.dash-dropdown input[type="search"]::-webkit-search-decoration,
+.dash-dropdown input[type="search"]::-webkit-search-cancel-button,
+.dash-dropdown input[type="search"]::-webkit-search-results-button,
+.dash-dropdown input[type="search"]::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}
+.dash-dropdown input::placeholder {
+    color: #6e7681 !important;
+}
 
 /* Closed control */
 .Select-control,

@@ -624,7 +624,7 @@ def toggle_min_filters(player_type):
     Output("x-stat", "options"),
     Output("x-stat", "value"),
     Input("x-type", "value"),
-    Input("team-season", "value"),
+    State("team-season", "value"),
     State("x-stat", "value"),
 )
 def update_x_stat(x_type, season, current):
@@ -641,7 +641,7 @@ def update_x_stat(x_type, season, current):
     Output("y-stat", "options"),
     Output("y-stat", "value"),
     Input("y-type", "value"),
-    Input("team-season", "value"),
+    State("team-season", "value"),
     State("y-stat", "value"),
 )
 def update_y_stat(y_type, season, current):
@@ -658,7 +658,7 @@ def update_y_stat(y_type, season, current):
     Output("z-stat", "options"),
     Output("z-stat", "value"),
     Input("z-type", "value"),
-    Input("team-season", "value"),
+    State("team-season", "value"),
     State("z-stat", "value"),
 )
 def update_z_stat(z_type, season, current):
