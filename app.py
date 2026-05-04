@@ -363,7 +363,6 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
     title="Baseball Dashboard",
     update_title=None,
-    assets_cache_max_age=0,
 )
 server = app.server
 
