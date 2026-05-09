@@ -262,7 +262,6 @@ def base_layout() -> dict:
                         font_color=TEXT_COLOR, font_size=12),
         margin=dict(l=70, r=30, t=30, b=60),
         title_x=0.5, title_font=dict(size=18, color=TEXT_COLOR),
-        transition=dict(duration=350, easing="cubic-in-out"),
     )
 
 
