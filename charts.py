@@ -7,7 +7,7 @@ import plotly.express as px
 import pandas as pd
 
 from data import (
-    config, load_csv, process_columns,
+    config, load_csv, process_columns, stat_higher_better,
     TEAM_COLORS, NL_TEAMS, AL_TEAMS, PALETTE, RANK_COLORSCALE, logo_b64,
 )
 
@@ -84,9 +84,16 @@ def empty_fig(msg: str = "No data", theme: str = "dark"):
     return fig
 
 
-def compute_composite_rank(*series: pd.Series) -> pd.Series:
-    """Average percentile rank across stat series, returned on a 0–100 scale."""
-    ranks = [s.rank(pct=True, na_option="keep") for s in series]
+def compute_composite_rank(*items) -> pd.Series:
+    """Composite 0–100 percentile across (series, higher_is_better) pairs.
+
+    Each axis is ranked, and axes where lower is better (e.g. ERA) are
+    inverted, so a higher composite always means better.
+    """
+    ranks = []
+    for series, higher in items:
+        r = series.rank(pct=True, na_option="keep")
+        ranks.append(r if higher else 1.0 - r)
     return pd.concat(ranks, axis=1).mean(axis=1).fillna(0.5) * 100
 
 
@@ -187,9 +194,11 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
 
     rank_score = None
     if use_color_rank:
-        rank_score = compute_composite_rank(
-            x_vals, y_vals, *([z_vals] if z_vals is not None else [])
-        ).round(1)
+        items = [(x_vals, stat_higher_better(x_stat, x_type == "Pitching")),
+                 (y_vals, stat_higher_better(y_stat, y_type == "Pitching"))]
+        if z_vals is not None:
+            items.append((z_vals, stat_higher_better(z_stat, z_type == "Pitching")))
+        rank_score = compute_composite_rank(*items).round(1)
 
     fig = go.Figure()
 
@@ -337,8 +346,12 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
     is_3d = bool(z_stat) and z_stat in df.columns and not df[z_stat].isna().all()
 
     if use_color_rank:
-        rank_series = [df[x_stat], df[y_stat]] + ([df[z_stat]] if is_3d else [])
-        df["Composite Rank"] = compute_composite_rank(*rank_series).round(1).values
+        is_pitch = (player_type == "Pitchers")
+        items = [(df[x_stat], stat_higher_better(x_stat, is_pitch)),
+                 (df[y_stat], stat_higher_better(y_stat, is_pitch))]
+        if is_3d:
+            items.append((df[z_stat], stat_higher_better(z_stat, is_pitch)))
+        df["Composite Rank"] = compute_composite_rank(*items).round(1).values
 
     if use_color_rank:
         color_col, c_map, c_scale, c_range = "Composite Rank", None, RANK_COLORS, [0, 100]

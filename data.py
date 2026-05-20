@@ -3,9 +3,11 @@
 
 import base64
 import functools
+import html
 import io
 import json
 import logging
+import re
 from pathlib import Path
 
 try:
@@ -122,6 +124,38 @@ PALETTE = {
 # Composite-rank colorscale — red → amber → green (matches the .legend-bar gradient).
 RANK_COLORSCALE = [[0.0, "#e5484d"], [0.5, "#f5a524"], [1.0, "#46a758"]]
 
+# ── Stat direction (for composite-rank percentiles) ──────────────────────────
+# Most stats are "higher is better"; these are the exceptions. Direction can
+# depend on context — a pitcher's ERA is bad, but K% is good; a hitter's K% is
+# bad. So a few sets are keyed by whether the stat describes a pitcher.
+
+_LOWER_ALWAYS = frozenset({
+    "ERA", "FIP", "xFIP", "SIERA", "WHIP", "BB/9", "HR/9", "H/9", "R/9",
+    "ERA-", "FIP-", "xFIP-", "tERA", "kwERA", "RA9",
+    "GDP", "GIDP", "CS", "E", "BK", "WP", "BS", "L", "HBP",
+    "SwStr%", "O-Swing%", "Chase%", "Pitches/Game",
+})
+# Bad for a pitcher (offense allowed); good for a hitter.
+_LOWER_FOR_PITCHERS = frozenset({
+    "AVG", "OBP", "SLG", "OPS", "ISO", "BABIP", "wOBA", "xwOBA", "wRC", "wRC+",
+    "wRAA", "BB%", "HR", "R", "ER", "H", "BB", "1B", "2B", "3B", "RBI", "TB",
+    "HR/FB", "Barrel%", "HardHit%", "EV", "LD%",
+})
+# Bad for a hitter (strikeouts); good for a pitcher.
+_LOWER_FOR_BATTERS = frozenset({"K%", "SO", "K"})
+
+
+def stat_higher_better(stat: str, is_pitching: bool) -> bool:
+    """Whether a larger value of `stat` is better, given the batting/pitching
+    context. Unknown stats default to higher-is-better."""
+    if stat in _LOWER_ALWAYS:
+        return False
+    if is_pitching and stat in _LOWER_FOR_PITCHERS:
+        return False
+    if (not is_pitching) and stat in _LOWER_FOR_BATTERS:
+        return False
+    return True
+
 # Quick-start chart presets. Each axis is (type, real-FanGraphs-column).
 TEAM_PRESETS = [
     {"id": "balance",      "name": "Offense vs Pitching",
@@ -220,13 +254,33 @@ def process_columns(columns):
     return cols
 
 
+_HTML_TAG_RE = re.compile(r"<[^>]*>")
+
+
+def _clean_text(v):
+    if not isinstance(v, str):
+        return v
+    return html.unescape(_HTML_TAG_RE.sub("", v)).strip()
+
+
+def _strip_html(df: pd.DataFrame) -> pd.DataFrame:
+    """FanGraphs' JSON API returns Name/Team as HTML <a> tags. Reduce them to
+    plain text so labels render cleanly (affects API-sourced 2025+ CSVs)."""
+    for col in ("Name", "Team"):
+        if col in df.columns:
+            df[col] = df[col].map(_clean_text)
+    return df
+
+
 @functools.lru_cache(maxsize=512)
 def load_csv(path: str) -> pd.DataFrame:
     """Load CSV; auto-fetches via pybaseball if the file doesn't exist."""
     try:
         if Path(path).exists():
-            return pd.read_csv(path)
-        return _live_fetch(path)
+            df = pd.read_csv(path)
+        else:
+            df = _live_fetch(path)
+        return _strip_html(df)
     except Exception:
         return pd.DataFrame()
 

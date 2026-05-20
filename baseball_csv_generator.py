@@ -15,8 +15,10 @@ python baseball_csv_generator.py --start 2025 --watch
 
 import argparse
 import datetime
+import html
 import json
 import logging
+import re
 from pathlib import Path
 from time import sleep
 
@@ -32,6 +34,23 @@ logging.basicConfig(level=logging.INFO,
 pyb.cache.disable()
 
 _FG_API = "https://www.fangraphs.com/api/leaders/major-league/data"
+
+_HTML_TAG_RE = re.compile(r"<[^>]*>")
+
+
+def _clean_text(v):
+    if not isinstance(v, str):
+        return v
+    return html.unescape(_HTML_TAG_RE.sub("", v)).strip()
+
+
+def _clean(df: pd.DataFrame) -> pd.DataFrame:
+    """The FanGraphs JSON API returns Name/Team as HTML <a> tags; strip them
+    to plain text before saving so labels render cleanly."""
+    for col in ("Name", "Team"):
+        if col in df.columns:
+            df[col] = df[col].map(_clean_text)
+    return df
 
 
 # Counting stats that should be SUMMED across players when aggregating to a
@@ -101,7 +120,7 @@ def _fetch_team_api(stats: str, year: int) -> pd.DataFrame | None:
         data = resp.json().get("data", [])
         if not data:
             return None
-        df = pd.DataFrame(data)
+        df = _clean(pd.DataFrame(data))
         if "Team" not in df.columns:
             return None
         return _aggregate_team(df, stats)
@@ -135,7 +154,7 @@ def _fetch_players_api(stats: str, qual: str | int, year: int) -> pd.DataFrame |
         data = resp.json().get("data", [])
         if not data:
             return None
-        df = pd.DataFrame(data)
+        df = _clean(pd.DataFrame(data))
         logging.info("  API → %d rows, %d columns", len(df), len(df.columns))
         return df
     except Exception as exc:
