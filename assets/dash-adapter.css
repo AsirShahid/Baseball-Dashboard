@@ -1,0 +1,282 @@
+/* dash-adapter.css — re-skins Dash dbc/dcc components against the design
+   tokens in styles.css so they theme-switch with [data-theme] on <html>.
+   Loaded after styles.css (alphabetical), so these rules win. */
+
+/* ─────────── dcc.Dropdown (react-select) ─────────── */
+
+/* Dash 3+ exposes these custom properties for its dropdown. */
+:root {
+  --Dash-Fill-Inverse-Strong: var(--surface);
+  --Dash-Stroke-Strong: var(--border);
+  --Dash-Stroke-Weak: var(--border);
+  --Dash-Fill-Interactive-Strong: var(--accent);
+  --Dash-Fill-Interactive-Weak: var(--surface-2);
+  --Dash-Text-Primary: var(--text);
+  --Dash-Text-Strong: var(--text);
+  --Dash-Text-Weak: var(--text-3);
+  --Dash-Text-Disabled: var(--text-4);
+  --Dash-Fill-Primary-Hover: var(--surface-2);
+  --Dash-Fill-Primary-Active: var(--surface-2);
+  --Dash-Fill-Disabled: var(--surface-2);
+  --Dash-Shading-Strong: rgba(0, 0, 0, 0.5);
+  --Dash-Shading-Weak: rgba(0, 0, 0, 0.3);
+}
+
+/* Closed control — match .statpicker-trigger */
+.Select-control,
+.Select__control,
+.dash-dropdown .Select__control {
+  background-color: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+  min-height: 38px !important;
+  font-size: 12.5px !important;
+}
+.Select-control:hover,
+.Select__control:hover { border-color: var(--border-2) !important; }
+.Select__control--is-focused,
+.Select.is-focused .Select-control,
+.Select.is-open .Select-control {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--border)) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+}
+
+.Select__value-container,
+.Select__indicators { background: transparent !important; }
+.Select__indicator-separator { background-color: var(--border) !important; }
+.Select__indicator,
+.Select__dropdown-indicator,
+.Select__clear-indicator { color: var(--text-3) !important; }
+.Select__indicator:hover,
+.Select__dropdown-indicator:hover { color: var(--text) !important; }
+
+.Select-placeholder,
+.Select__placeholder { color: var(--text-3) !important; }
+.Select-value-label,
+.Select-value,
+.Select__single-value,
+.Select-single-value { color: var(--text) !important; background: transparent !important; }
+
+.Select-input,
+.Select-input > input,
+.Select__input,
+.Select__input-container,
+.Select__input-container input,
+.Select-search-box input,
+.dash-dropdown input {
+  background-color: transparent !important;
+  color: var(--text) !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.Select-arrow-zone .Select-arrow { border-top-color: var(--text-3) !important; }
+.Select-clear-zone,
+.Select-clear { color: var(--text-3) !important; }
+.Select-clear-zone:hover { color: #e5484d !important; }
+
+/* Open menu — match .statpicker-menu */
+.Select-menu-outer,
+.Select__menu,
+.dash-dropdown-content {
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border-2) !important;
+  border-radius: 10px !important;
+  box-shadow: var(--shadow) !important;
+  z-index: 9999 !important;
+  margin-top: 4px !important;
+  overflow: hidden !important;
+}
+.Select-menu,
+.Select__menu-list { background-color: var(--surface) !important; max-height: 300px !important; padding: 4px !important; }
+
+.Select-option,
+.Select__option,
+.dash-dropdown-option,
+.VirtualizedSelectOption {
+  background-color: transparent !important;
+  color: var(--text) !important;
+  cursor: pointer !important;
+  padding: 7px 10px !important;
+  border-radius: 6px !important;
+  font-size: 12.5px !important;
+}
+.Select-option:hover,
+.Select__option:hover,
+.Select__option--is-focused,
+.dash-dropdown-option:hover,
+.dash-dropdown-option[data-highlighted="true"],
+.VirtualizedSelectFocusedOption {
+  background-color: var(--surface-2) !important;
+  color: var(--text) !important;
+}
+.Select-option.is-selected,
+.Select__option--is-selected,
+.dash-dropdown-option[aria-selected="true"],
+.VirtualizedSelectSelectedOption {
+  background-color: color-mix(in oklab, var(--accent) 16%, transparent) !important;
+  color: var(--text) !important;
+  font-weight: 600 !important;
+}
+.Select-option.is-disabled,
+.Select__option--is-disabled {
+  color: var(--text-4) !important;
+  cursor: not-allowed !important;
+  background-color: transparent !important;
+}
+.Select-noresults,
+.Select__menu-notice {
+  background-color: var(--surface) !important;
+  color: var(--text-3) !important;
+  padding: 10px 12px !important;
+  font-size: 12px !important;
+}
+
+/* ─────────── dcc.Input (year box) ─────────── */
+input[type="number"].form-control,
+.yr-step input {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+/* ─────────── dcc.Slider (year scrubber) → .yr-track look ─────────── */
+.season-slider .rc-slider { height: 22px; padding: 0; margin: 2px 0; }
+.season-slider .rc-slider-rail {
+  height: 18px; top: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.season-slider .rc-slider-track {
+  height: 18px; top: 2px;
+  background: linear-gradient(90deg,
+    color-mix(in oklab, var(--accent) 32%, transparent),
+    color-mix(in oklab, var(--accent) 16%, transparent));
+  border-radius: 4px 0 0 4px;
+}
+.season-slider .rc-slider-step { height: 18px; top: 2px; }
+.season-slider .rc-slider-handle {
+  width: 12px; height: 22px; top: 0; margin-top: 0;
+  background: var(--accent);
+  border: 1px solid var(--surface);
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  opacity: 1;
+}
+.season-slider .rc-slider-handle:hover,
+.season-slider .rc-slider-handle:focus,
+.season-slider .rc-slider-handle-active,
+.season-slider .rc-slider-handle-dragging {
+  border-color: var(--surface) !important;
+  box-shadow: 0 0 0 4px var(--accent-soft), 0 1px 4px rgba(0,0,0,0.4) !important;
+}
+.season-slider .rc-slider-dot {
+  width: 1px; height: 6px; bottom: 6px;
+  background: var(--text-4);
+  border: 0; border-radius: 0;
+  opacity: 0.5;
+  margin-left: 0;
+}
+.season-slider .rc-slider-dot-active { background: var(--text-4); }
+.season-slider .rc-slider-mark-text {
+  color: var(--text-3) !important;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 9.5px;
+  margin-top: 2px;
+}
+.season-slider .rc-slider-mark-text-active { color: var(--text-3) !important; }
+
+/* ─────────── Toggle switch (dbc.Switch) → .tg-switch look ─────────── */
+.tg .form-check {
+  margin: 0; padding: 0; min-height: 0;
+  display: flex; align-items: center;
+}
+.tg .form-check-label { display: none; }
+.tg .form-check-input {
+  -webkit-appearance: none; appearance: none;
+  flex: 0 0 32px;
+  width: 32px !important; height: 18px;
+  margin: 0; float: none;
+  border: none !important;
+  border-radius: 999px !important;
+  background-color: var(--surface-3) !important;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3ccircle cx='8' cy='8' r='8' fill='%23ffffff'/%3e%3c/svg%3e") !important;
+  background-repeat: no-repeat;
+  background-position: 2px center !important;
+  background-size: 14px 14px;
+  cursor: pointer;
+  box-shadow: none !important;
+  transition: background-color 120ms, background-position 140ms cubic-bezier(0.3, 1.4, 0.4, 1);
+}
+.tg .form-check-input:checked {
+  background-color: var(--accent) !important;
+  background-position: 16px center !important;
+}
+.tg .form-check-input:focus { box-shadow: 0 0 0 3px var(--accent-soft) !important; }
+
+/* ─────────── dcc.Loading spinner ─────────── */
+._dash-loading { background-color: transparent !important; }
+
+/* ─────────── Plotly modebar ─────────── */
+.modebar-container { background: transparent !important; }
+.modebar-group { background: transparent !important; }
+.modebar-btn path { fill: var(--text-3) !important; }
+.modebar-btn:hover path { fill: var(--text) !important; }
+.js-plotly-plot .plotly .modebar { background: transparent !important; }
+
+/* ─────────── scrollbars ─────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-4); }
+
+/* ─────────── misc dbc resets ─────────── */
+.form-check-input:focus { box-shadow: none; }
+a { color: var(--accent); }
+
+/* ─────────── app-specific layout ─────────── */
+
+/* axis picker rows (axis tag + type toggle + dropdown) */
+.axis-row { display: flex; flex-direction: column; gap: 6px; }
+.axis-row-head {
+  display: flex; align-items: center; gap: 8px;
+  justify-content: space-between;
+}
+
+/* compact segmented control (Batting / Pitching type) */
+.seg-sm { padding: 2px; }
+.seg-sm .seg-btn { flex: 0 0 auto; padding: 4px 9px; font-size: 11px; }
+
+/* small field label for player-filter dropdowns */
+.field-label {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: 10px 0 4px;
+}
+.field-label:first-child { margin-top: 0; }
+
+/* chart fills its card; the dcc.Loading wrapper must carry full height so the
+   absolutely-positioned .chart-wrap has a sized containing block */
+.chart-card > div { height: 100%; }
+.chart-wrap { position: absolute; inset: 4px; padding: 0; }
+.chart-card .dash-graph,
+.chart-card .js-plotly-plot { height: 100%; width: 100%; }
+
+/* dcc.Loading spinner centered over the card */
+.chart-card ._dash-loading-callback,
+.chart-card ._dash-loading { position: absolute; inset: 0; }
+
+/* detail panel: close button must sit above the gradient header */
+.detail-panel { position: relative; }
+.dt-close { z-index: 10; }
+
+/* keep the year value crisp */
+.yr-step input[type="number"] { -moz-appearance: textfield; }
+.yr-step input::-webkit-outer-spin-button,
+.yr-step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
