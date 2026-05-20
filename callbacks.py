@@ -7,8 +7,8 @@ from dash import Input, Output, State, MATCH, ALL, no_update, ctx
 
 from data import (
     config, load_csv, process_columns, seasons_with_data, opts,
-    TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS, TEAM_FULL_NAME,
-    TEAM_PRESETS, ramp_color,
+    stat_higher_better, TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
+    TEAM_FULL_NAME, TEAM_PRESETS, ramp_color,
 )
 from charts import render_team, render_player, compute_composite_rank
 from components import leaderboard_cards, detail_body
@@ -92,12 +92,13 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
     _, yv = _load(yt, ys)
     if teams is None or xv is None or yv is None:
         return [], 0
-    series = [xv, yv]
+    items = [(xv, stat_higher_better(xs, xt == "Pitching")),
+             (yv, stat_higher_better(ys, yt == "Pitching"))]
     if zs:
         _, zv = _load(zt, zs)
         if zv is not None:
-            series.append(zv)
-    comp = compute_composite_rank(*series)
+            items.append((zv, stat_higher_better(zs, zt == "Pitching")))
+    comp = compute_composite_rank(*items)
     rows = sorted(
         ({"team": str(t), "score": float(comp.iloc[i])}
          for i, t in enumerate(teams)),
@@ -110,7 +111,7 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
                     "name": TEAM_FULL_NAME.get(r["team"], r["team"]),
                     "pct": pct, "color": TEAM_COLORS.get(r["team"], "#7d8590"),
                     "ramp": ramp_color(pct / 100)})
-    return out, len(series)
+    return out, len(items)
 
 
 def _decade_marks(mn, mx):
