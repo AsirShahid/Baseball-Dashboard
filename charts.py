@@ -8,7 +8,8 @@ import pandas as pd
 
 from data import (
     config, load_csv, process_columns, stat_higher_better,
-    TEAM_COLORS, NL_TEAMS, AL_TEAMS, PALETTE, RANK_COLORSCALE, logo_b64,
+    TEAM_COLORS, NL_TEAMS, AL_TEAMS, PALETTE, RANK_COLORSCALE,
+    logo_b64, logo_aspect,
 )
 
 RANK_COLORS = [c for _, c in RANK_COLORSCALE]   # flat list for plotly express
@@ -264,14 +265,23 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         x_lo, x_hi = x_min - x_pad, x_max + x_pad
         y_lo, y_hi = y_min - y_pad, y_max + y_pad
         images = []
+        # Anchor box (0.07 x 0.11) is tuned for a square logo. For each team,
+        # size the box to match the logo's native aspect while holding the box
+        # area constant — so banner-shaped logos (Braves, Reds) and tall ones
+        # (Pirates, Angels) occupy the same visible area as the square ones
+        # instead of getting letterboxed.
+        _BASE_SX, _BASE_SY = 0.07, 0.11
         for team, xv, yv in zip(teams, x_vals, y_vals):
             src = logo_b64(str(team))
-            if src:
-                images.append(dict(
-                    source=src, xref="paper", yref="paper",
-                    x=(float(xv) - x_lo) / (x_hi - x_lo),
-                    y=(float(yv) - y_lo) / (y_hi - y_lo),
-                    sizex=0.07, sizey=0.11, sizing="contain",
+            if not src:
+                continue
+            k = (logo_aspect(str(team)) or 1.0) ** 0.5
+            sx, sy = _BASE_SX * k, _BASE_SY / k
+            images.append(dict(
+                source=src, xref="paper", yref="paper",
+                x=(float(xv) - x_lo) / (x_hi - x_lo),
+                y=(float(yv) - y_lo) / (y_hi - y_lo),
+                sizex=sx, sizey=sy, sizing="contain",
                     xanchor="center", yanchor="middle", layer="above",
                 ))
         fig.update_layout(images=images,
