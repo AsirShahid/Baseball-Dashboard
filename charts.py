@@ -84,6 +84,38 @@ def empty_fig(msg: str = "No data", theme: str = "dark"):
     return fig
 
 
+def team_axis_series(season, stat_type, stat):
+    """One team stat as a Series indexed by Team (deduped, teamIDfg order),
+    or None if the file/column is unavailable."""
+    key = "team_batting_dir" if stat_type == "Batting" else "team_pitching_dir"
+    df = load_csv(f"{config[key]}/{season}.csv")
+    if df.empty or stat not in df.columns or "Team" not in df.columns:
+        return None
+    if "teamIDfg" in df.columns:
+        df = df.sort_values("teamIDfg")
+    s = df.set_index("Team")[stat]
+    return s[~s.index.duplicated(keep="first")]
+
+
+def align_team_axes(season, axes):
+    """Align several team stats on the teams present in EVERY axis.
+
+    `axes` is a list of (stat_type, stat). Returns (teams, [Series, ...])
+    where each Series is positionally aligned to `teams` (ordered by the first
+    axis), or (None, None) if any axis is unavailable. This replaces fragile
+    by-row-position pairing across separate batting/pitching CSVs.
+    """
+    series = [team_axis_series(season, t, s) for t, s in axes]
+    if any(s is None for s in series):
+        return None, None
+    teams = [t for t in series[0].index
+             if all(t in s.index for s in series[1:])]
+    if not teams:
+        return None, None
+    aligned = [s.loc[teams].reset_index(drop=True) for s in series]
+    return teams, aligned
+
+
 def compute_composite_rank(*items) -> pd.Series:
     """Composite 0–100 percentile across (series, higher_is_better) pairs.
 
@@ -155,42 +187,30 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
     if not x_stat or not y_stat:
         return _err("Select stats to view", theme)
 
-    xkey = "team_batting_dir" if x_type == "Batting" else "team_pitching_dir"
-    ykey = "team_batting_dir" if y_type == "Batting" else "team_pitching_dir"
-    x_df = load_csv(f"{config[xkey]}/{season}.csv")
-    y_df = load_csv(f"{config[ykey]}/{season}.csv")
-
-    if x_df.empty or y_df.empty:
-        return _err(f"No data for {season}", theme)
-
-    for df in (x_df, y_df):
-        if "teamIDfg" in df.columns:
-            df.sort_values("teamIDfg", inplace=True)
-
-    if x_stat not in x_df.columns or y_stat not in y_df.columns:
-        return _err("Stat not available for this season", theme)
-
-    x_vals = x_df[x_stat].reset_index(drop=True)
-    y_vals = y_df[y_stat].reset_index(drop=True)
-    teams  = (x_df["Team"] if "Team" in x_df.columns
-              else y_df["Team"]).reset_index(drop=True)
-
-    if x_vals.isna().all() or y_vals.isna().all():
-        return _err(f"{x_stat} or {y_stat} has no data for {season}", theme)
-
-    # 3D: load Z data
+    # Align axes on teams shared across all of them, so a batting-vs-pitching
+    # plot pairs each team with its own values — never by row position across
+    # two differently-sized CSVs. Try X/Y/Z together; if Z is unavailable,
+    # fall back to a 2D X/Y alignment.
+    axes = [(x_type, x_stat), (y_type, y_stat)]
     z_vals = None
     is_3d  = False
     if z_stat:
-        zkey = "team_batting_dir" if z_type == "Batting" else "team_pitching_dir"
-        z_df = load_csv(f"{config[zkey]}/{season}.csv")
-        if not z_df.empty and z_stat in z_df.columns:
-            if "teamIDfg" in z_df.columns:
-                z_df.sort_values("teamIDfg", inplace=True)
-            _z = z_df[z_stat].reset_index(drop=True)
-            if not _z.isna().all():
-                z_vals = _z
-                is_3d  = True
+        team_list, aligned = align_team_axes(season, axes + [(z_type, z_stat)])
+        if team_list is not None and not aligned[2].isna().all():
+            z_vals, is_3d = aligned[2], True
+        else:
+            team_list, aligned = align_team_axes(season, axes)
+    else:
+        team_list, aligned = align_team_axes(season, axes)
+
+    if team_list is None:
+        return _err("Stat not available for this season", theme)
+
+    teams = pd.Series(team_list)
+    x_vals, y_vals = aligned[0], aligned[1]
+
+    if x_vals.isna().all() or y_vals.isna().all():
+        return _err(f"{x_stat} or {y_stat} has no data for {season}", theme)
 
     rank_score = None
     if use_color_rank:

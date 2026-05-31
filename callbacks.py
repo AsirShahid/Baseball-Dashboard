@@ -10,7 +10,9 @@ from data import (
     stat_higher_better, TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
     TEAM_FULL_NAME, TEAM_PRESETS, ramp_color,
 )
-from charts import render_team, render_player, compute_composite_rank
+from charts import (
+    render_team, render_player, compute_composite_rank, align_team_axes,
+)
 from components import leaderboard_cards, detail_body
 
 # Curated, direction-aware stats for the team detail panel.
@@ -76,32 +78,27 @@ def _spark(stat, dir_key, team, season):
 
 
 def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
-    def _load(typ, stat):
-        if not stat:
-            return None, None
-        key = "team_batting_dir" if typ == "Batting" else "team_pitching_dir"
-        df = load_csv(f"{config[key]}/{season}.csv")
-        if df.empty or stat not in df.columns or "Team" not in df.columns:
-            return None, None
-        if "teamIDfg" in df.columns:
-            df = df.sort_values("teamIDfg")
-        return (df["Team"].reset_index(drop=True),
-                df[stat].reset_index(drop=True))
-
-    teams, xv = _load(xt, xs)
-    _, yv = _load(yt, ys)
-    if teams is None or xv is None or yv is None:
+    if not xs or not ys:
         return [], 0
-    items = [(xv, stat_higher_better(xs, xt == "Pitching")),
-             (yv, stat_higher_better(ys, yt == "Pitching"))]
+    # Align axes on shared teams (same robustness as the chart), then rank.
+    axes = [(xt, xs), (yt, ys)]
+    dirs = [stat_higher_better(xs, xt == "Pitching"),
+            stat_higher_better(ys, yt == "Pitching")]
     if zs:
-        _, zv = _load(zt, zs)
-        if zv is not None:
-            items.append((zv, stat_higher_better(zs, zt == "Pitching")))
-    comp = compute_composite_rank(*items)
+        team_list, aligned = align_team_axes(season, axes + [(zt, zs)])
+        if team_list is not None:
+            dirs.append(stat_higher_better(zs, zt == "Pitching"))
+        else:
+            team_list, aligned = align_team_axes(season, axes)
+    else:
+        team_list, aligned = align_team_axes(season, axes)
+    if team_list is None:
+        return [], 0
+
+    comp = compute_composite_rank(*zip(aligned, dirs))
     rows = sorted(
         ({"team": str(t), "score": float(comp.iloc[i])}
-         for i, t in enumerate(teams)),
+         for i, t in enumerate(team_list)),
         key=lambda r: r["score"], reverse=True,
     )
     out = []
@@ -111,7 +108,7 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
                     "name": TEAM_FULL_NAME.get(r["team"], r["team"]),
                     "pct": pct, "color": TEAM_COLORS.get(r["team"], "#7d8590"),
                     "ramp": ramp_color(pct / 100)})
-    return out, len(items)
+    return out, len(dirs)
 
 
 def _decade_marks(mn, mx):
@@ -572,6 +569,8 @@ def register_callbacks(app):
         if not clicks or not any(clicks) or view != "team":
             return no_update, no_update, no_update
         trig = ctx.triggered_id
+        if not isinstance(trig, dict):
+            return no_update, no_update, no_update
         return trig["type"], trig["stat"], {"display": "none"}
 
     @app.callback(
