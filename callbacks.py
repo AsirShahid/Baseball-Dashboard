@@ -3,14 +3,15 @@
 
 from urllib.parse import urlencode
 
+import pandas as pd
 from dash import Input, Output, State, MATCH, ALL, no_update, ctx
 
 from data import (
     config, load_csv, process_columns, seasons_with_data, opts,
-    stat_higher_better, TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
+    TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
     TEAM_FULL_NAME, TEAM_PRESETS, ramp_color,
 )
-from charts import render_team, render_player, compute_composite_rank
+from charts import render_team, render_player, compute_composite_rank, rank_items
 from components import leaderboard_cards, detail_body
 
 # Curated, direction-aware stats for the team detail panel.
@@ -78,30 +79,26 @@ def _spark(stat, dir_key, team, season):
 def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
     def _load(typ, stat):
         if not stat:
-            return None, None
+            return None
         key = "team_batting_dir" if typ == "Batting" else "team_pitching_dir"
         df = load_csv(f"{config[key]}/{season}.csv")
         if df.empty or stat not in df.columns or "Team" not in df.columns:
-            return None, None
-        if "teamIDfg" in df.columns:
-            df = df.sort_values("teamIDfg")
-        return (df["Team"].reset_index(drop=True),
-                df[stat].reset_index(drop=True))
+            return None
+        # Index by team so axes loaded from different CSVs (batting vs
+        # pitching) align by team, not by row position.
+        return pd.Series(df[stat].values, index=df["Team"].astype(str))
 
-    teams, xv = _load(xt, xs)
-    _, yv = _load(yt, ys)
-    if teams is None or xv is None or yv is None:
+    xv = _load(xt, xs)
+    yv = _load(yt, ys)
+    if xv is None or yv is None:
         return [], 0
-    items = [(xv, stat_higher_better(xs, xt == "Pitching")),
-             (yv, stat_higher_better(ys, yt == "Pitching"))]
-    if zs:
-        _, zv = _load(zt, zs)
-        if zv is not None:
-            items.append((zv, stat_higher_better(zs, zt == "Pitching")))
+    zv = _load(zt, zs) if zs else None
+    items = rank_items((xv, xs, xt == "Pitching"),
+                       (yv, ys, yt == "Pitching"),
+                       (zv, zs, zt == "Pitching"))
     comp = compute_composite_rank(*items)
     rows = sorted(
-        ({"team": str(t), "score": float(comp.iloc[i])}
-         for i, t in enumerate(teams)),
+        ({"team": str(t), "score": float(s)} for t, s in comp.items()),
         key=lambda r: r["score"], reverse=True,
     )
     out = []

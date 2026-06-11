@@ -131,18 +131,17 @@ RANK_COLORSCALE = [[0.0, "#e5484d"], [0.5, "#f5a524"], [1.0, "#46a758"]]
 
 _LOWER_ALWAYS = frozenset({
     "ERA", "FIP", "xFIP", "SIERA", "WHIP", "BB/9", "HR/9", "H/9", "R/9",
-    "ERA-", "FIP-", "xFIP-", "tERA", "kwERA", "RA9",
-    "GDP", "GIDP", "CS", "E", "BK", "WP", "BS", "L", "HBP",
-    "SwStr%", "O-Swing%", "Chase%", "Pitches/Game",
+    "ERA-", "FIP-", "xFIP-", "tERA", "kwERA",
+    "GDP", "GIDP", "CS", "E", "BK", "WP", "BS", "L",
 })
 # Bad for a pitcher (offense allowed); good for a hitter.
 _LOWER_FOR_PITCHERS = frozenset({
     "AVG", "OBP", "SLG", "OPS", "ISO", "BABIP", "wOBA", "xwOBA", "wRC", "wRC+",
     "wRAA", "BB%", "HR", "R", "ER", "H", "BB", "1B", "2B", "3B", "RBI", "TB",
-    "HR/FB", "Barrel%", "HardHit%", "EV", "LD%",
+    "HR/FB", "Barrel%", "HardHit%", "EV", "LD%", "HBP",
 })
-# Bad for a hitter (strikeouts); good for a pitcher.
-_LOWER_FOR_BATTERS = frozenset({"K%", "SO", "K"})
+# Bad for a hitter (whiffs and chases); good for a pitcher.
+_LOWER_FOR_BATTERS = frozenset({"K%", "SO", "K", "SwStr%", "O-Swing%"})
 
 
 def stat_higher_better(stat: str, is_pitching: bool) -> bool:
@@ -263,9 +262,10 @@ def _clean_text(v):
     return html.unescape(_HTML_TAG_RE.sub("", v)).strip()
 
 
-def _strip_html(df: pd.DataFrame) -> pd.DataFrame:
+def strip_html(df: pd.DataFrame) -> pd.DataFrame:
     """FanGraphs' JSON API returns Name/Team as HTML <a> tags. Reduce them to
-    plain text so labels render cleanly (affects API-sourced 2025+ CSVs)."""
+    plain text so labels render cleanly. Shared by the CSV generator (cleans
+    before writing) and load_csv (cleans legacy/hand-edited files on read)."""
     for col in ("Name", "Team"):
         if col in df.columns:
             df[col] = df[col].map(_clean_text)
@@ -280,7 +280,7 @@ def load_csv(path: str) -> pd.DataFrame:
             df = pd.read_csv(path)
         else:
             df = _live_fetch(path)
-        return _strip_html(df)
+        return strip_html(df)
     except Exception:
         return pd.DataFrame()
 
