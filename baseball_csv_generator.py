@@ -20,96 +20,16 @@ import logging
 from pathlib import Path
 from time import sleep
 
-import pandas as pd
 import pybaseball as pyb
-import requests
 from pybaseball import (
     batting_stats, pitching_stats,
 )
 
-from data import strip_html
+from fangraphs_api import fetch_leaderboard, fetch_team, atomic_to_csv
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(levelname)s - %(message)s")
 pyb.cache.disable()
-
-_FG_API = "https://www.fangraphs.com/api/leaders/major-league/data"
-
-
-# Counting stats that should be SUMMED across players when aggregating to a
-# team. Anything else is treated as a rate stat and weighted-averaged by PA
-# (batters) or IP (pitchers).
-_COUNTING_STATS = frozenset({
-    "G", "GS", "WAR", "WPA", "RE24", "REW", "Clutch", "Pulls", "Events",
-    "Pitches", "Balls", "Strikes", "Barrels", "Events_pit",
-    # Batting counters
-    "PA", "AB", "H", "1B", "2B", "3B", "HR", "R", "RBI", "BB", "IBB",
-    "SO", "HBP", "SF", "SH", "GDP", "SB", "CS", "TB",
-    # Pitching counters
-    "IP", "W", "L", "SV", "BS", "HLD", "ER", "TBF",
-})
-
-
-def _aggregate_team(df: pd.DataFrame, stats: str) -> pd.DataFrame:
-    """Roll up player rows to one row per team.
-
-    Counting columns are summed; rate columns are weighted-averaged by PA
-    (batters) or IP (pitchers). This preserves correct team-level rate stats
-    instead of just summing wOBA/AVG/etc. across players.
-    """
-    # FanGraphs uses "- - -" as the Team value for players who were traded
-    # mid-season; aggregating those rows produces a phantom 31st team. Drop
-    # them before grouping.
-    df = df[~df["Team"].isin(["- - -", "", None])]
-
-    weight_col = "PA" if stats == "bat" else "IP"
-    numeric_cols = df.select_dtypes(include="number").columns.tolist()
-    if weight_col not in df.columns:
-        return df.groupby("Team")[numeric_cols].sum().reset_index()
-
-    rows = []
-    for team, grp in df.groupby("Team"):
-        weights = pd.to_numeric(grp[weight_col], errors="coerce").fillna(0)
-        total_w = float(weights.sum())
-        row = {"Team": team}
-        for c in numeric_cols:
-            vals = pd.to_numeric(grp[c], errors="coerce")
-            if c == weight_col or c in _COUNTING_STATS:
-                row[c] = vals.sum(skipna=True)
-            elif total_w > 0:
-                mask = vals.notna()
-                w = weights[mask]
-                v = vals[mask]
-                wsum = float(w.sum())
-                row[c] = (v * w).sum() / wsum if wsum > 0 else vals.mean()
-            else:
-                row[c] = vals.mean()
-        rows.append(row)
-    return pd.DataFrame(rows)
-
-
-def _fetch_team_api(stats: str, year: int) -> pd.DataFrame | None:
-    """Fetch team-level stats from the FanGraphs JSON API."""
-    params = dict(
-        pos="all", stats=stats, lg="all", qual=0,
-        type=8, season=year, month=0, season1=year,
-        ind=0, team=0, rost=0, age=0,
-        filter="", players=0, startdate="", enddate="",
-        pageitems=2000, pagenum=1,
-    )
-    try:
-        resp = requests.get(_FG_API, params=params, timeout=30)
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-        if not data:
-            return None
-        df = strip_html(pd.DataFrame(data))
-        if "Team" not in df.columns:
-            return None
-        return _aggregate_team(df, stats)
-    except Exception as exc:
-        logging.warning("  Team API fetch failed (stats=%s year=%d): %s", stats, year, exc)
-        return None
 
 
 def load_config():
@@ -122,37 +42,16 @@ def create_directories(directories):
         Path(d).mkdir(parents=True, exist_ok=True)
 
 
-def _fetch_players_api(stats: str, qual: str | int, year: int) -> pd.DataFrame | None:
-    """Fetch individual player stats from the FanGraphs JSON API."""
-    params = dict(
-        pos="all", stats=stats, lg="all", qual=qual,
-        type=8, season=year, month=0, season1=year,
-        ind=0, team=0, rost=0, age=0,
-        filter="", players=0, startdate="", enddate="",
-        pageitems=2000, pagenum=1,
-    )
-    try:
-        resp = requests.get(_FG_API, params=params, timeout=30)
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-        if not data:
-            return None
-        df = strip_html(pd.DataFrame(data))
-        logging.info("  API → %d rows, %d columns", len(df), len(df.columns))
-        return df
-    except Exception as exc:
-        logging.warning("  Players API fetch failed (stats=%s year=%d): %s", stats, year, exc)
-        return None
-
-
 def generate_csv(stats: str, qual: str | int, pyb_fn, year: int, directory: str,
                  skip_existing: bool = True) -> None:
     path = Path(directory) / f"{year}.csv"
     if skip_existing and path.exists():
         logging.info("  skip  %s/%d.csv (already exists)", directory, year)
         return
-    df = _fetch_players_api(stats, qual, year)
-    if df is None:
+    df = fetch_leaderboard(stats, qual, year)
+    if df is not None:
+        logging.info("  API → %d rows, %d columns", len(df), len(df.columns))
+    else:
         logging.warning("  API failed — falling back to pybaseball")
         try:
             df = pyb_fn(year)
@@ -160,7 +59,7 @@ def generate_csv(stats: str, qual: str | int, pyb_fn, year: int, directory: str,
         except Exception as exc:
             logging.error("  ERROR fetch/%d — %s", year, exc)
             return
-    df.to_csv(path)
+    atomic_to_csv(df, path)
     logging.info("  saved %s/%d.csv  (%d rows)", directory, year, len(df))
 
 
@@ -169,9 +68,9 @@ def generate_team_csv(stats: str, year: int, directory: str, skip_existing: bool
     if skip_existing and path.exists():
         logging.info("  skip  %s/%d.csv (already exists)", directory, year)
         return
-    df = _fetch_team_api(stats, year)
+    df = fetch_team(stats, year)
     if df is not None:
-        df.to_csv(path)
+        atomic_to_csv(df, path)
         logging.info("  saved %s/%d.csv  (%d rows)", directory, year, len(df))
     else:
         logging.warning("  skipped %s/%d.csv — FanGraphs API returned no data", directory, year)

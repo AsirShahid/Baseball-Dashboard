@@ -1,5 +1,7 @@
+.venv/
 baseball_env/
 *.pyc
 __pycache__/
 .DS_Store
 .streamlit/
+*.tmp
