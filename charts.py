@@ -97,6 +97,13 @@ def compute_composite_rank(*items) -> pd.Series:
     return pd.concat(ranks, axis=1).mean(axis=1).fillna(0.5) * 100
 
 
+def rank_items(*axes):
+    """Build compute_composite_rank args from (series, stat, is_pitching)
+    triples, skipping axes whose series is None (e.g. no Z axis)."""
+    return [(series, stat_higher_better(stat, is_pitching))
+            for series, stat, is_pitching in axes if series is not None]
+
+
 def add_mean_planes_3d(fig, x_vals, y_vals, z_vals, show_x_plane, show_y_plane):
     """Add semi-transparent amber mean reference planes to a 3D figure."""
     xlo, xhi = float(x_vals.min()), float(x_vals.max())
@@ -194,10 +201,9 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
 
     rank_score = None
     if use_color_rank:
-        items = [(x_vals, stat_higher_better(x_stat, x_type == "Pitching")),
-                 (y_vals, stat_higher_better(y_stat, y_type == "Pitching"))]
-        if z_vals is not None:
-            items.append((z_vals, stat_higher_better(z_stat, z_type == "Pitching")))
+        items = rank_items((x_vals, x_stat, x_type == "Pitching"),
+                           (y_vals, y_stat, y_type == "Pitching"),
+                           (z_vals, z_stat, z_type == "Pitching"))
         rank_score = compute_composite_rank(*items).round(1)
 
     fig = go.Figure()
@@ -347,10 +353,9 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
 
     if use_color_rank:
         is_pitch = (player_type == "Pitchers")
-        items = [(df[x_stat], stat_higher_better(x_stat, is_pitch)),
-                 (df[y_stat], stat_higher_better(y_stat, is_pitch))]
-        if is_3d:
-            items.append((df[z_stat], stat_higher_better(z_stat, is_pitch)))
+        items = rank_items((df[x_stat], x_stat, is_pitch),
+                           (df[y_stat], y_stat, is_pitch),
+                           (df[z_stat] if is_3d else None, z_stat, is_pitch))
         df["Composite Rank"] = compute_composite_rank(*items).round(1).values
 
     if use_color_rank:
