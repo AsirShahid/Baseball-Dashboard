@@ -55,7 +55,7 @@ python baseball_csv_generator.py --start 2020 --end 2026 --force
 python baseball_csv_generator.py --start 2025 --watch
 ```
 
-`launcher.sh` automatically runs the generator in `--watch` mode in the background, so the current season stays up to date while the dashboard is running.
+`launcher.sh` automatically runs the generator in `--watch` mode in the background, so the current season stays up to date while the dashboard is running. The dashboard re-reads a CSV whenever the file changes on disk, so refreshed data shows up without a restart.
 
 ## Configuration
 
@@ -67,6 +67,14 @@ Edit `config.json` to change:
 | `update_interval` | `14400` | Seconds between live-data refreshes (watch mode) |
 | `request_delay` | `5` | Seconds between pybaseball requests |
 | `*_dir` keys | various | Directories where CSVs are stored |
+
+Environment variables for `app.py` / `launcher.sh`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `HOST` | `127.0.0.1` | Bind address — set `0.0.0.0` to serve on the network |
+| `PORT` | `8050` | Listen port |
+| `DASH_DEBUG` | off | Set `1` to enable the dev reloader and Werkzeug debugger (never in production — the debugger allows code execution) |
 
 ## Data sources
 

@@ -38,7 +38,7 @@ def _fmt_val(v) -> str:
         return "—"
     if abs(v) < 1:
         s = f"{v:.3f}"
-        return s.replace("0.", ".", 1) if s.startswith("0.") else s
+        return s.replace("0.", ".", 1) if s.startswith(("0.", "-0.")) else s
     if abs(v) < 10:
         return f"{v:.2f}"
     return f"{v:.0f}"
@@ -55,8 +55,8 @@ def _pct(series, value, higher_better) -> int:
     return int(round(frac * 100))
 
 
-def _team_value(dir_key, year, team, stat):
-    df = load_csv(f"{config[dir_key]}/{year}.csv")
+def _team_value(dir_key, year, team, stat, fetch=True):
+    df = load_csv(f"{config[dir_key]}/{year}.csv", fetch=fetch)
     if df.empty or stat not in df.columns or "Team" not in df.columns:
         return None, df
     row = df[df["Team"] == team]
@@ -68,7 +68,9 @@ def _team_value(dir_key, year, team, stat):
 def _spark(stat, dir_key, team, season):
     years, values = [], []
     for y in range(season - 4, season + 1):
-        v, _ = _team_value(dir_key, y, team, stat)
+        # fetch=False: don't fire blocking network requests for missing
+        # neighbouring seasons just to draw a sparkline.
+        v, _ = _team_value(dir_key, y, team, stat, fetch=False)
         if v is not None and v == v:
             years.append(y)
             values.append(float(v))
@@ -271,7 +273,8 @@ def register_callbacks(app):
             return [], no_update, [], no_update, [], None
         if ptype == "Batters" and "WAR" in df.columns and "PA" in df.columns:
             df = df.copy()
-            df["WAR/650 PAs"] = (df["WAR"] / df["PA"] * 650).round(2)
+            pa = df["PA"].where(df["PA"] > 0)
+            df["WAR/650 PAs"] = (df["WAR"] / pa * 650).round(2)
         cols = process_columns(df.columns)
         if not cols:
             return [], no_update, [], no_update, [], None

@@ -105,7 +105,10 @@ def rank_items(*axes):
 
 
 def add_mean_planes_3d(fig, x_vals, y_vals, z_vals, show_x_plane, show_y_plane):
-    """Add semi-transparent amber mean reference planes to a 3D figure."""
+    """Add semi-transparent amber mean reference planes to a 3D figure.
+
+    The x/y planes follow the 2D vertical/horizontal-mean toggles; the z plane
+    is always drawn because there is no third toggle in the UI."""
     xlo, xhi = float(x_vals.min()), float(x_vals.max())
     ylo, yhi = float(y_vals.min()), float(y_vals.max())
     zlo, zhi = float(z_vals.min()), float(z_vals.max())
@@ -169,35 +172,42 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
 
     if x_df.empty or y_df.empty:
         return _err(f"No data for {season}", theme)
-
-    for df in (x_df, y_df):
-        if "teamIDfg" in df.columns:
-            df.sort_values("teamIDfg", inplace=True)
-
+    if "Team" not in x_df.columns or "Team" not in y_df.columns:
+        return _err(f"No team data for {season}", theme)
     if x_stat not in x_df.columns or y_stat not in y_df.columns:
         return _err("Stat not available for this season", theme)
 
-    x_vals = x_df[x_stat].reset_index(drop=True)
-    y_vals = y_df[y_stat].reset_index(drop=True)
-    teams  = (x_df["Team"] if "Team" in x_df.columns
-              else y_df["Team"]).reset_index(drop=True)
-
-    if x_vals.isna().all() or y_vals.isna().all():
-        return _err(f"{x_stat} or {y_stat} has no data for {season}", theme)
+    # Join axes on Team so values loaded from different CSVs (batting vs
+    # pitching, possibly stored in different row orders) pair up by team
+    # rather than by row position.
+    merged = pd.merge(
+        x_df[["Team", x_stat]].rename(columns={x_stat: "_x"}),
+        y_df[["Team", y_stat]].rename(columns={y_stat: "_y"}),
+        on="Team",
+    )
 
     # 3D: load Z data
-    z_vals = None
-    is_3d  = False
+    is_3d = False
     if z_stat:
         zkey = "team_batting_dir" if z_type == "Batting" else "team_pitching_dir"
         z_df = load_csv(f"{config[zkey]}/{season}.csv")
-        if not z_df.empty and z_stat in z_df.columns:
-            if "teamIDfg" in z_df.columns:
-                z_df.sort_values("teamIDfg", inplace=True)
-            _z = z_df[z_stat].reset_index(drop=True)
-            if not _z.isna().all():
-                z_vals = _z
-                is_3d  = True
+        if (not z_df.empty and "Team" in z_df.columns
+                and z_stat in z_df.columns and not z_df[z_stat].isna().all()):
+            merged = pd.merge(
+                merged, z_df[["Team", z_stat]].rename(columns={z_stat: "_z"}),
+                on="Team",
+            )
+            is_3d = True
+
+    if merged.empty:
+        return _err(f"No data for {season}", theme)
+    x_vals = merged["_x"]
+    y_vals = merged["_y"]
+    z_vals = merged["_z"] if is_3d else None
+    teams  = merged["Team"]
+
+    if x_vals.isna().all() or y_vals.isna().all():
+        return _err(f"{x_stat} or {y_stat} has no data for {season}", theme)
 
     rank_score = None
     if use_color_rank:
@@ -253,11 +263,12 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         for team, xv, yv in zip(teams, x_vals, y_vals):
             src = logo_b64(str(team))
             if src:
+                # Anchored in data coordinates so logos track zoom/pan.
                 images.append(dict(
-                    source=src, xref="paper", yref="paper",
-                    x=(float(xv) - x_lo) / (x_hi - x_lo),
-                    y=(float(yv) - y_lo) / (y_hi - y_lo),
-                    sizex=0.07, sizey=0.11, sizing="contain",
+                    source=src, xref="x", yref="y",
+                    x=float(xv), y=float(yv),
+                    sizex=(x_hi - x_lo) * 0.07, sizey=(y_hi - y_lo) * 0.11,
+                    sizing="contain",
                     xanchor="center", yanchor="middle", layer="above",
                 ))
         fig.update_layout(images=images,
@@ -324,7 +335,9 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
 
     df = df.copy()
     if is_batter and "WAR" in df.columns and "PA" in df.columns:
-        df["WAR/650 PAs"] = (df["WAR"] / df["PA"] * 650).round(2)
+        # PA can be 0 in the qual=0 data; leave those rows NaN instead of inf.
+        pa = df["PA"].where(df["PA"] > 0)
+        df["WAR/650 PAs"] = (df["WAR"] / pa * 650).round(2)
 
     if not use_qualified and col in df.columns:
         try:
