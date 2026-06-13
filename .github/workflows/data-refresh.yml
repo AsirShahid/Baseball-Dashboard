@@ -1,0 +1,63 @@
+name: Data refresh
+
+# Re-fetch FanGraphs data and commit any changes. The dashboard's live current
+# season is refreshed separately (on the server, every few hours). This job
+# exists to catch FanGraphs' periodic *recalculations* of completed seasons —
+# WAR, wOBA/wRC+ constants, and park factors get revised over time — which a
+# skip-existing fetch would never pick up.
+on:
+  schedule:
+    # 06:00 UTC on the 1st of each month.
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "First season to refresh (earliest is 1871)"
+        default: "1871"
+      end:
+        description: "Last season to refresh (blank = current year)"
+        default: ""
+
+permissions:
+  contents: write
+
+# Never let two refreshes overlap (a manual run during the scheduled one).
+concurrency:
+  group: data-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330   # full-history --force is ~900 polite requests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Refresh data (re-download regardless of what's cached)
+        run: |
+          python baseball_csv_generator.py \
+            --start "${{ github.event.inputs.start || '1871' }}" \
+            ${{ github.event.inputs.end && format('--end {0}', github.event.inputs.end) || '' }} \
+            --force
+
+      - name: Commit changed data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- '*.csv'
+          if git diff --cached --quiet; then
+            echo "No data changes this run."
+          else
+            git commit -m "Refresh FanGraphs data ($(date -u +%Y-%m-%d))"
+            git push
+          fi

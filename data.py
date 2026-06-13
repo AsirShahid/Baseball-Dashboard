@@ -22,7 +22,7 @@ try:
 except ImportError:
     _PYBASEBALL = False
 
-from fangraphs_api import strip_html, fetch_team, atomic_to_csv
+from fangraphs_api import strip_html, fetch_team, atomic_to_csv, split_month
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -199,7 +199,8 @@ def _live_fetch(path: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     if parent in _TEAM_DIRS:
-        df = fetch_team(_TEAM_DIRS[parent], year)
+        df = fetch_team(_TEAM_DIRS[parent], year,
+                        month=split_month(year, config["current_year"]))
         if df is not None:
             atomic_to_csv(df, path)
             logging.info("FanGraphs team API: cached %s", path)

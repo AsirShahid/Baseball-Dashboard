@@ -25,7 +25,7 @@ from pybaseball import (
     batting_stats, pitching_stats,
 )
 
-from fangraphs_api import fetch_leaderboard, fetch_team, atomic_to_csv
+from fangraphs_api import fetch_leaderboard, fetch_team, atomic_to_csv, split_month
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(levelname)s - %(message)s")
@@ -43,12 +43,12 @@ def create_directories(directories):
 
 
 def generate_csv(stats: str, qual: str | int, pyb_fn, year: int, directory: str,
-                 skip_existing: bool = True) -> None:
+                 skip_existing: bool = True, month: int = 0) -> None:
     path = Path(directory) / f"{year}.csv"
     if skip_existing and path.exists():
         logging.info("  skip  %s/%d.csv (already exists)", directory, year)
         return
-    df = fetch_leaderboard(stats, qual, year)
+    df = fetch_leaderboard(stats, qual, year, month=month)
     if df is not None:
         logging.info("  API → %d rows, %d columns", len(df), len(df.columns))
     else:
@@ -63,12 +63,13 @@ def generate_csv(stats: str, qual: str | int, pyb_fn, year: int, directory: str,
     logging.info("  saved %s/%d.csv  (%d rows)", directory, year, len(df))
 
 
-def generate_team_csv(stats: str, year: int, directory: str, skip_existing: bool = True) -> None:
+def generate_team_csv(stats: str, year: int, directory: str,
+                      skip_existing: bool = True, month: int = 0) -> None:
     path = Path(directory) / f"{year}.csv"
     if skip_existing and path.exists():
         logging.info("  skip  %s/%d.csv (already exists)", directory, year)
         return
-    df = fetch_team(stats, year)
+    df = fetch_team(stats, year, month=month)
     if df is not None:
         atomic_to_csv(df, path)
         logging.info("  saved %s/%d.csv  (%d rows)", directory, year, len(df))
@@ -78,14 +79,18 @@ def generate_team_csv(stats: str, year: int, directory: str, skip_existing: bool
 
 def fetch_years(start, end, config, skip_existing=True):
     delay = config.get("request_delay", 5)
+    current_year = config["current_year"]
     for year in range(end, start - 1, -1):
         logging.info("── %d ──────────────────────────", year)
-        generate_team_csv("bat", year, config["team_batting_dir"],  skip_existing=skip_existing)
-        generate_team_csv("pit", year, config["team_pitching_dir"], skip_existing=skip_existing)
-        generate_csv("bat", "y", batting_stats,  year, config["qualified_batting_dir"],  skip_existing=skip_existing)
-        generate_csv("pit", "y", pitching_stats, year, config["qualified_pitching_dir"], skip_existing=skip_existing)
-        generate_csv("bat",  0,  lambda y: batting_stats(y, qual=0),  year, config["all_batting_dir"],  skip_existing=skip_existing)
-        generate_csv("pit",  0,  lambda y: pitching_stats(y, qual=0), year, config["all_pitching_dir"], skip_existing=skip_existing)
+        # In-progress season → live (today-inclusive) split; past seasons →
+        # standard full-season split.
+        month = split_month(year, current_year)
+        generate_team_csv("bat", year, config["team_batting_dir"],  skip_existing=skip_existing, month=month)
+        generate_team_csv("pit", year, config["team_pitching_dir"], skip_existing=skip_existing, month=month)
+        generate_csv("bat", "y", batting_stats,  year, config["qualified_batting_dir"],  skip_existing=skip_existing, month=month)
+        generate_csv("pit", "y", pitching_stats, year, config["qualified_pitching_dir"], skip_existing=skip_existing, month=month)
+        generate_csv("bat",  0,  lambda y: batting_stats(y, qual=0),  year, config["all_batting_dir"],  skip_existing=skip_existing, month=month)
+        generate_csv("pit",  0,  lambda y: pitching_stats(y, qual=0), year, config["all_pitching_dir"], skip_existing=skip_existing, month=month)
         sleep(delay)
 
 

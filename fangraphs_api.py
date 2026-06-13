@@ -98,17 +98,29 @@ def aggregate_team(df: pd.DataFrame, stats: str) -> pd.DataFrame:
 
 # ── Fetchers ──────────────────────────────────────────────────────────────────
 
-def fetch_leaderboard(stats: str, qual: str | int, year: int,
-                      timeout: int = 30) -> pd.DataFrame | None:
-    """Fetch a player leaderboard from the FanGraphs JSON API.
+# FanGraphs "split" codes (the `month` query param). 0 is the standard
+# full-season leaderboard and works for every season. 33 is the
+# "Live Stats - Full Season" split, which folds in the current day's
+# in-progress games — but only returns data for the season in progress
+# (it's empty for completed/historical seasons).
+FULL_SEASON_SPLIT = 0
+LIVE_SPLIT = 33
 
-    stats : "bat" or "pit"
-    qual  : "y" for qualified, 0 for all players
-    """
+
+def split_month(year: int, current_year: int) -> int:
+    """Choose the FanGraphs split for `year`: the live, today-inclusive split
+    for the in-progress season, the standard full-season split otherwise.
+
+    The live split is empty for past seasons, so fetch_leaderboard falls back
+    to the full-season split when it returns nothing."""
+    return LIVE_SPLIT if year >= current_year else FULL_SEASON_SPLIT
+
+
+def _request_leaderboard(stats, qual, year, month, timeout) -> pd.DataFrame | None:
     params = dict(
         pos="all", stats=stats, lg="all", qual=qual,
         type=8,           # Dashboard preset — returns 500+ columns
-        season=year, month=0, season1=year,
+        season=year, month=month, season1=year,
         ind=0, team=0, rost=0, age=0,
         filter="", players=0, startdate="", enddate="",
         pageitems=PAGE_SIZE, pagenum=1,
@@ -118,19 +130,41 @@ def fetch_leaderboard(stats: str, qual: str | int, year: int,
         resp.raise_for_status()
         data = resp.json().get("data", [])
         if not data:
-            logging.warning("FanGraphs API returned 0 rows (stats=%s qual=%s year=%s)",
-                            stats, qual, year)
             return None
         return strip_html(pd.DataFrame(data))
     except Exception as exc:
-        logging.warning("FanGraphs API fetch failed (stats=%s qual=%s year=%s): %s",
-                        stats, qual, year, exc)
+        logging.warning("FanGraphs API fetch failed (stats=%s qual=%s year=%s month=%s): %s",
+                        stats, qual, year, month, exc)
         return None
 
 
-def fetch_team(stats: str, year: int, timeout: int = 30) -> pd.DataFrame | None:
+def fetch_leaderboard(stats: str, qual: str | int, year: int,
+                      month: int = FULL_SEASON_SPLIT,
+                      timeout: int = 30) -> pd.DataFrame | None:
+    """Fetch a player leaderboard from the FanGraphs JSON API.
+
+    stats : "bat" or "pit"
+    qual  : "y" for qualified, 0 for all players
+    month : FanGraphs split code (see FULL_SEASON_SPLIT / LIVE_SPLIT)
+
+    The live split is empty outside the in-progress season, so a live request
+    that returns nothing falls back to the full-season split.
+    """
+    df = _request_leaderboard(stats, qual, year, month, timeout)
+    if df is None and month != FULL_SEASON_SPLIT:
+        logging.info("Live split empty for %s (stats=%s); falling back to full-season",
+                     year, stats)
+        df = _request_leaderboard(stats, qual, year, FULL_SEASON_SPLIT, timeout)
+    if df is None:
+        logging.warning("FanGraphs API returned no data (stats=%s qual=%s year=%s)",
+                        stats, qual, year)
+    return df
+
+
+def fetch_team(stats: str, year: int, month: int = FULL_SEASON_SPLIT,
+               timeout: int = 30) -> pd.DataFrame | None:
     """Fetch team-level stats: player leaderboard rolled up via aggregate_team."""
-    df = fetch_leaderboard(stats, qual=0, year=year, timeout=timeout)
+    df = fetch_leaderboard(stats, qual=0, year=year, month=month, timeout=timeout)
     if df is None or "Team" not in df.columns:
         return None
     return aggregate_team(df, stats)
