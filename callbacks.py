@@ -572,6 +572,8 @@ def register_callbacks(app):
         if not clicks or not any(clicks) or view != "team":
             return no_update, no_update, no_update
         trig = ctx.triggered_id
+        if not isinstance(trig, dict):
+            return no_update, no_update, no_update
         return trig["type"], trig["stat"], {"display": "none"}
 
     @app.callback(

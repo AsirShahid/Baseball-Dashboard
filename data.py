@@ -303,6 +303,7 @@ _LOGO_SIZE = 160  # all logos normalised to this square (px) before encoding
 
 @functools.lru_cache(maxsize=64)
 def logo_b64(team: str) -> str | None:
+    """Logo as a PNG data URI, at native aspect (not padded to a square)."""
     name = TEAM_LOGO_MAP.get(team)
     if not name:
         return None
@@ -312,18 +313,35 @@ def logo_b64(team: str) -> str | None:
             with _PILImage.open(path) as img:
                 img = img.convert("RGBA")
                 img.thumbnail((_LOGO_SIZE, _LOGO_SIZE), _PILImage.LANCZOS)
-                canvas = _PILImage.new("RGBA", (_LOGO_SIZE, _LOGO_SIZE), (0, 0, 0, 0))
-                canvas.paste(img,
-                             (((_LOGO_SIZE - img.width) // 2),
-                              ((_LOGO_SIZE - img.height) // 2)),
-                             img)
-            buf = io.BytesIO()
-            canvas.save(buf, format="PNG")
-            return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                return ("data:image/png;base64,"
+                        + base64.b64encode(buf.getvalue()).decode())
         with open(path, "rb") as f:
             return "data:image/png;base64," + base64.b64encode(f.read()).decode()
     except Exception:
         return None
+
+
+@functools.lru_cache(maxsize=64)
+def logo_aspect(team: str) -> float | None:
+    """Native aspect ratio (width / height) of a team's logo, or None.
+
+    Used by the chart renderer to size each logo's box so banner-shaped
+    logos (Braves, Reds) and tall ones (Pirates, Angels) all occupy a
+    similar visible area instead of getting letterboxed into a square.
+    """
+    name = TEAM_LOGO_MAP.get(team)
+    if not name:
+        return None
+    try:
+        if _PIL:
+            with _PILImage.open(f"./Logos/{name}-resizedmatplotlib.png") as img:
+                w, h = img.size
+                return w / h if h else None
+    except Exception:
+        return None
+    return None
 
 
 def safe_int(val, default):
