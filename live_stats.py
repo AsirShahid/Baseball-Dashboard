@@ -22,7 +22,7 @@ from time import sleep
 import pandas as pd
 import pybaseball as pyb
 
-from fangraphs_api import fetch_leaderboard, atomic_to_csv
+from fangraphs_api import fetch_leaderboard, atomic_to_csv, LIVE_SPLIT
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,7 +71,9 @@ def update_once(year: int, config: dict) -> None:
 
     for label, stats, qual, out_dir, pyb_fn in targets:
         log.info("Fetching %s for %d …", label, year)
-        df = fetch_leaderboard(stats, qual, year)
+        # live_stats only ever fetches the in-progress season, so request the
+        # live (today-inclusive) split; it falls back to full-season if empty.
+        df = fetch_leaderboard(stats, qual, year, month=LIVE_SPLIT)
 
         if df is None:
             log.warning("  API failed — falling back to pybaseball")

@@ -160,3 +160,73 @@ def test_backfill_skips_duplicate_names():
     out = backfill_null_columns(df, fb)
     assert out.loc[out.Name == "Aaron Judge", "X"].iloc[0] == 3
     assert out.loc[out.Name == "Will Smith", "X"].isna().all()
+
+
+def test_split_month_picks_live_for_current_season():
+    from fangraphs_api import split_month, LIVE_SPLIT, FULL_SEASON_SPLIT
+    assert split_month(2026, 2026) == LIVE_SPLIT       # in-progress season
+    assert split_month(2027, 2026) == LIVE_SPLIT       # future also live (falls back if empty)
+    assert split_month(2025, 2026) == FULL_SEASON_SPLIT
+    assert split_month(1990, 2026) == FULL_SEASON_SPLIT
+
+
+class _FakeResp:
+    def __init__(self, data):
+        self._data = data
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"data": self._data}
+
+
+def test_fetch_leaderboard_falls_back_when_live_split_empty(monkeypatch):
+    """A live-split request that returns nothing must retry on the full-season
+    split (so an out-of-season live request still yields data)."""
+    import fangraphs_api as fa
+    seen = []
+
+    def fake_get(url, params=None, timeout=None):
+        seen.append(params["month"])
+        if params["month"] == fa.FULL_SEASON_SPLIT:
+            return _FakeResp([{"Name": "X", "Team": "NYY", "wRC+": 100}])
+        return _FakeResp([])  # live split empty
+
+    monkeypatch.setattr(fa.requests, "get", fake_get)
+    df = fa.fetch_leaderboard("bat", "y", 2026, month=fa.LIVE_SPLIT)
+    assert df is not None and len(df) == 1
+    assert seen == [fa.LIVE_SPLIT, fa.FULL_SEASON_SPLIT]  # tried live, then fell back
+
+
+def test_fetch_leaderboard_no_fallback_on_full_season(monkeypatch):
+    """A full-season request that's empty should not loop back on itself."""
+    import fangraphs_api as fa
+    seen = []
+
+    def fake_get(url, params=None, timeout=None):
+        seen.append(params["month"])
+        return _FakeResp([])
+
+    monkeypatch.setattr(fa.requests, "get", fake_get)
+    df = fa.fetch_leaderboard("bat", "y", 1990)  # defaults to FULL_SEASON_SPLIT
+    assert df is None
+    assert seen == [fa.FULL_SEASON_SPLIT]  # exactly one request, no retry
+
+
+def test_fetch_team_passes_month_through(monkeypatch):
+    """Live split selection must reach the team roll-up too."""
+    import fangraphs_api as fa
+    seen = []
+
+    def fake_get(url, params=None, timeout=None):
+        seen.append(params["month"])
+        return _FakeResp([
+            {"Team": "NYY", "PA": 600, "wOBA": 0.350, "HR": 30},
+            {"Team": "NYY", "PA": 400, "wOBA": 0.300, "HR": 10},
+        ])
+
+    monkeypatch.setattr(fa.requests, "get", fake_get)
+    out = fa.fetch_team("bat", 2026, month=fa.LIVE_SPLIT)
+    assert seen == [fa.LIVE_SPLIT]
+    assert list(out.Team) == ["NYY"] and out.HR.iloc[0] == 40  # rolled up
