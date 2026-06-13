@@ -115,19 +115,19 @@ def top_nav():
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 def _year_scrubber(init_year):
-    max_year = config["current_year"]
+    first, last = config["start_year"], config["current_year"]
     return html.Div(className="yr", children=[
         html.Div(className="yr-head", children=[
             html.Span("SEASON", className="yr-label"),
             html.Span(str(init_year), id="season-val", className="yr-val"),
         ]),
-        dcc.Slider(id="season-slider", min=1871, max=max_year, step=None,
+        dcc.Slider(id="season-slider", min=first, max=last, step=None,
                    value=init_year, marks={}, included=True,
                    className="season-slider"),
         html.Div(className="yr-step", children=[
             html.Button("◂", id="season-prev", n_clicks=0),
             dcc.Input(id="season-input", type="number", value=init_year,
-                      min=1871, max=max_year, debounce=True),
+                      min=first, max=last, debounce=True),
             html.Button("▸", id="season-next", n_clicks=0),
         ]),
     ])

@@ -3,16 +3,15 @@
 
 from urllib.parse import urlencode
 
+import pandas as pd
 from dash import Input, Output, State, MATCH, ALL, no_update, ctx
 
 from data import (
     config, load_csv, process_columns, seasons_with_data, opts,
-    stat_higher_better, TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
+    TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
     TEAM_FULL_NAME, TEAM_PRESETS, ramp_color,
 )
-from charts import (
-    render_team, render_player, compute_composite_rank, align_team_axes,
-)
+from charts import render_team, render_player, compute_composite_rank, rank_items
 from components import leaderboard_cards, detail_body
 
 # Curated, direction-aware stats for the team detail panel.
@@ -39,7 +38,7 @@ def _fmt_val(v) -> str:
         return "—"
     if abs(v) < 1:
         s = f"{v:.3f}"
-        return s.replace("0.", ".", 1) if s.startswith("0.") else s
+        return s.replace("0.", ".", 1) if s.startswith(("0.", "-0.")) else s
     if abs(v) < 10:
         return f"{v:.2f}"
     return f"{v:.0f}"
@@ -56,8 +55,8 @@ def _pct(series, value, higher_better) -> int:
     return int(round(frac * 100))
 
 
-def _team_value(dir_key, year, team, stat):
-    df = load_csv(f"{config[dir_key]}/{year}.csv")
+def _team_value(dir_key, year, team, stat, fetch=True):
+    df = load_csv(f"{config[dir_key]}/{year}.csv", fetch=fetch)
     if df.empty or stat not in df.columns or "Team" not in df.columns:
         return None, df
     row = df[df["Team"] == team]
@@ -69,7 +68,9 @@ def _team_value(dir_key, year, team, stat):
 def _spark(stat, dir_key, team, season):
     years, values = [], []
     for y in range(season - 4, season + 1):
-        v, _ = _team_value(dir_key, y, team, stat)
+        # fetch=False: don't fire blocking network requests for missing
+        # neighbouring seasons just to draw a sparkline.
+        v, _ = _team_value(dir_key, y, team, stat, fetch=False)
         if v is not None and v == v:
             years.append(y)
             values.append(float(v))
@@ -78,27 +79,28 @@ def _spark(stat, dir_key, team, season):
 
 
 def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
-    if not xs or not ys:
-        return [], 0
-    # Align axes on shared teams (same robustness as the chart), then rank.
-    axes = [(xt, xs), (yt, ys)]
-    dirs = [stat_higher_better(xs, xt == "Pitching"),
-            stat_higher_better(ys, yt == "Pitching")]
-    if zs:
-        team_list, aligned = align_team_axes(season, axes + [(zt, zs)])
-        if team_list is not None:
-            dirs.append(stat_higher_better(zs, zt == "Pitching"))
-        else:
-            team_list, aligned = align_team_axes(season, axes)
-    else:
-        team_list, aligned = align_team_axes(season, axes)
-    if team_list is None:
-        return [], 0
+    def _load(typ, stat):
+        if not stat:
+            return None
+        key = "team_batting_dir" if typ == "Batting" else "team_pitching_dir"
+        df = load_csv(f"{config[key]}/{season}.csv")
+        if df.empty or stat not in df.columns or "Team" not in df.columns:
+            return None
+        # Index by team so axes loaded from different CSVs (batting vs
+        # pitching) align by team, not by row position.
+        return pd.Series(df[stat].values, index=df["Team"].astype(str))
 
-    comp = compute_composite_rank(*zip(aligned, dirs))
+    xv = _load(xt, xs)
+    yv = _load(yt, ys)
+    if xv is None or yv is None:
+        return [], 0
+    zv = _load(zt, zs) if zs else None
+    items = rank_items((xv, xs, xt == "Pitching"),
+                       (yv, ys, yt == "Pitching"),
+                       (zv, zs, zt == "Pitching"))
+    comp = compute_composite_rank(*items)
     rows = sorted(
-        ({"team": str(t), "score": float(comp.iloc[i])}
-         for i, t in enumerate(team_list)),
+        ({"team": str(t), "score": float(s)} for t, s in comp.items()),
         key=lambda r: r["score"], reverse=True,
     )
     out = []
@@ -108,7 +110,7 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
                     "name": TEAM_FULL_NAME.get(r["team"], r["team"]),
                     "pct": pct, "color": TEAM_COLORS.get(r["team"], "#7d8590"),
                     "ramp": ramp_color(pct / 100)})
-    return out, len(dirs)
+    return out, len(items)
 
 
 def _decade_marks(mn, mx):
@@ -271,7 +273,8 @@ def register_callbacks(app):
             return [], no_update, [], no_update, [], None
         if ptype == "Batters" and "WAR" in df.columns and "PA" in df.columns:
             df = df.copy()
-            df["WAR/650 PAs"] = (df["WAR"] / df["PA"] * 650).round(2)
+            pa = df["PA"].where(df["PA"] > 0)
+            df["WAR/650 PAs"] = (df["WAR"] / pa * 650).round(2)
         cols = process_columns(df.columns)
         if not cols:
             return [], no_update, [], no_update, [], None

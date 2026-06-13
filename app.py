@@ -6,10 +6,11 @@ builders in components.py, and every callback in callbacks.py.
 """
 
 import logging
+import os
 from urllib.parse import urlparse, parse_qs
 
 import dash
-from dash import dcc
+from dash import dcc, html
 import flask
 
 from data import safe_int, config
@@ -73,7 +74,8 @@ def serve_layout():
 
     view = "player" if str(p.get("view", "team")).lower().startswith("player") \
         else "team"
-    season = safe_int(p.get("season") or p.get("p_season"), 2024)
+    season = safe_int(p.get("season") or p.get("p_season"),
+                      config["current_year"])
 
     x_type = p.get("x_type", "Batting")
     y_type = p.get("y_type", "Pitching")
@@ -112,7 +114,6 @@ def serve_layout():
     def seg_store(group, value):
         return dcc.Store(id={"kind": "seg-store", "group": group}, data=value)
 
-    from dash import html
     return html.Div(className="app", children=[
         dcc.Location(id="url", refresh=False),
         dcc.Store(id="theme-store", storage_type="local", data="dark"),
@@ -132,4 +133,10 @@ register_callbacks(app)
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8050)
+    # Debug mode exposes the Werkzeug interactive debugger (arbitrary code
+    # execution), so it is opt-in and the default bind is loopback only.
+    # Set HOST=0.0.0.0 to serve on the network, DASH_DEBUG=1 while developing.
+    debug = os.environ.get("DASH_DEBUG", "").lower() in ("1", "true", "yes")
+    app.run(debug=debug,
+            host=os.environ.get("HOST", "127.0.0.1"),
+            port=int(os.environ.get("PORT", "8050")))

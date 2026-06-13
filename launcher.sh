@@ -30,19 +30,20 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 # ── Launch processes ──────────────────────────────────────────────────────────
-echo "Starting live stats updater..."
-"$PYTHON" live_stats.py &
-pids+=($!)
-
 echo "Starting CSV data updater (watch mode)..."
 # --watch: fetches any missing seasons on startup, then refreshes the current
 # season every update_interval seconds (default 4 h, set in config.json).
+# This covers both team and player CSVs — live_stats.py is not needed here
+# (running both would double-fetch and race on the same files).
 "$PYTHON" baseball_csv_generator.py --watch &
 pids+=($!)
 
-echo "Starting dashboard at http://localhost:8050 ..."
+echo "Starting dashboard at http://localhost:${PORT:-8050} ..."
+# Loopback-only and debug off by default; export HOST=0.0.0.0 to serve on the
+# network, DASH_DEBUG=1 for the dev reloader/debugger.
 "$PYTHON" app.py &
 pids+=($!)
 
-# Wait for any process to exit unexpectedly, then shut down everything.
-wait -n "${pids[@]}"
+# Wait for any child to exit unexpectedly, then shut down everything.
+# (Bare `wait -n` waits for any child; passing pids needs bash >= 5.1.)
+wait -n

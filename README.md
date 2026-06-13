@@ -55,7 +55,13 @@ python baseball_csv_generator.py --start 2020 --end 2026 --force
 python baseball_csv_generator.py --start 2025 --watch
 ```
 
-`launcher.sh` automatically runs the generator in `--watch` mode in the background, so the current season stays up to date while the dashboard is running.
+`launcher.sh` automatically runs the generator in `--watch` mode in the background, so the current season stays up to date while the dashboard is running. The dashboard re-reads a CSV whenever the file changes on disk, so refreshed data shows up without a restart.
+
+### Live split vs. recalculations
+
+The fetcher uses FanGraphs' **"Live Stats — Full Season"** split (`month=33`) for the in-progress season, so the current year includes the day's games in real time. Completed seasons use the standard full-season split (`month=0`), which is the only one FanGraphs serves for past years; a live-split request for a finished season automatically falls back to it.
+
+Completed seasons are nearly static, but FanGraphs periodically revises them (WAR, wOBA/wRC+ constants, park factors). The **`.github/workflows/data-refresh.yml`** workflow re-downloads everything with `--force` on the 1st of each month and commits any changes, so those recalculations don't get missed. It can also be triggered manually (Actions → "Data refresh" → Run workflow) with a custom season range. If you'd rather run the bulk refresh on your own server (a single, politer IP toward FanGraphs), the equivalent is a monthly cron of `python baseball_csv_generator.py --start 1871 --force`.
 
 ## Configuration
 
@@ -67,6 +73,14 @@ Edit `config.json` to change:
 | `update_interval` | `14400` | Seconds between live-data refreshes (watch mode) |
 | `request_delay` | `5` | Seconds between pybaseball requests |
 | `*_dir` keys | various | Directories where CSVs are stored |
+
+Environment variables for `app.py` / `launcher.sh`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `HOST` | `127.0.0.1` | Bind address — set `0.0.0.0` to serve on the network |
+| `PORT` | `8050` | Listen port |
+| `DASH_DEBUG` | off | Set `1` to enable the dev reloader and Werkzeug debugger (never in production — the debugger allows code execution) |
 
 ## Data sources
 

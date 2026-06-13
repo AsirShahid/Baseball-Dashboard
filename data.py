@@ -3,11 +3,9 @@
 
 import base64
 import functools
-import html
 import io
 import json
 import logging
-import re
 from pathlib import Path
 
 try:
@@ -16,7 +14,6 @@ try:
 except ImportError:
     _PIL = False
 
-import requests
 import pandas as pd
 
 try:
@@ -24,6 +21,8 @@ try:
     _PYBASEBALL = True
 except ImportError:
     _PYBASEBALL = False
+
+from fangraphs_api import strip_html, fetch_team, atomic_to_csv, split_month
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -33,10 +32,18 @@ with open("config.json") as f:
 EXCLUDED_COLS = {"Team", "Season", "Dollars", "Name", "IDfg", "Unnamed: 0"}
 PRIORITY_COLS = ["WAR", "wRC+", "SIERA"]
 
+# League membership for the AL/NL player filter. Includes defunct/renamed
+# 20th-century franchise codes that appear in the FanGraphs data (BRO =
+# Brooklyn Dodgers, PHA = Philadelphia A's, …). 19th-century clubs predate the
+# AL and are left unfiltered. Known limitation: membership is era-dependent
+# for a few codes (MIL was AL 1970–97, HOU was NL through 2012, WAS is the AL
+# Senators in old seasons) — those use their modern league here.
 NL_TEAMS = {"ARI", "ATL", "CHC", "CIN", "COL", "LAD", "MIA", "MIL",
-            "NYM", "PHI", "PIT", "SDP", "SFG", "STL", "WAS"}
+            "NYM", "PHI", "PIT", "SDP", "SFG", "STL", "WAS",
+            "BRO", "BSN", "NYG", "MON", "FLA", "WSN"}
 AL_TEAMS = {"BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR",
-            "MIN", "NYY", "OAK", "SEA", "TBR", "TEX", "TOR"}
+            "MIN", "NYY", "OAK", "SEA", "TBR", "TEX", "TOR",
+            "ANA", "CAL", "KCA", "NYH", "PHA", "SLB", "TBD"}
 
 TEAM_LOGO_MAP = {
     "LAA": "angels",   "BAL": "orioles",  "BOS": "redsox",    "CHW": "whitesox",
@@ -131,18 +138,17 @@ RANK_COLORSCALE = [[0.0, "#e5484d"], [0.5, "#f5a524"], [1.0, "#46a758"]]
 
 _LOWER_ALWAYS = frozenset({
     "ERA", "FIP", "xFIP", "SIERA", "WHIP", "BB/9", "HR/9", "H/9", "R/9",
-    "ERA-", "FIP-", "xFIP-", "tERA", "kwERA", "RA9",
-    "GDP", "GIDP", "CS", "E", "BK", "WP", "BS", "L", "HBP",
-    "SwStr%", "O-Swing%", "Chase%", "Pitches/Game",
+    "ERA-", "FIP-", "xFIP-", "tERA", "kwERA",
+    "GDP", "GIDP", "CS", "E", "BK", "WP", "BS", "L",
 })
 # Bad for a pitcher (offense allowed); good for a hitter.
 _LOWER_FOR_PITCHERS = frozenset({
     "AVG", "OBP", "SLG", "OPS", "ISO", "BABIP", "wOBA", "xwOBA", "wRC", "wRC+",
     "wRAA", "BB%", "HR", "R", "ER", "H", "BB", "1B", "2B", "3B", "RBI", "TB",
-    "HR/FB", "Barrel%", "HardHit%", "EV", "LD%",
+    "HR/FB", "Barrel%", "HardHit%", "EV", "LD%", "HBP",
 })
-# Bad for a hitter (strikeouts); good for a pitcher.
-_LOWER_FOR_BATTERS = frozenset({"K%", "SO", "K"})
+# Bad for a hitter (whiffs and chases); good for a pitcher.
+_LOWER_FOR_BATTERS = frozenset({"K%", "SO", "K", "SwStr%", "O-Swing%"})
 
 
 def stat_higher_better(stat: str, is_pitching: bool) -> bool:
@@ -174,8 +180,6 @@ TEAM_PRESETS = [
 
 # ── live-fetch: FanGraphs API for team stats, pybaseball for player stats ─────
 
-_FG_API = "https://www.fangraphs.com/api/leaders/major-league/data"
-
 _TEAM_DIRS   = {config["team_batting_dir"]: "bat", config["team_pitching_dir"]: "pit"}
 _PLAYER_DIRS = {
     config["qualified_batting_dir"]: ("batting_stats",   {}),
@@ -183,28 +187,6 @@ _PLAYER_DIRS = {
     config["qualified_pitching_dir"]:("pitching_stats",  {}),
     config["all_pitching_dir"]:      ("pitching_stats",  {"qual": 0}),
 }
-
-
-def _fetch_team_fg(stats: str, year: int) -> pd.DataFrame | None:
-    params = dict(
-        pos="all", stats=stats, lg="all", qual=0, type=8,
-        season=year, month=0, season1=year, ind=0, team=0, rost=0, age=0,
-        filter="", players=0, startdate="", enddate="",
-        pageitems=2000, pagenum=1,
-    )
-    try:
-        resp = requests.get(_FG_API, params=params, timeout=30)
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-        if not data:
-            return None
-        df = pd.DataFrame(data)
-        if "Team" not in df.columns:
-            return None
-        return df.groupby("Team").sum(numeric_only=True).reset_index()
-    except Exception as exc:
-        logging.warning("FanGraphs team API failed (stats=%s year=%d): %s", stats, year, exc)
-        return None
 
 
 def _live_fetch(path: str) -> pd.DataFrame:
@@ -217,10 +199,10 @@ def _live_fetch(path: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     if parent in _TEAM_DIRS:
-        df = _fetch_team_fg(_TEAM_DIRS[parent], year)
+        df = fetch_team(_TEAM_DIRS[parent], year,
+                        month=split_month(year, config["current_year"]))
         if df is not None:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(path)
+            atomic_to_csv(df, path)
             logging.info("FanGraphs team API: cached %s", path)
             return df
         return pd.DataFrame()
@@ -233,8 +215,7 @@ def _live_fetch(path: str) -> pd.DataFrame:
         func = getattr(pyb, func_name)
         logging.info("pybaseball: fetching %s(%d, %s)", func_name, year, kwargs)
         df = func(year, **kwargs)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(path)
+        atomic_to_csv(df, path)
         logging.info("pybaseball: cached %s", path)
         return df
     except Exception as exc:
@@ -254,46 +235,66 @@ def process_columns(columns):
     return cols
 
 
-_HTML_TAG_RE = re.compile(r"<[^>]*>")
+# CSV cache, keyed by path and invalidated by file mtime so the dashboard
+# picks up files rewritten by the background updater. Failures and empty
+# fetches are NOT cached, so a transient network error doesn't blank a season
+# until restart. Entries are copies-on-read: callers may mutate freely.
+_CSV_CACHE: dict[str, tuple[float, pd.DataFrame]] = {}
+_CSV_CACHE_MAX = 512
 
 
-def _clean_text(v):
-    if not isinstance(v, str):
-        return v
-    return html.unescape(_HTML_TAG_RE.sub("", v)).strip()
-
-
-def _strip_html(df: pd.DataFrame) -> pd.DataFrame:
-    """FanGraphs' JSON API returns Name/Team as HTML <a> tags. Reduce them to
-    plain text so labels render cleanly (affects API-sourced 2025+ CSVs)."""
-    for col in ("Name", "Team"):
-        if col in df.columns:
-            df[col] = df[col].map(_clean_text)
-    return df
-
-
-@functools.lru_cache(maxsize=512)
-def load_csv(path: str) -> pd.DataFrame:
-    """Load CSV; auto-fetches via pybaseball if the file doesn't exist."""
+def load_csv(path: str, fetch: bool = True) -> pd.DataFrame:
+    """Load CSV; auto-fetches the season live if the file doesn't exist
+    (unless fetch=False)."""
     try:
-        if Path(path).exists():
-            df = pd.read_csv(path)
-        else:
-            df = _live_fetch(path)
-        return _strip_html(df)
+        p = Path(path)
+        if p.exists():
+            mtime = p.stat().st_mtime
+            cached = _CSV_CACHE.get(path)
+            if cached and cached[0] == mtime:
+                return cached[1].copy()
+            df = strip_html(pd.read_csv(path))
+            if not df.empty:
+                if len(_CSV_CACHE) >= _CSV_CACHE_MAX:
+                    _CSV_CACHE.pop(next(iter(_CSV_CACHE)))
+                _CSV_CACHE[path] = (mtime, df)
+            return df.copy()
+        if not fetch:
+            return pd.DataFrame()
+        return strip_html(_live_fetch(path))
     except Exception:
         return pd.DataFrame()
+
+
+# Per-file cache of which columns contain any data, so seasons_with_data
+# doesn't re-parse ~150 CSVs on every slider/axis change.
+_FILE_COLS_CACHE: dict[str, tuple[float, frozenset]] = {}
+
+
+def _nonnull_cols(f: Path) -> frozenset:
+    key = str(f)
+    mtime = f.stat().st_mtime
+    cached = _FILE_COLS_CACHE.get(key)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    try:
+        df = pd.read_csv(f)
+        cols = frozenset(c for c in df.columns if df[c].notna().any())
+    except Exception:
+        cols = frozenset()
+    _FILE_COLS_CACHE[key] = (mtime, cols)
+    return cols
 
 
 def seasons_with_data(dir_key: str, stat: str) -> frozenset:
     result = set()
     for f in Path(config[dir_key]).glob("*.csv"):
         try:
-            df = pd.read_csv(f, usecols=[stat])
-            if df[stat].notna().any():
-                result.add(int(f.stem))
-        except Exception:
-            pass
+            year = int(f.stem)
+        except ValueError:
+            continue
+        if stat in _nonnull_cols(f):
+            result.add(year)
     return frozenset(result)
 
 

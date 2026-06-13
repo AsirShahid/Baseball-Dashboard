@@ -5,6 +5,10 @@ FanGraphs exposes a clean JSON endpoint at /api/leaders/major-league/data that
 returns 500+ columns per player — more than the old leaders.aspx HTML table ever
 did.  This replaces the brittle BeautifulSoup scraper that broke when FanGraphs
 redesigned their front-end.
+
+Note: `baseball_csv_generator.py --watch` (what launcher.sh runs) refreshes the
+same player CSVs plus the team CSVs, so don't run both at once — this script
+remains for callers who only want the player leaderboards updated.
 """
 
 import datetime
@@ -17,7 +21,8 @@ from time import sleep
 
 import pandas as pd
 import pybaseball as pyb
-import requests
+
+from fangraphs_api import fetch_leaderboard, atomic_to_csv, LIVE_SPLIT
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,8 +31,6 @@ logging.basicConfig(
 log = logging.getLogger("live_stats")
 
 CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
-API_URL     = "https://www.fangraphs.com/api/leaders/major-league/data"
-PAGE_SIZE   = 2000   # well above any realistic season leaderboard
 
 
 def load_config() -> dict:
@@ -35,52 +38,26 @@ def load_config() -> dict:
         return json.load(f)
 
 
-def fetch_api(stats: str, qual: str | int, year: int) -> pd.DataFrame | None:
-    """Fetch a player leaderboard from the FanGraphs JSON API.
-
-    stats : "bat" or "pit"
-    qual  : "y" for qualified, 0 for all players
-    """
-    params = dict(
-        pos="all", stats=stats, lg="all", qual=qual,
-        type=8,           # Dashboard preset — returns 500+ columns
-        season=year, month=0, season1=year,
-        ind=0, team=0, rost=0, age=0,
-        filter="", players=0, startdate="", enddate="",
-        pageitems=PAGE_SIZE, pagenum=1,
-    )
-    try:
-        resp = requests.get(API_URL, params=params, timeout=30)
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-        if not data:
-            log.warning("API returned 0 rows for stats=%s qual=%s year=%d", stats, qual, year)
-            return None
-        df = pd.DataFrame(data)
-        log.info("  API → %d rows, %d columns", len(df), len(df.columns))
-        return df
-    except Exception as exc:
-        log.error("API fetch failed (stats=%s qual=%s year=%d): %s", stats, qual, year, exc)
-        return None
-
-
 def backfill_null_columns(df: pd.DataFrame, fallback: pd.DataFrame) -> pd.DataFrame:
-    """For columns that are entirely null in df, copy values from fallback by Name."""
+    """For columns that are entirely null in df, copy values from fallback by Name.
+
+    Names shared by more than one player (in either frame) are skipped — they
+    can't be matched unambiguously."""
     if "Name" not in df.columns or "Name" not in fallback.columns:
         return df
     null_cols = [c for c in df.columns if df[c].isnull().all() and c in fallback.columns]
     if not null_cols:
         return df
     log.info("  Backfilling %d null column(s) from pybaseball: %s", len(null_cols), null_cols)
-    merged = fallback.set_index("Name")[null_cols]
-    df = df.set_index("Name")
-    df.update(merged)
-    return df.reset_index()
+    unique = fallback[~fallback["Name"].duplicated(keep=False)]
+    ambiguous = df["Name"].duplicated(keep=False)
+    for c in null_cols:
+        df[c] = df["Name"].where(~ambiguous).map(unique.set_index("Name")[c])
+    return df
 
 
 def write_csv(df: pd.DataFrame, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(path, index=False)
+    atomic_to_csv(df, path)
     log.info("  Saved %d rows → %s", len(df), path)
 
 
@@ -94,7 +71,9 @@ def update_once(year: int, config: dict) -> None:
 
     for label, stats, qual, out_dir, pyb_fn in targets:
         log.info("Fetching %s for %d …", label, year)
-        df = fetch_api(stats, qual, year)
+        # live_stats only ever fetches the in-progress season, so request the
+        # live (today-inclusive) split; it falls back to full-season if empty.
+        df = fetch_leaderboard(stats, qual, year, month=LIVE_SPLIT)
 
         if df is None:
             log.warning("  API failed — falling back to pybaseball")

@@ -297,7 +297,7 @@ def filter_data(data, min_value, column="PA"):
     elif selected_team == "NL":
         data = data[data["Team"].isin(["ARI", "ATL", "CHC", "CIN", "COL", "LAD", "MIA", "MIL", "NYM", "PHI", "PIT", "SDP", "SFG", "STL", "WAS"])]
     elif selected_team == "AL":
-        data = data[data["Team"].isin(["BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR", "MIN", "NYY", "OAK", "SEA", "TOR", "TEX", "TOR"])]
+        data = data[data["Team"].isin(["BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR", "MIN", "NYY", "OAK", "SEA", "TBR", "TEX", "TOR"])]
     else:
         data = data[data["Team"] == selected_team]
 
