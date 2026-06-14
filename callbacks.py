@@ -88,7 +88,13 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
             return None
         # Index by team so axes loaded from different CSVs (batting vs
         # pitching) align by team, not by row position.
-        return pd.Series(df[stat].values, index=df["Team"].astype(str))
+        s = pd.Series(df[stat].values, index=df["Team"].astype(str))
+        # An all-NaN axis carries no signal; drop it so it neither produces a
+        # meaningless all-50 ranking (x/y) nor inflates the axis count (z) —
+        # mirroring render_team, which won't plot or count an empty axis.
+        if s.isna().all():
+            return None
+        return s
 
     xv = _load(xt, xs)
     yv = _load(yt, ys)

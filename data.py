@@ -338,7 +338,9 @@ def logo_aspect(team: str) -> float | None:
         if _PIL:
             with _PILImage.open(f"./Logos/{name}-resizedmatplotlib.png") as img:
                 w, h = img.size
-                return w / h if h else None
+                # Require both dims; a 0 would make `aspect or 1.0` silently
+                # fall back to square and hide a corrupt image.
+                return w / h if (w and h) else None
     except Exception:
         return None
     return None

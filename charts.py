@@ -193,12 +193,17 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         zkey = "team_batting_dir" if z_type == "Batting" else "team_pitching_dir"
         z_df = load_csv(f"{config[zkey]}/{season}.csv")
         if (not z_df.empty and "Team" in z_df.columns
-                and z_stat in z_df.columns and not z_df[z_stat].isna().all()):
-            merged = pd.merge(
+                and z_stat in z_df.columns):
+            merged_z = pd.merge(
                 merged, z_df[["Team", z_stat]].rename(columns={z_stat: "_z"}),
                 on="Team",
             )
-            is_3d = True
+            # Need at least two real Z values for a meaningful third axis;
+            # a single point collapses the scatter and the mean plane to a
+            # line, so fall back to 2D instead.
+            if merged_z["_z"].notna().sum() >= 2:
+                merged = merged_z
+                is_3d = True
 
     if merged.empty:
         return _err(f"No data for {season}", theme)
