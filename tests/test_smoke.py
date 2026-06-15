@@ -90,6 +90,32 @@ def test_leaderboard_rows():
     assert all(0 <= r["pct"] <= 100 for r in rows)
 
 
+def test_leaderboard_drops_all_nan_axis():
+    """An all-NaN axis carries no signal: x/y all-NaN yields an empty board
+    (not 30 teams tied at 50), and an all-NaN Z is dropped from the count so
+    the leaderboard agrees with the chart on how many axes are live."""
+    from callbacks import _leaderboard_rows
+    # 'xwOBA' has no team-level data (all NaN) in the shipped CSVs.
+    rows, n = _leaderboard_rows(SEASON, "Batting", "Pitching", "xwOBA", "ERA",
+                                "Batting", None)
+    assert rows == [] and n == 0
+    # A valid 2-axis board with an all-NaN Z must stay a 2-axis board.
+    rows, n = _leaderboard_rows(SEASON, "Batting", "Pitching", "wRC+", "ERA",
+                                "Batting", "xwOBA")
+    assert len(rows) == 10 and n == 2
+
+
+def test_render_team_degenerate_z_falls_back_to_2d():
+    """A Z axis with no team-level data must not force a collapsed 3D plot."""
+    from charts import render_team
+    import plotly.graph_objects as go
+    fig, eyebrow, _ = render_team(SEASON, False, "Batting", "Pitching",
+                                  "wRC+", "ERA", True, True, False,
+                                  "Batting", "xwOBA")
+    assert not any(isinstance(t, go.Scatter3d) for t in fig.data)
+    assert eyebrow[0] == "2D SCATTER"
+
+
 def test_load_csv_copy_on_read_and_mtime_invalidation():
     path = f"team_batting/{SEASON}.csv"
     df1 = load_csv(path)

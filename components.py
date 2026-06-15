@@ -116,6 +116,10 @@ def top_nav():
 
 def _year_scrubber(init_year):
     first, last = config["start_year"], config["current_year"]
+    # A stale/hand-edited URL (?season=2099) must not seed the slider out of
+    # range; the data-aware callback clamps later, but clamp up front so the
+    # widget never renders an invalid value.
+    init_year = max(first, min(last, init_year))
     return html.Div(className="yr", children=[
         html.Div(className="yr-head", children=[
             html.Span("SEASON", className="yr-label"),
@@ -384,7 +388,9 @@ def detail_body(team, year, composite, sparks, groups):
     head = html.Div(className="dt-head", style={
         "background": f"linear-gradient(135deg, {color} 0%, {alt} 100%)"}, children=[
         html.Div(className="dt-mono-big", children=[
-            html.Img(src=logo_b64(team) or "", height=72) if logo_b64(team)
+            html.Img(src=logo_b64(team) or "",
+                     style={"height": "72px", "width": "72px",
+                            "objectFit": "contain"}) if logo_b64(team)
             else html.Div(team, className="lb-mono",
                           style={"background": color, "width": 56, "height": 56,
                                  "fontSize": 18}),
