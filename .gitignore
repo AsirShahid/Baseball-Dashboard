@@ -5,3 +5,7 @@ __pycache__/
 .DS_Store
 .streamlit/
 *.tmp
+
+# FanGraphs session cookie — secret, never commit
+fg_cookie.txt
+*_cookie.txt
