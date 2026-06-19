@@ -116,13 +116,14 @@ def split_month(year: int, current_year: int) -> int:
     return LIVE_SPLIT if year >= current_year else FULL_SEASON_SPLIT
 
 
-def _request_leaderboard(stats, qual, year, month, timeout) -> pd.DataFrame | None:
+def _request_leaderboard(stats, qual, year, month, timeout,
+                         startdate="", enddate="", stat_type=8) -> pd.DataFrame | None:
     params = dict(
         pos="all", stats=stats, lg="all", qual=qual,
-        type=8,           # Dashboard preset — returns 500+ columns
+        type=stat_type,   # 8 = Dashboard preset (500+ columns)
         season=year, month=month, season1=year,
         ind=0, team=0, rost=0, age=0,
-        filter="", players=0, startdate="", enddate="",
+        filter="", players=0, startdate=startdate, enddate=enddate,
         pageitems=PAGE_SIZE, pagenum=1,
     )
     try:
@@ -131,6 +132,9 @@ def _request_leaderboard(stats, qual, year, month, timeout) -> pd.DataFrame | No
         data = resp.json().get("data", [])
         if not data:
             return None
+        if len(data) >= PAGE_SIZE:
+            logging.warning("FanGraphs response hit PAGE_SIZE=%d (stats=%s year=%s); "
+                            "data may be truncated", PAGE_SIZE, stats, year)
         return strip_html(pd.DataFrame(data))
     except Exception as exc:
         logging.warning("FanGraphs API fetch failed (stats=%s qual=%s year=%s month=%s): %s",
@@ -140,21 +144,29 @@ def _request_leaderboard(stats, qual, year, month, timeout) -> pd.DataFrame | No
 
 def fetch_leaderboard(stats: str, qual: str | int, year: int,
                       month: int = FULL_SEASON_SPLIT,
-                      timeout: int = 30) -> pd.DataFrame | None:
+                      timeout: int = 30, startdate: str = "", enddate: str = "",
+                      stat_type: int = 8) -> pd.DataFrame | None:
     """Fetch a player leaderboard from the FanGraphs JSON API.
 
-    stats : "bat" or "pit"
-    qual  : "y" for qualified, 0 for all players
-    month : FanGraphs split code (see FULL_SEASON_SPLIT / LIVE_SPLIT)
+    stats     : "bat" or "pit"
+    qual      : "y" for qualified, 0 for all players
+    month     : FanGraphs split code (see FULL_SEASON_SPLIT / LIVE_SPLIT). Pass
+                1000 with startdate/enddate for a custom date range.
+    startdate/enddate : "YYYY-MM-DD" bounds for the month=1000 custom-range split.
+    stat_type : FanGraphs column preset (8 = Dashboard).
 
     The live split is empty outside the in-progress season, so a live request
-    that returns nothing falls back to the full-season split.
+    that returns nothing falls back to the full-season split. That fallback is
+    scoped to the live split only — a custom date range (month=1000) must not
+    silently collapse into a whole-season pull.
     """
-    df = _request_leaderboard(stats, qual, year, month, timeout)
-    if df is None and month != FULL_SEASON_SPLIT:
+    df = _request_leaderboard(stats, qual, year, month, timeout,
+                              startdate, enddate, stat_type)
+    if df is None and month == LIVE_SPLIT:
         logging.info("Live split empty for %s (stats=%s); falling back to full-season",
                      year, stats)
-        df = _request_leaderboard(stats, qual, year, FULL_SEASON_SPLIT, timeout)
+        df = _request_leaderboard(stats, qual, year, FULL_SEASON_SPLIT, timeout,
+                                  startdate, enddate, stat_type)
     if df is None:
         logging.warning("FanGraphs API returned no data (stats=%s qual=%s year=%s)",
                         stats, qual, year)

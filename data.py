@@ -6,6 +6,7 @@ import functools
 import io
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -26,8 +27,24 @@ from fangraphs_api import strip_html, fetch_team, atomic_to_csv, split_month
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-with open("config.json") as f:
+ROOT = Path(__file__).resolve().parent
+
+with open(ROOT / "config.json") as f:
     config = json.load(f)
+
+# Resolve data directories relative to this file so the app reads the same
+# folders no matter what CWD it's launched from.
+for _k in ("team_batting_dir", "team_pitching_dir", "team_fielding_dir",
+           "qualified_batting_dir", "qualified_pitching_dir",
+           "all_batting_dir", "all_pitching_dir"):
+    if _k in config:
+        config[_k] = str(ROOT / config[_k])
+
+# Drive the current season from today's date so the season lists and the live/
+# full-season split never go stale at a year boundary. config["current_year"]
+# acts only as a forward pin (e.g. to pre-load next season early).
+config["current_year"] = max(int(config.get("current_year", 0)),
+                             datetime.today().year)
 
 EXCLUDED_COLS = {"Team", "Season", "Dollars", "Name", "IDfg", "Unnamed: 0"}
 PRIORITY_COLS = ["WAR", "wRC+", "SIERA"]
@@ -180,12 +197,15 @@ TEAM_PRESETS = [
 
 # ── live-fetch: FanGraphs API for team stats, pybaseball for player stats ─────
 
-_TEAM_DIRS   = {config["team_batting_dir"]: "bat", config["team_pitching_dir"]: "pit"}
+# Keyed by bare directory name: config values are absolute after the resolve
+# above, but _live_fetch matches on Path(path).parent.name.
+_TEAM_DIRS   = {Path(config["team_batting_dir"]).name: "bat",
+                Path(config["team_pitching_dir"]).name: "pit"}
 _PLAYER_DIRS = {
-    config["qualified_batting_dir"]: ("batting_stats",   {}),
-    config["all_batting_dir"]:       ("batting_stats",   {"qual": 0}),
-    config["qualified_pitching_dir"]:("pitching_stats",  {}),
-    config["all_pitching_dir"]:      ("pitching_stats",  {"qual": 0}),
+    Path(config["qualified_batting_dir"]).name:  ("batting_stats",  {}),
+    Path(config["all_batting_dir"]).name:        ("batting_stats",  {"qual": 0}),
+    Path(config["qualified_pitching_dir"]).name: ("pitching_stats", {}),
+    Path(config["all_pitching_dir"]).name:       ("pitching_stats", {"qual": 0}),
 }
 
 
@@ -262,7 +282,8 @@ def load_csv(path: str, fetch: bool = True) -> pd.DataFrame:
         if not fetch:
             return pd.DataFrame()
         return strip_html(_live_fetch(path))
-    except Exception:
+    except Exception as exc:
+        logging.warning("load_csv failed for %s: %s", path, exc)
         return pd.DataFrame()
 
 
@@ -280,7 +301,8 @@ def _nonnull_cols(f: Path) -> frozenset:
     try:
         df = pd.read_csv(f)
         cols = frozenset(c for c in df.columns if df[c].notna().any())
-    except Exception:
+    except Exception as exc:
+        logging.warning("could not read columns from %s: %s", f, exc)
         cols = frozenset()
     _FILE_COLS_CACHE[key] = (mtime, cols)
     return cols
@@ -307,7 +329,7 @@ def logo_b64(team: str) -> str | None:
     name = TEAM_LOGO_MAP.get(team)
     if not name:
         return None
-    path = f"./Logos/{name}-resizedmatplotlib.png"
+    path = ROOT / "Logos" / f"{name}-resizedmatplotlib.png"
     try:
         if _PIL:
             with _PILImage.open(path) as img:
@@ -336,7 +358,7 @@ def logo_aspect(team: str) -> float | None:
         return None
     try:
         if _PIL:
-            with _PILImage.open(f"./Logos/{name}-resizedmatplotlib.png") as img:
+            with _PILImage.open(ROOT / "Logos" / f"{name}-resizedmatplotlib.png") as img:
                 w, h = img.size
                 # Require both dims; a 0 would make `aspect or 1.0` silently
                 # fall back to square and hide a corrupt image.

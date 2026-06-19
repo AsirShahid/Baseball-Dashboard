@@ -2,7 +2,7 @@
 dash>=3,<4
 dash-bootstrap-components>=2,<3
 pandas>=2,<3
-plotly>=5,<7
+plotly>=6,<7
 Pillow>=10
-pybaseball>=2.2
+pybaseball>=2.2,<3
 requests>=2.31
