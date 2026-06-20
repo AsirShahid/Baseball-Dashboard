@@ -73,7 +73,7 @@ TEAM_LOGO_MAP = {
     "SDP": "padres",   "SFG": "giants",
 }
 
-TEAM_SEASONS   = list(range(config["current_year"], 1997, -1))
+TEAM_SEASONS   = list(range(config["current_year"], 1870, -1))
 PLAYER_SEASONS = list(range(config["current_year"], 1870, -1))
 MIN_PA_LIST    = ["Qualified"] + list(range(0, 701, 10))
 MIN_IP_LIST    = ["Qualified"] + list(range(0, 301, 10))
@@ -193,6 +193,35 @@ TEAM_PRESETS = [
      "x": ("Pitching", "FIP"),   "y": ("Pitching", "ERA"),  "z": None},
     {"id": "value",        "name": "Bat vs Arm WAR",
      "x": ("Pitching", "WAR"),   "y": ("Batting", "WAR"),   "z": None},
+]
+
+# Player presets — separate lists for batters and pitchers. Axes are bare
+# FanGraphs column names (no type prefix, since the player view doesn't have
+# batting/pitching axis type selectors).
+BATTER_PRESETS = [
+    {"id": "p-power",       "name": "Power & contact",
+     "x": "HardHit%", "y": "Barrel%"},
+    {"id": "p-discipline",  "name": "Plate discipline",
+     "x": "K%",      "y": "BB%"},
+    {"id": "p-value",       "name": "wRC+ vs WAR",
+     "x": "wRC+",    "y": "WAR"},
+    {"id": "p-speed",       "name": "Speed & contact",
+     "x": "SB",      "y": "AVG"},
+    {"id": "p-iso-woba",    "name": "ISO vs wOBA",
+     "x": "ISO",     "y": "wOBA"},
+]
+
+PITCHER_PRESETS = [
+    {"id": "p-stuff",       "name": "Pitcher K-BB",
+     "x": "BB/9",    "y": "K/9"},
+    {"id": "p-prevention",  "name": "Run prevention",
+     "x": "FIP",     "y": "ERA"},
+    {"id": "p-value-p",     "name": "SIERA vs WAR",
+     "x": "SIERA",   "y": "WAR"},
+    {"id": "p-whiff",       "name": "Whiffs & control",
+     "x": "BB%",     "y": "K%"},
+    {"id": "p-gb",          "name": "Groundball profile",
+     "x": "GB%",     "y": "HR/FB"},
 ]
 
 # ── live-fetch: FanGraphs API for team stats, pybaseball for player stats ─────

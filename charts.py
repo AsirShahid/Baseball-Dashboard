@@ -17,6 +17,15 @@ MEAN_LINE = "rgba(245,165,36,0.55)"             # amber reference line
 MEAN_PLANE = "rgba(245,165,36,0.16)"            # amber reference plane
 
 
+def _axis_dir(stat, is_pitching):
+    """Return 'reversed' for lower-is-better stats, None otherwise.
+
+    When reversed, Plotly flips the axis so up/right = good. Raw values
+    are unchanged — only the visual direction flips.
+    """
+    return "reversed" if not stat_higher_better(stat, is_pitching) else None
+
+
 # ── Theme-aware layout helpers ────────────────────────────────────────────────
 
 def base_layout(theme: str = "dark") -> dict:
@@ -249,6 +258,16 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         layout["scene"]["xaxis"]["title"] = f"{x_type}: {x_stat}"
         layout["scene"]["yaxis"]["title"] = f"{y_type}: {y_stat}"
         layout["scene"]["zaxis"]["title"] = f"{z_type}: {z_stat}"
+        # Reverse axes for lower-is-better stats so up-right-forward = good
+        x_dir = _axis_dir(x_stat, x_type == "Pitching")
+        y_dir = _axis_dir(y_stat, y_type == "Pitching")
+        z_dir = _axis_dir(z_stat, z_type == "Pitching")
+        if x_dir:
+            layout["scene"]["xaxis"]["autorange"] = x_dir
+        if y_dir:
+            layout["scene"]["yaxis"]["autorange"] = y_dir
+        if z_dir:
+            layout["scene"]["zaxis"]["autorange"] = z_dir
         fig.update_layout(**layout, showlegend=False)
 
     elif show_logos and not use_color_rank:
@@ -322,6 +341,13 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         fig.update_layout(**base_layout(theme),
                           xaxis_title=f"{x_type}: {x_stat}",
                           yaxis_title=f"{y_type}: {y_stat}", showlegend=False)
+        # Reverse axes for lower-is-better stats so up-right = good
+        x_dir = _axis_dir(x_stat, x_type == "Pitching")
+        y_dir = _axis_dir(y_stat, y_type == "Pitching")
+        if x_dir:
+            fig.update_xaxes(autorange=x_dir)
+        if y_dir:
+            fig.update_yaxes(autorange=y_dir)
 
     eyebrow = _eyebrow("team", season, is_3d)
     title = _title(f"{y_stat}", f"{x_stat}", z_stat if is_3d else None)
@@ -331,7 +357,7 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
 # ── Player render ─────────────────────────────────────────────────────────────
 
 def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
-                  use_color_rank, z_stat, theme="dark"):
+                  use_color_rank, z_stat, show_v=True, show_h=True, theme="dark"):
     c = PALETTE[theme]
     if not x_stat or not y_stat:
         return _err("Select stats to view", theme)
@@ -413,6 +439,12 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
         layout["scene"]["xaxis"]["title"] = x_stat
         layout["scene"]["yaxis"]["title"] = y_stat
         layout["scene"]["zaxis"]["title"] = z_stat
+        # Reverse axes for lower-is-better stats
+        is_pitch = (player_type == "Pitchers")
+        for ax, stat in [("xaxis", x_stat), ("yaxis", y_stat), ("zaxis", z_stat)]:
+            d = _axis_dir(stat, is_pitch)
+            if d:
+                layout["scene"][ax]["autorange"] = d
         fig.update_layout(**layout,
                           showlegend=(use_team_clr and not use_color_rank
                                       and team in ("AL", "NL")))
@@ -434,6 +466,33 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
                                       itemsizing="constant"))
         if use_color_rank:
             fig.update_layout(coloraxis_colorbar=colorbar_cfg("Composite<br>Rank", theme))
+        # Reverse axes for lower-is-better stats so up-right = good
+        is_pitch = (player_type == "Pitchers")
+        x_dir = _axis_dir(x_stat, is_pitch)
+        y_dir = _axis_dir(y_stat, is_pitch)
+        if x_dir:
+            fig.update_xaxes(autorange=x_dir)
+        if y_dir:
+            fig.update_yaxes(autorange=y_dir)
+
+    # Mean reference lines — 2D only (3D already uses mean planes)
+    if not is_3d:
+        x_vals = df[x_stat].dropna()
+        y_vals = df[y_stat].dropna()
+        if show_h and not y_vals.empty:
+            mean_y = float(y_vals.mean())
+            fig.add_hline(y=mean_y, line_dash="dot", line_color=MEAN_LINE,
+                          line_width=1.5,
+                          annotation_text=f"avg {mean_y:.2f}",
+                          annotation_position="top right",
+                          annotation_font=dict(color=c["muted"], size=11))
+        if show_v and not x_vals.empty:
+            mean_x = float(x_vals.mean())
+            fig.add_vline(x=mean_x, line_dash="dot", line_color=MEAN_LINE,
+                          line_width=1.5,
+                          annotation_text=f"avg {mean_x:.2f}",
+                          annotation_position="top right",
+                          annotation_font=dict(color=c["muted"], size=11))
 
     eyebrow = _eyebrow("player", season, is_3d)
     title = _title(f"{y_stat}", f"{x_stat}", z_stat if is_3d else None)

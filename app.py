@@ -93,6 +93,8 @@ def serve_layout():
     p_x_stat = p.get("p_x_stat", "WAR")
     p_y_stat = p.get("p_y_stat", "wRC+")
     p_z_stat = p.get("p_z_stat") or None
+    p_show_v = p.get("p_show_v", "true") == "true"
+    p_show_h = p.get("p_show_h", "true") == "true"
 
     raw_pa = p.get("min_pa", "Qualified")
     min_pa = raw_pa if raw_pa == "Qualified" else safe_int(raw_pa, "Qualified")
@@ -108,6 +110,7 @@ def serve_layout():
         p_z_stat=p_z_stat, min_pa=min_pa, min_ip=min_ip,
         team=p.get("team", "All Teams"),
         p_color_rank=p.get("p_color_rank", "false") == "true",
+        p_show_v=p_show_v, p_show_h=p_show_h,
         preset=None,
     )
 

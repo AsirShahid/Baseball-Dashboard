@@ -9,10 +9,10 @@ from dash import Input, Output, State, MATCH, ALL, no_update, ctx
 from data import (
     config, load_csv, process_columns, seasons_with_data, opts,
     TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
-    TEAM_FULL_NAME, TEAM_PRESETS, ramp_color,
+    TEAM_FULL_NAME, TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS, ramp_color,
 )
 from charts import render_team, render_player, compute_composite_rank, rank_items
-from components import leaderboard_cards, detail_body
+from components import leaderboard_cards, detail_body, player_preset_chips
 
 # Curated, direction-aware stats for the team detail panel.
 # Each entry: (stat, higher_is_better)
@@ -426,6 +426,47 @@ def register_callbacks(app):
             out.append("chip active" if active else "chip")
         return out
 
+    # ---- player presets ----
+    @app.callback(
+        Output("player-presets-container", "children"),
+        Input({"kind": "seg-store", "group": "ptype"}, "data"),
+    )
+    def swap_player_presets(ptype):
+        """Rebuild player preset chips when toggling Batters ↔ Pitchers."""
+        return [player_preset_chips(None, ptype)]
+
+    @app.callback(
+        Output("p-x-stat", "value", allow_duplicate=True),
+        Output("p-y-stat", "value", allow_duplicate=True),
+        Input({"kind": "player-preset", "id": ALL}, "n_clicks"),
+        State({"kind": "seg-store", "group": "ptype"}, "data"),
+        prevent_initial_call=True,
+    )
+    def apply_player_preset(clicks, ptype):
+        if not clicks or not any(clicks):
+            return no_update, no_update
+        pid = ctx.triggered_id["id"]
+        presets = PITCHER_PRESETS if ptype == "Pitchers" else BATTER_PRESETS
+        preset = next((p for p in presets if p["id"] == pid), None)
+        if not preset:
+            return no_update, no_update
+        return preset["x"], preset["y"]
+
+    @app.callback(
+        Output({"kind": "player-preset", "id": ALL}, "className"),
+        Input("p-x-stat", "value"), Input("p-y-stat", "value"),
+        Input({"kind": "seg-store", "group": "ptype"}, "data"),
+        State({"kind": "player-preset", "id": ALL}, "id"),
+    )
+    def style_player_preset_chips(xs, ys, ptype, ids):
+        presets = PITCHER_PRESETS if ptype == "Pitchers" else BATTER_PRESETS
+        out = []
+        for pid in ids:
+            p = next((q for q in presets if q["id"] == pid["id"]), None)
+            active = bool(p and p["x"] == xs and p["y"] == ys)
+            out.append("chip active" if active else "chip")
+        return out
+
     # ---- URL sync + share chip ----
     @app.callback(
         Output("url", "search"),
@@ -442,17 +483,20 @@ def register_callbacks(app):
         Input("p-z-stat", "value"),
         Input("min-pa", "value"), Input("min-ip", "value"),
         Input("team-filter", "value"), Input("tg-player-rank", "value"),
+        Input("tg-player-vmean", "value"), Input("tg-player-hmean", "value"),
         prevent_initial_call=True,
     )
     def sync_url(view, season, xt, yt, zt, xs, ys, zs, vm, hm, tr, lg,
-                 ptype, pxs, pys, pzs, mpa, mip, tf, pr):
+                 ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm):
         if view == "player":
             params = dict(view="player", season=season or "",
                           player_type=ptype or "Batters",
                           p_x_stat=pxs or "", p_y_stat=pys or "",
                           p_z_stat=pzs or "", min_pa=mpa, min_ip=mip,
                           team=tf or "All Teams",
-                          p_color_rank=str(bool(pr)).lower())
+                          p_color_rank=str(bool(pr)).lower(),
+                          p_show_v=str(bool(pvm)).lower(),
+                          p_show_h=str(bool(phm)).lower())
         else:
             params = dict(view="team", season=season or "",
                           x_type=xt or "Batting", y_type=yt or "Pitching",
@@ -506,14 +550,15 @@ def register_callbacks(app):
         Input("p-z-stat", "value"),
         Input("min-pa", "value"), Input("min-ip", "value"),
         Input("team-filter", "value"), Input("tg-player-rank", "value"),
+        Input("tg-player-vmean", "value"), Input("tg-player-hmean", "value"),
         Input("theme-store", "data"),
     )
     def render(view, season, xt, yt, zt, xs, ys, zs, vm, hm, tr, lg,
-               ptype, pxs, pys, pzs, mpa, mip, tf, pr, theme):
+               ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm, theme):
         theme = theme or "dark"
         if view == "player":
             return render_player(season, ptype, pxs, pys, mpa, mip, tf,
-                                  bool(pr), pzs, theme)
+                                  bool(pr), pzs, bool(pvm), bool(phm), theme)
         return render_team(season, bool(lg), xt, yt, xs, ys,
                             bool(vm), bool(hm), bool(tr), zt, zs, theme)
 

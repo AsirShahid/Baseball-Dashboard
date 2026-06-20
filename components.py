@@ -8,6 +8,7 @@ import dash_bootstrap_components as dbc
 
 from data import (
     config, opts, MIN_PA_LIST, MIN_IP_LIST, TEAM_PRESETS,
+    BATTER_PRESETS, PITCHER_PRESETS,
     TEAM_COLORS, TEAM_COLOR_ALT, TEAM_FULL_NAME, TEAM_DIVISION, logo_b64,
 )
 
@@ -146,8 +147,22 @@ def preset_chips(active):
     ])
 
 
+def player_preset_chips(active, player_type):
+    presets = PITCHER_PRESETS if player_type == "Pitchers" else BATTER_PRESETS
+    return html.Div(className="presets", id="player-presets-wrap", children=[
+        html.Button(className="chip active" if p["id"] == active else "chip",
+                    id={"kind": "player-preset", "id": p["id"]}, n_clicks=0,
+                    children=[html.Span(className="chip-dot"), p["name"]])
+        for p in presets
+    ])
+
+
 def sidebar(init):
-    team_axes = html.Div(id="team-axes", children=[
+    _hide = {"display": "none"}
+    _show = {}
+    is_team = (init["view"] == "team")
+
+    team_axes = html.Div(id="team-axes", style=(_show if is_team else _hide), children=[
         html.Div(className="sb-section", children=[
             sb_label("AXES"),
             html.Div(className="picker-stack", children=[
@@ -162,7 +177,13 @@ def sidebar(init):
         ]),
     ])
 
-    player_axes = html.Div(id="player-axes", children=[
+    player_axes = html.Div(id="player-axes", style=(_hide if is_team else _show), children=[
+        html.Div(className="sb-section", children=[
+            sb_label("VIEW"),
+            segmented("ptype",
+                      [("Batters", "Batters"), ("Pitchers", "Pitchers")],
+                      init["player_type"]),
+        ]),
         html.Div(className="sb-section", children=[
             sb_label("AXES"),
             html.Div(className="picker-stack", children=[
@@ -174,7 +195,7 @@ def sidebar(init):
         ]),
     ])
 
-    team_extra = html.Div(id="team-extra", children=[
+    team_extra = html.Div(id="team-extra", style=(_show if is_team else _hide), children=[
         html.Div(className="sb-section", children=[
             sb_label("PRESETS"),
             preset_chips(init["preset"]),
@@ -194,7 +215,12 @@ def sidebar(init):
         ]),
     ])
 
-    player_extra = html.Div(id="player-extra", children=[
+    player_extra = html.Div(id="player-extra", style=(_hide if is_team else _show), children=[
+        html.Div(className="sb-section", children=[
+            sb_label("PRESETS"),
+            html.Div(id="player-presets-container",
+                     children=[player_preset_chips(None, init["player_type"])]),
+        ]),
         html.Div(className="sb-section", children=[
             sb_label("PLAYER FILTERS"),
             html.Div(id="min-pa-div", children=[
@@ -213,6 +239,10 @@ def sidebar(init):
         html.Div(className="sb-section", children=[
             sb_label("DISPLAY"),
             html.Div(className="toggle-stack", children=[
+                toggle_row("tg-player-vmean", "Vertical mean",
+                           "Dashed line at x̄", init["p_show_v"]),
+                toggle_row("tg-player-hmean", "Horizontal mean",
+                           "Dashed line at ȳ", init["p_show_h"]),
                 toggle_row("tg-player-rank", "Composite rank color",
                            "Red → green percentile", init["p_color_rank"]),
             ]),
