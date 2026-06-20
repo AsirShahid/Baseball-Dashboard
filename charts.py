@@ -303,8 +303,15 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
                     sizing="contain",
                     xanchor="center", yanchor="middle", layer="above",
                 ))
-        fig.update_layout(images=images,
-                          xaxis_range=[x_lo, x_hi], yaxis_range=[y_lo, y_hi])
+        # Reverse a logo axis by flipping its padded range (rather than
+        # autorange="reversed", which would discard the padding and clip the
+        # edge logos).
+        x_dir = _axis_dir(x_stat, x_type == "Pitching")
+        y_dir = _axis_dir(y_stat, y_type == "Pitching")
+        fig.update_layout(
+            images=images,
+            xaxis_range=[x_hi, x_lo] if x_dir else [x_lo, x_hi],
+            yaxis_range=[y_hi, y_lo] if y_dir else [y_lo, y_hi])
 
     else:
         if use_color_rank:
@@ -341,13 +348,15 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         fig.update_layout(**base_layout(theme),
                           xaxis_title=f"{x_type}: {x_stat}",
                           yaxis_title=f"{y_type}: {y_stat}", showlegend=False)
-        # Reverse axes for lower-is-better stats so up-right = good
-        x_dir = _axis_dir(x_stat, x_type == "Pitching")
-        y_dir = _axis_dir(y_stat, y_type == "Pitching")
-        if x_dir:
-            fig.update_xaxes(autorange=x_dir)
-        if y_dir:
-            fig.update_yaxes(autorange=y_dir)
+        # Reverse axes for lower-is-better stats so up-right = good.
+        # (Logo mode already encodes direction in its flipped padded range.)
+        if not (show_logos and not use_color_rank):
+            x_dir = _axis_dir(x_stat, x_type == "Pitching")
+            y_dir = _axis_dir(y_stat, y_type == "Pitching")
+            if x_dir:
+                fig.update_xaxes(autorange=x_dir)
+            if y_dir:
+                fig.update_yaxes(autorange=y_dir)
 
     eyebrow = _eyebrow("team", season, is_3d)
     title = _title(f"{y_stat}", f"{x_stat}", z_stat if is_3d else None)
@@ -434,7 +443,7 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
                           marker=dict(size=5, opacity=0.9,
                                       line=dict(color=c["marker_line"], width=0.5)))
         add_mean_planes_3d(fig, df[x_stat].dropna(), df[y_stat].dropna(),
-                           df[z_stat].dropna(), show_x_plane=True, show_y_plane=True)
+                           df[z_stat].dropna(), show_x_plane=show_v, show_y_plane=show_h)
         layout = base_layout_3d(theme)
         layout["scene"]["xaxis"]["title"] = x_stat
         layout["scene"]["yaxis"]["title"] = y_stat
