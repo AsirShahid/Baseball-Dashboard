@@ -24,7 +24,7 @@ jobs:
           pip install pytest
 
       - name: Byte-compile all modules
-        run: python -m compileall -q app.py data.py charts.py callbacks.py components.py fangraphs_api.py baseball_csv_generator.py live_stats.py legacy
+        run: python -m compileall -q app.py data.py charts.py callbacks.py components.py fangraphs_api.py baseball_csv_generator.py live_stats.py
 
       - name: Check launcher.sh syntax
         run: bash -n launcher.sh

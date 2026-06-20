@@ -3,7 +3,6 @@ baseball_env/
 *.pyc
 __pycache__/
 .DS_Store
-.streamlit/
 *.tmp
 
 # FanGraphs session cookie — secret, never commit
