@@ -1,0 +1,16 @@
+services:
+  baseball-dashboard:
+    build: .
+    container_name: baseball-dashboard
+    restart: unless-stopped
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8050
+    expose:
+      - "8050"
+    networks:
+      - npm
+networks:
+  npm:
+    external: true
+    name: nginx-proxy-manager_default
