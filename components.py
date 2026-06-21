@@ -7,7 +7,7 @@ from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 from data import (
-    config, opts, MIN_PA_LIST, MIN_IP_LIST, TEAM_PRESETS,
+    config, opts, season_label, MIN_PA_LIST, MIN_IP_LIST, TEAM_PRESETS,
     BATTER_PRESETS, PITCHER_PRESETS,
     TEAM_COLORS, TEAM_COLOR_ALT, TEAM_FULL_NAME, TEAM_DIVISION, logo_b64,
 )
@@ -115,25 +115,32 @@ def top_nav():
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
-def _year_scrubber(init_year):
+def _year_scrubber(init_lo, init_hi):
     first, last = config["start_year"], config["current_year"]
     # A stale/hand-edited URL (?season=2099) must not seed the slider out of
     # range; the data-aware callback clamps later, but clamp up front so the
     # widget never renders an invalid value.
-    init_year = max(first, min(last, init_year))
+    init_lo = max(first, min(last, init_lo))
+    init_hi = max(first, min(last, init_hi))
+    if init_hi < init_lo:
+        init_lo, init_hi = init_hi, init_lo
     return html.Div(className="yr", children=[
         html.Div(className="yr-head", children=[
             html.Span("SEASON", className="yr-label"),
-            html.Span(str(init_year), id="season-val", className="yr-val"),
+            html.Span(season_label(init_lo, init_hi), id="season-val",
+                      className="yr-val"),
         ]),
-        dcc.Slider(id="season-slider", min=first, max=last, step=None,
-                   value=init_year, marks={}, included=True,
-                   className="season-slider"),
+        # Two handles: drag to pick a single season (handles together) or a
+        # multi-season span. allowCross=False keeps from ≤ to.
+        dcc.RangeSlider(id="season-slider", min=first, max=last, step=None,
+                        value=[init_lo, init_hi], marks={}, allowCross=False,
+                        className="season-slider"),
         html.Div(className="yr-step", children=[
-            html.Button("◂", id="season-prev", n_clicks=0),
-            dcc.Input(id="season-input", type="number", value=init_year,
+            dcc.Input(id="season-from", type="number", value=init_lo,
                       min=first, max=last, debounce=True),
-            html.Button("▸", id="season-next", n_clicks=0),
+            html.Span("→", className="yr-arrow"),
+            dcc.Input(id="season-to", type="number", value=init_hi,
+                      min=first, max=last, debounce=True),
         ]),
     ])
 
@@ -257,7 +264,8 @@ def sidebar(init):
         ]),
         team_axes,
         player_axes,
-        html.Div(className="sb-section", children=[_year_scrubber(init["season"])]),
+        html.Div(className="sb-section",
+                 children=[_year_scrubber(init["season"], init["season_end"])]),
         team_extra,
         player_extra,
         html.Div(id="rank-legend", className="sb-section",
@@ -366,7 +374,8 @@ def leaderboard_cards(rows, axis_count):
         ]),
         html.Div(className="lb-strip", children=[
             html.Button(className="lb-card", n_clicks=0,
-                        id={"kind": "lb-card", "team": r["team"]}, children=[
+                        id={"kind": "lb-card", "team": r["team"],
+                            "rank": r["rank"]}, children=[
                 html.Span(f"{r['rank']:02d}", className="lb-rank"),
                 html.Span(r["team"], className="lb-mono",
                           style={"background": r["color"]}),

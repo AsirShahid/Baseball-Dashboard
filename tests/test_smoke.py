@@ -240,6 +240,91 @@ def test_fetch_leaderboard_no_fallback_on_full_season(monkeypatch):
     assert seen == [fa.FULL_SEASON_SPLIT]  # exactly one request, no retry
 
 
+def test_season_bounds_and_label():
+    from data import season_bounds, season_label
+    assert season_bounds(2024) == (2024, 2024)
+    assert season_bounds([2026, 2019]) == (2019, 2026)   # order-insensitive
+    assert season_bounds(None) == (None, None)
+    assert season_label(2024, 2024) == "2024"
+    lbl = season_label(2019, 2026)
+    assert "2019" in lbl and "2026" in lbl
+
+
+def test_load_stats_single_season_is_csv_fast_path():
+    """A single-season load must be byte-identical to reading the CSV — the
+    range machinery must not perturb the common case."""
+    from data import load_stats
+    span = load_stats("team_batting_dir", SEASON, SEASON)
+    csv = pd.read_csv(f"team_batting/{SEASON}.csv")
+    assert len(span) == len(csv)
+    assert "LAD" in set(span["Team"].astype(str))
+
+
+def test_load_stats_range_sums_counting_and_weights_rates():
+    """Over a span: WAR (counting) sums; wRC+ (rate) is PA-weighted, not summed."""
+    from data import load_stats
+    span = load_stats("team_batting_dir", 2022, 2024)
+    assert span["Team"].is_unique                      # one row per team
+    seasons = [pd.read_csv(f"team_batting/{y}.csv") for y in (2022, 2023, 2024)]
+    war_sum = sum(float(d.loc[d.Team == "LAD", "WAR"].iloc[0]) for d in seasons)
+    got_war = float(span.loc[span.Team == "LAD", "WAR"].iloc[0])
+    assert got_war == pytest.approx(war_sum)           # counting summed
+    wrc = float(span.loc[span.Team == "LAD", "wRC+"].iloc[0])
+    assert 50 < wrc < 200                              # rate stays banded, not summed
+
+
+def test_load_stats_range_aggregates_players_by_idfg():
+    """Player spans roll up by IDfg, so a player appears once with summed PA."""
+    from data import load_stats
+    span = load_stats("qualified_batting_dir", 2022, 2024, group_key="IDfg")
+    assert span["IDfg"].is_unique
+    assert {"Name", "Team", "PA", "WAR"} <= set(span.columns)
+
+
+def test_render_team_range_one_point_per_team():
+    from charts import render_team
+    fig, eyebrow, _ = render_team([2022, 2024], False, "Batting", "Pitching",
+                                  "WAR", "ERA", False, False, False, "Batting", None)
+    tr = fig.data[0]
+    assert len(set(tr.text)) == len(tr.text)           # no duplicate teams
+    flat = "".join(str(x) for x in eyebrow)
+    assert "2022" in flat and "2024" in flat
+
+
+def test_player_leaderboard_single_and_range():
+    from callbacks import _player_leaderboard_rows
+    rows, n = _player_leaderboard_rows(SEASON, "Batters", "WAR", "wRC+", None,
+                                       "Qualified", "Qualified", "All Teams")
+    assert len(rows) == 10 and n == 2
+    assert all(0 <= r["pct"] <= 100 for r in rows)
+    # 3-axis: a valid Z lifts the axis count to 3
+    _, n3 = _player_leaderboard_rows(SEASON, "Batters", "WAR", "wRC+", "HR",
+                                     "Qualified", "Qualified", "All Teams")
+    assert n3 == 3
+    # Multi-season cumulative board still returns a top-10
+    rrows, rn = _player_leaderboard_rows([2022, 2024], "Batters", "WAR", "wRC+",
+                                         None, "Qualified", "Qualified", "All Teams")
+    assert len(rrows) == 10 and rn == 2
+
+
+def test_render_player_single_z_value_stays_2d():
+    """A Z axis with <2 real values must fall back to 2D (parity with teams)."""
+    from charts import render_player, player_frame
+    import plotly.graph_objects as go
+    # Find a specific team whose qualified roster that season is a single player,
+    # so any per-player Z column has <2 non-null values.
+    df = player_frame(SEASON, SEASON, "Batters", "Qualified", "Qualified", "All Teams")
+    counts = df["Team"].value_counts()
+    solo = counts[counts == 1]
+    if solo.empty:
+        pytest.skip("no single-player team this season")
+    team = solo.index[0]
+    fig, eyebrow, _ = render_player(SEASON, "Batters", "WAR", "wRC+",
+                                    "Qualified", "Qualified", team, False, "HR")
+    assert not any(isinstance(t, go.Scatter3d) for t in fig.data)
+    assert eyebrow[0] == "2D SCATTER"
+
+
 def test_fetch_team_passes_month_through(monkeypatch):
     """Live split selection must reach the team roll-up too."""
     import fangraphs_api as fa

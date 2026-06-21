@@ -7,11 +7,15 @@ import pandas as pd
 from dash import Input, Output, State, MATCH, ALL, no_update, ctx
 
 from data import (
-    config, load_csv, process_columns, seasons_with_data, opts,
+    config, load_csv, load_stats, season_bounds, season_label, process_columns,
+    seasons_with_data, opts,
     TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
     TEAM_FULL_NAME, TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS, ramp_color,
 )
-from charts import render_team, render_player, compute_composite_rank, rank_items
+from charts import (
+    render_team, render_player, player_frame,
+    compute_composite_rank, rank_items,
+)
 from components import leaderboard_cards, detail_body, player_preset_chips
 
 # Curated, direction-aware stats for the team detail panel.
@@ -65,6 +69,18 @@ def _team_value(dir_key, year, team, stat, fetch=True):
     return row.iloc[0][stat], df
 
 
+def _team_span_value(dir_key, lo, hi, team, stat):
+    """Like _team_value but cumulative over an inclusive season range, so the
+    detail panel's percentiles match the (aggregated) chart and leaderboard."""
+    df = load_stats(dir_key, lo, hi)
+    if df.empty or stat not in df.columns or "Team" not in df.columns:
+        return None, df
+    row = df[df["Team"] == team]
+    if row.empty:
+        return None, df
+    return row.iloc[0][stat], df
+
+
 def _spark(stat, dir_key, team, season):
     years, values = [], []
     for y in range(season - 4, season + 1):
@@ -79,11 +95,15 @@ def _spark(stat, dir_key, team, season):
 
 
 def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
+    lo, hi = season_bounds(season)
+    if lo is None:
+        return [], 0
+
     def _load(typ, stat):
         if not stat:
             return None
         key = "team_batting_dir" if typ == "Batting" else "team_pitching_dir"
-        df = load_csv(f"{config[key]}/{season}.csv")
+        df = load_stats(key, lo, hi)
         if df.empty or stat not in df.columns or "Team" not in df.columns:
             return None
         # Index by team so axes loaded from different CSVs (batting vs
@@ -115,6 +135,39 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
         out.append({"rank": i + 1, "team": r["team"],
                     "name": TEAM_FULL_NAME.get(r["team"], r["team"]),
                     "pct": pct, "color": TEAM_COLORS.get(r["team"], "#7d8590"),
+                    "ramp": ramp_color(pct / 100)})
+    return out, len(items)
+
+
+def _player_leaderboard_rows(season, ptype, pxs, pys, pzs, min_pa, min_ip, team):
+    """Top-10 players by composite rank across the selected axes — the player
+    analogue of _leaderboard_rows. Ranks the exact frame the scatter plots
+    (player_frame), so a multi-season range yields a cumulative leaderboard."""
+    lo, hi = season_bounds(season)
+    if lo is None or not pxs or not pys:
+        return [], 0
+    df = player_frame(lo, hi, ptype, min_pa, min_ip, team)
+    if df.empty or pxs not in df.columns or pys not in df.columns:
+        return [], 0
+    if df[pxs].isna().all() or df[pys].isna().all():
+        return [], 0
+
+    is_pitch = (ptype == "Pitchers")
+    zser = df[pzs] if (pzs and pzs in df.columns and df[pzs].notna().sum() >= 2) else None
+    items = rank_items((df[pxs], pxs, is_pitch),
+                       (df[pys], pys, is_pitch),
+                       (zser, pzs, is_pitch))
+    comp = compute_composite_rank(*items).round(1)
+
+    order = comp.sort_values(ascending=False).index[:10]
+    out = []
+    for i, idx in enumerate(order):
+        row = df.loc[idx]
+        tm = str(row.get("Team", "")).strip()
+        pct = int(round(float(comp.loc[idx])))
+        out.append({"rank": i + 1, "team": tm,
+                    "name": str(row.get("Name", "—")),
+                    "pct": pct, "color": TEAM_COLORS.get(tm, "#7d8590"),
                     "ramp": ramp_color(pct / 100)})
     return out, len(items)
 
@@ -226,7 +279,10 @@ def register_callbacks(app):
     # ---- stat option lists ----
     def _team_stat(stat_type, season, current, fallback_idx=0, allow_none=False):
         key = "team_batting_dir" if stat_type == "Batting" else "team_pitching_dir"
-        df = load_csv(f"{config[key]}/{season or config['current_year']}.csv")
+        # Column set comes from one season (the range's upper year); columns are
+        # stable across the span, so listing options off the latest is enough.
+        _, hi = season_bounds(season)
+        df = load_csv(f"{config[key]}/{hi or config['current_year']}.csv")
         if df.empty:
             return [], (None if allow_none else no_update)
         cols = process_columns(df.columns)
@@ -274,7 +330,8 @@ def register_callbacks(app):
     def update_player_stats(ptype, season, cx, cy, cz):
         key = ("qualified_batting_dir" if ptype == "Batters"
                else "qualified_pitching_dir")
-        df = load_csv(f"{config[key]}/{season or config['current_year']}.csv")
+        _, hi = season_bounds(season)
+        df = load_csv(f"{config[key]}/{hi or config['current_year']}.csv")
         if df.empty:
             return [], no_update, [], no_update, [], None
         if ptype == "Batters" and "WAR" in df.columns and "PA" in df.columns:
@@ -301,7 +358,8 @@ def register_callbacks(app):
             return no_update, no_update
         key = ("qualified_batting_dir" if ptype == "Batters"
                else "qualified_pitching_dir")
-        df = load_csv(f"{config[key]}/{season or config['current_year']}.csv")
+        _, hi = season_bounds(season)
+        df = load_csv(f"{config[key]}/{hi or config['current_year']}.csv")
         base = [{"label": "All Teams", "value": "All Teams"},
                 {"label": "AL", "value": "AL"}, {"label": "NL", "value": "NL"}]
         if df.empty or "Team" not in df.columns:
@@ -346,39 +404,50 @@ def register_callbacks(app):
                         valid &= av
         years = sorted(y for y in seasons if y in valid) or sorted(seasons)
         mn, mx = years[0], years[-1]
-        value = cur if (cur and mn <= cur <= mx) else mx
-        return mn, mx, _decade_marks(mn, mx), value
+        # Preserve the current [lo, hi] window, clamped into the data-aware
+        # range; fall back to the latest single season.
+        lo, hi = season_bounds(cur)
+        if lo is None:
+            lo = hi = mx
+        lo = max(mn, min(mx, lo))
+        hi = max(mn, min(mx, hi))
+        if hi < lo:
+            lo, hi = hi, lo
+        return mn, mx, _decade_marks(mn, mx), [lo, hi]
 
     @app.callback(
         Output("season-slider", "value", allow_duplicate=True),
-        Input("season-prev", "n_clicks"),
-        Input("season-next", "n_clicks"),
-        Input("season-input", "value"),
+        Input("season-from", "value"), Input("season-to", "value"),
         State("season-slider", "value"),
         State("season-slider", "min"), State("season-slider", "max"),
         prevent_initial_call=True,
     )
-    def season_control(_p, _n, inp, cur, mn, mx):
-        trig = ctx.triggered_id
-        cur = cur or mx
-        if trig == "season-prev":
-            return max(mn, cur - 1)
-        if trig == "season-next":
-            return min(mx, cur + 1)
-        if trig == "season-input" and inp is not None:
+    def season_range_input(frm, to, cur, mn, mx):
+        clo, chi = season_bounds(cur)
+        if clo is None:
+            clo = chi = mx
+
+        def _clamp(v, fallback):
             try:
-                v = max(mn, min(mx, int(inp)))
+                return max(mn, min(mx, int(v)))
             except (TypeError, ValueError):
-                return no_update
-            return v if v != cur else no_update
-        return no_update
+                return fallback
+
+        lo, hi = _clamp(frm, clo), _clamp(to, chi)
+        if hi < lo:
+            lo, hi = hi, lo
+        return [lo, hi] if [lo, hi] != [clo, chi] else no_update
 
     @app.callback(
-        Output("season-val", "children"), Output("season-input", "value"),
+        Output("season-val", "children"),
+        Output("season-from", "value"), Output("season-to", "value"),
         Input("season-slider", "value"),
     )
     def season_display(value):
-        return str(value or ""), value
+        lo, hi = season_bounds(value)
+        if lo is None:
+            return "", None, None
+        return season_label(lo, hi), lo, hi
 
     # ---- presets ----
     @app.callback(
@@ -488,8 +557,11 @@ def register_callbacks(app):
     )
     def sync_url(view, season, xt, yt, zt, xs, ys, zs, vm, hm, tr, lg,
                  ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm):
+        lo, hi = season_bounds(season)
+        season_q = "" if lo is None else lo
+        season_end_q = "" if lo is None else hi
         if view == "player":
-            params = dict(view="player", season=season or "",
+            params = dict(view="player", season=season_q, season_end=season_end_q,
                           player_type=ptype or "Batters",
                           p_x_stat=pxs or "", p_y_stat=pys or "",
                           p_z_stat=pzs or "", min_pa=mpa, min_ip=mip,
@@ -498,7 +570,7 @@ def register_callbacks(app):
                           p_show_v=str(bool(pvm)).lower(),
                           p_show_h=str(bool(phm)).lower())
         else:
-            params = dict(view="team", season=season or "",
+            params = dict(view="team", season=season_q, season_end=season_end_q,
                           x_type=xt or "Batting", y_type=yt or "Pitching",
                           z_type=zt or "Batting",
                           x_stat=xs or "", y_stat=ys or "", z_stat=zs or "",
@@ -570,11 +642,19 @@ def register_callbacks(app):
         Input({"kind": "seg-store", "group": "ytype"}, "data"),
         Input({"kind": "seg-store", "group": "ztype"}, "data"),
         Input("x-stat", "value"), Input("y-stat", "value"), Input("z-stat", "value"),
+        Input({"kind": "seg-store", "group": "ptype"}, "data"),
+        Input("p-x-stat", "value"), Input("p-y-stat", "value"),
+        Input("p-z-stat", "value"),
+        Input("min-pa", "value"), Input("min-ip", "value"),
+        Input("team-filter", "value"),
     )
-    def update_leaderboard(view, season, xt, yt, zt, xs, ys, zs):
-        if view != "team":
-            return [], {"display": "none"}
-        rows, n = _leaderboard_rows(season, xt, yt, xs, ys, zt, zs)
+    def update_leaderboard(view, season, xt, yt, zt, xs, ys, zs,
+                           ptype, pxs, pys, pzs, mpa, mip, tf):
+        if view == "player":
+            rows, n = _player_leaderboard_rows(season, ptype, pxs, pys, pzs,
+                                               mpa, mip, tf)
+        else:
+            rows, n = _leaderboard_rows(season, xt, yt, xs, ys, zt, zs)
         if not rows:
             return [], {"display": "none"}
         return leaderboard_cards(rows, n), {}
@@ -584,7 +664,7 @@ def register_callbacks(app):
         Output("detail-overlay", "style"),
         Output("detail-store", "data"),
         Input("main-graph", "clickData"),
-        Input({"kind": "lb-card", "team": ALL}, "n_clicks"),
+        Input({"kind": "lb-card", "team": ALL, "rank": ALL}, "n_clicks"),
         Input("detail-close", "n_clicks"),
         State({"kind": "seg-store", "group": "view"}, "data"),
         prevent_initial_call=True,
@@ -595,7 +675,10 @@ def register_callbacks(app):
         if trig == "detail-close":
             return hidden, no_update
         if isinstance(trig, dict) and trig.get("kind") == "lb-card":
-            if not any(lb_clicks or []):
+            # Player cards carry a team abbr too, but clicking a *player* row
+            # must not open that team's panel; the player detail panel is a
+            # separate follow-up. Only the team leaderboard opens detail today.
+            if view != "team" or not any(lb_clicks or []):
                 return no_update, no_update
             return {}, trig["team"]
         if trig == "main-graph":
@@ -635,12 +718,14 @@ def register_callbacks(app):
     def render_detail(team, season):
         if not team:
             return None
-        season = season or config["current_year"]
+        lo, hi = season_bounds(season)
+        if lo is None:
+            lo = hi = config["current_year"]
         groups, all_pcts = [], []
         for gname, gtype, dir_key, stats in DETAIL_GROUPS:
             tiles = []
             for stat, hib in stats:
-                v, df = _team_value(dir_key, season, team, stat)
+                v, df = _team_span_value(dir_key, lo, hi, team, stat)
                 if v is None or df.empty or stat not in df.columns:
                     continue
                 pct = _pct(df[stat], v, hib)
@@ -651,5 +736,7 @@ def register_callbacks(app):
             if tiles:
                 groups.append({"name": gname, "tiles": tiles})
         composite = int(round(sum(all_pcts) / len(all_pcts))) if all_pcts else 50
-        sparks = [_spark(s, dk, team, season) for s, dk in SPARK_STATS]
-        return detail_body(team, season, composite, sparks, groups)
+        # The trajectory sparkline is inherently per-season; anchor it at the
+        # end of the range so it reads as "the 5 seasons up to hi".
+        sparks = [_spark(s, dk, team, hi) for s, dk in SPARK_STATS]
+        return detail_body(team, season_label(lo, hi), composite, sparks, groups)

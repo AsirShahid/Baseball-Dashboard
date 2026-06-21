@@ -23,7 +23,9 @@ try:
 except ImportError:
     _PYBASEBALL = False
 
-from fangraphs_api import strip_html, fetch_team, atomic_to_csv, split_month
+from fangraphs_api import (
+    strip_html, fetch_team, atomic_to_csv, split_month, COUNTING_STATS,
+)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -314,6 +316,101 @@ def load_csv(path: str, fetch: bool = True) -> pd.DataFrame:
     except Exception as exc:
         logging.warning("load_csv failed for %s: %s", path, exc)
         return pd.DataFrame()
+
+
+# ── Multi-season range aggregation ────────────────────────────────────────────
+
+def season_bounds(value) -> tuple:
+    """Normalise a season control value to an inclusive (lo, hi) int pair.
+
+    Accepts either a single year (int/str) or a [lo, hi] range from the
+    RangeSlider, so every caller can treat the control uniformly. Returns
+    (None, None) when the value can't be parsed."""
+    if isinstance(value, (list, tuple)):
+        ys = [int(v) for v in value if v is not None]
+        return (min(ys), max(ys)) if ys else (None, None)
+    try:
+        v = int(value)
+        return v, v
+    except (TypeError, ValueError):
+        return None, None
+
+
+def season_label(lo, hi) -> str:
+    """'2024' for a single season, '2019–2026' for a range."""
+    return str(lo) if lo == hi else f"{lo}–{hi}"
+
+
+def _weight_col_for(dir_key: str) -> str:
+    """Weight column for rate-stat averaging: IP for pitching, PA otherwise."""
+    return "IP" if "pitching" in dir_key else "PA"
+
+
+def _aggregate_span(df: pd.DataFrame, group_key: str, weight_col: str,
+                    display_cols: list) -> pd.DataFrame:
+    """Roll multiple season rows per entity into one row spanning the range.
+
+    Counting columns (COUNTING_STATS, plus the weight column) are summed; every
+    other numeric column is a rate and is weighted-averaged by the weight column
+    (PA for batters, IP for pitchers) so a span's wRC+/ERA stay meaningful
+    instead of being naively summed. Mirrors fangraphs_api.aggregate_team, but
+    keyed on any identity column (Team for teams, IDfg for players) and carrying
+    display columns (Name/Team) from each entity's largest-weight season."""
+    numeric_cols = [c for c in df.select_dtypes(include="number").columns
+                    if c != group_key]
+    has_weight = weight_col in df.columns
+    rows = []
+    for key, grp in df.groupby(group_key):
+        row = {group_key: key}
+        weights = (pd.to_numeric(grp[weight_col], errors="coerce").fillna(0)
+                   if has_weight else None)
+        total_w = float(weights.sum()) if has_weight else 0.0
+        for c in numeric_cols:
+            vals = pd.to_numeric(grp[c], errors="coerce")
+            if c == weight_col or c in COUNTING_STATS:
+                row[c] = vals.sum(skipna=True)
+            elif has_weight and total_w > 0:
+                mask = vals.notna()
+                w, v = weights[mask], vals[mask]
+                wsum = float(w.sum())
+                row[c] = (v * w).sum() / wsum if wsum > 0 else vals.mean()
+            else:
+                row[c] = vals.mean()
+        if display_cols:
+            rep = (grp.iloc[int(weights.to_numpy().argmax())]
+                   if weights is not None and len(grp) else grp.iloc[-1])
+            for d in display_cols:
+                if d in grp.columns:
+                    row[d] = rep[d]
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team") -> pd.DataFrame:
+    """Load one entity-per-row frame for a season or an inclusive season range.
+
+    For a single season (hi is None or hi == lo) this is just the season CSV, so
+    the common case stays as cheap as before. For a range it concatenates the
+    seasons and rolls them up per entity via _aggregate_span — summing counting
+    stats and weight-averaging rate stats — so the chart and leaderboard show one
+    cumulative point per team/player across the span."""
+    lo, _ = season_bounds(lo if hi is None else [lo, hi])
+    if lo is None:
+        return pd.DataFrame()
+    hi = lo if hi is None else int(hi)
+    if hi <= lo:
+        return load_csv(f"{config[dir_key]}/{lo}.csv")
+    frames = [df for y in range(lo, hi + 1)
+              if not (df := load_csv(f"{config[dir_key]}/{y}.csv")).empty]
+    if not frames:
+        return pd.DataFrame()
+    if len(frames) == 1:
+        return frames[0]
+    combined = pd.concat(frames, ignore_index=True)
+    if group_key not in combined.columns:
+        return frames[-1]
+    display = ["Name", "Team"] if group_key != "Team" else []
+    return _aggregate_span(combined, group_key, _weight_col_for(dir_key), display)
 
 
 # Per-file cache of which columns contain any data, so seasons_with_data

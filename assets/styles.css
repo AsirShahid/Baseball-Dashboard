@@ -435,6 +435,7 @@ button { font-family: inherit; }
   outline: none;
 }
 .yr-step input:focus { border-color: color-mix(in oklab, var(--accent) 55%, var(--border)); }
+.yr-arrow { color: var(--text-3); font-family: 'Geist Mono', monospace; font-size: 13px; }
 
 /* Presets */
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
