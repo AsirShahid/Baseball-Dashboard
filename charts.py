@@ -7,7 +7,7 @@ import plotly.express as px
 import pandas as pd
 
 from data import (
-    config, load_csv, process_columns, stat_higher_better,
+    load_stats, stat_higher_better, season_bounds, season_label,
     TEAM_COLORS, NL_TEAMS, AL_TEAMS, PALETTE, RANK_COLORSCALE,
     logo_b64, logo_aspect,
 )
@@ -148,10 +148,10 @@ def add_mean_planes_3d(fig, x_vals, y_vals, z_vals, show_x_plane, show_y_plane):
 
 # ── Topbar title builders ─────────────────────────────────────────────────────
 
-def _eyebrow(view: str, year, is_3d: bool):
+def _eyebrow(view: str, label, is_3d: bool):
     dot = html.Span("·", className="dot")
     return [("3D SCATTER" if is_3d else "2D SCATTER"), dot,
-            ("PLAYERS" if view == "player" else "TEAMS"), dot, str(year)]
+            ("PLAYERS" if view == "player" else "TEAMS"), dot, str(label)]
 
 
 def _title(y_label: str, x_label: str, z_label: str | None = None):
@@ -175,15 +175,20 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
     if not x_stat or not y_stat:
         return _err("Select stats to view", theme)
 
+    lo, hi = season_bounds(season)
+    if lo is None:
+        return _err("Select a season", theme)
+    span = season_label(lo, hi)
+
     xkey = "team_batting_dir" if x_type == "Batting" else "team_pitching_dir"
     ykey = "team_batting_dir" if y_type == "Batting" else "team_pitching_dir"
-    x_df = load_csv(f"{config[xkey]}/{season}.csv")
-    y_df = load_csv(f"{config[ykey]}/{season}.csv")
+    x_df = load_stats(xkey, lo, hi)
+    y_df = load_stats(ykey, lo, hi)
 
     if x_df.empty or y_df.empty:
-        return _err(f"No data for {season}", theme)
+        return _err(f"No data for {span}", theme)
     if "Team" not in x_df.columns or "Team" not in y_df.columns:
-        return _err(f"No team data for {season}", theme)
+        return _err(f"No team data for {span}", theme)
     if x_stat not in x_df.columns or y_stat not in y_df.columns:
         return _err("Stat not available for this season", theme)
 
@@ -200,7 +205,7 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
     is_3d = False
     if z_stat:
         zkey = "team_batting_dir" if z_type == "Batting" else "team_pitching_dir"
-        z_df = load_csv(f"{config[zkey]}/{season}.csv")
+        z_df = load_stats(zkey, lo, hi)
         if (not z_df.empty and "Team" in z_df.columns
                 and z_stat in z_df.columns):
             merged_z = pd.merge(
@@ -215,14 +220,14 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
                 is_3d = True
 
     if merged.empty:
-        return _err(f"No data for {season}", theme)
+        return _err(f"No data for {span}", theme)
     x_vals = merged["_x"]
     y_vals = merged["_y"]
     z_vals = merged["_z"] if is_3d else None
     teams  = merged["Team"]
 
     if x_vals.isna().all() or y_vals.isna().all():
-        return _err(f"{x_stat} or {y_stat} has no data for {season}", theme)
+        return _err(f"{x_stat} or {y_stat} has no data for {span}", theme)
 
     rank_score = None
     if use_color_rank:
@@ -358,29 +363,29 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
             if y_dir:
                 fig.update_yaxes(autorange=y_dir)
 
-    eyebrow = _eyebrow("team", season, is_3d)
+    eyebrow = _eyebrow("team", span, is_3d)
     title = _title(f"{y_stat}", f"{x_stat}", z_stat if is_3d else None)
     return fig, eyebrow, title
 
 
 # ── Player render ─────────────────────────────────────────────────────────────
 
-def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
-                  use_color_rank, z_stat, show_v=True, show_h=True, theme="dark"):
-    c = PALETTE[theme]
-    if not x_stat or not y_stat:
-        return _err("Select stats to view", theme)
+def player_frame(lo, hi, player_type, min_pa, min_ip, team):
+    """Filtered player frame for a season or range — the single source of truth
+    shared by the scatter and the leaderboard so they never rank different rows.
 
+    Adds the derived 'WAR/650 PAs' column for batters, applies the min PA/IP
+    threshold (against the span's summed PA/IP when a range is selected), and
+    applies the league/team filter. Returns an empty frame on no data."""
     is_batter    = (player_type == "Batters")
     min_val, col = (min_pa, "PA") if is_batter else (min_ip, "IP")
     use_qualified = (min_val == "Qualified")
     q_key   = "qualified_batting_dir"  if is_batter else "qualified_pitching_dir"
     all_key = "all_batting_dir"        if is_batter else "all_pitching_dir"
 
-    df = load_csv(f"{config[q_key if use_qualified else all_key]}/{season}.csv")
+    df = load_stats(q_key if use_qualified else all_key, lo, hi, group_key="IDfg")
     if df.empty:
-        return _err(f"No data for {season}", theme)
-
+        return df
     df = df.copy()
     if is_batter and "WAR" in df.columns and "PA" in df.columns:
         # PA can be 0 in the qual=0 data; leave those rows NaN instead of inf.
@@ -396,13 +401,27 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
     if   team == "NL":                    df = df[df["Team"].isin(NL_TEAMS)]
     elif team == "AL":                    df = df[df["Team"].isin(AL_TEAMS)]
     elif team not in (None, "All Teams"): df = df[df["Team"] == team]
+    return df
 
+
+def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
+                  use_color_rank, z_stat, show_v=True, show_h=True, theme="dark"):
+    c = PALETTE[theme]
+    if not x_stat or not y_stat:
+        return _err("Select stats to view", theme)
+
+    lo, hi = season_bounds(season)
+    if lo is None:
+        return _err("Select a season", theme)
+    span = season_label(lo, hi)
+
+    df = player_frame(lo, hi, player_type, min_pa, min_ip, team)
     if df.empty:
-        return _err("No players match the selected filters", theme)
+        return _err(f"No data for {span}", theme)
     if x_stat not in df.columns or y_stat not in df.columns:
         return _err("Stat not available", theme)
     if df[x_stat].isna().all() or df[y_stat].isna().all():
-        return _err(f"{x_stat} or {y_stat} has no data for {season}", theme)
+        return _err(f"{x_stat} or {y_stat} has no data for {span}", theme)
 
     def fmt(name):
         parts = str(name).split()
@@ -410,7 +429,10 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
 
     df["Label"]  = df["Name"].apply(fmt)
     use_team_clr = team in (None, "All Teams", "AL", "NL")
-    is_3d = bool(z_stat) and z_stat in df.columns and not df[z_stat].isna().all()
+    # Need at least two real Z values for a meaningful third axis; a single
+    # point collapses the scatter and the mean plane to a line, so stay 2D.
+    # (Mirrors the guard in render_team.)
+    is_3d = bool(z_stat) and z_stat in df.columns and df[z_stat].notna().sum() >= 2
 
     if use_color_rank:
         is_pitch = (player_type == "Pitchers")
@@ -430,12 +452,19 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
     if use_color_rank:
         h_data["Composite Rank"] = True
 
+    # IDfg rides along as customdata[0] (Plotly Express prepends custom_data
+    # ahead of hover_data and rewrites the hovertemplate indices to match) so a
+    # point click can identify the exact player for the detail panel — robust to
+    # duplicate names. Unused by the hovertemplate itself.
+    cdata = ["IDfg"] if "IDfg" in df.columns else None
+
     tmpl = "plotly_dark" if theme == "dark" else "plotly_white"
 
     if is_3d:
         h_data[z_stat] = True
         fig = px.scatter_3d(df, x=x_stat, y=y_stat, z=z_stat, text="Label",
-                            hover_name="Name", hover_data=h_data, color=color_col,
+                            hover_name="Name", hover_data=h_data, custom_data=cdata,
+                            color=color_col,
                             color_discrete_map=c_map, color_continuous_scale=c_scale,
                             range_color=c_range, template=tmpl)
         fig.update_traces(mode="markers+text", textposition="top center",
@@ -461,7 +490,8 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
             fig.update_layout(coloraxis_colorbar=colorbar_cfg("Composite<br>Rank", theme))
     else:
         fig = px.scatter(df, x=x_stat, y=y_stat, text="Label", hover_name="Name",
-                         hover_data=h_data, color=color_col, color_discrete_map=c_map,
+                         hover_data=h_data, custom_data=cdata, color=color_col,
+                         color_discrete_map=c_map,
                          color_continuous_scale=c_scale, range_color=c_range, template=tmpl)
         fig.update_traces(mode="markers+text", textposition="top center",
                           textfont=dict(size=10, color=c["text"], family="Geist, sans-serif"),
@@ -503,6 +533,6 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
                           annotation_position="top right",
                           annotation_font=dict(color=c["muted"], size=11))
 
-    eyebrow = _eyebrow("player", season, is_3d)
+    eyebrow = _eyebrow("player", span, is_3d)
     title = _title(f"{y_stat}", f"{x_stat}", z_stat if is_3d else None)
     return fig, eyebrow, title

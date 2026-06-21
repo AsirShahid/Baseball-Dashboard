@@ -7,7 +7,7 @@ from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 from data import (
-    config, opts, MIN_PA_LIST, MIN_IP_LIST, TEAM_PRESETS,
+    config, opts, season_label, MIN_PA_LIST, MIN_IP_LIST, TEAM_PRESETS,
     BATTER_PRESETS, PITCHER_PRESETS,
     TEAM_COLORS, TEAM_COLOR_ALT, TEAM_FULL_NAME, TEAM_DIVISION, logo_b64,
 )
@@ -115,25 +115,32 @@ def top_nav():
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
-def _year_scrubber(init_year):
+def _year_scrubber(init_lo, init_hi):
     first, last = config["start_year"], config["current_year"]
     # A stale/hand-edited URL (?season=2099) must not seed the slider out of
     # range; the data-aware callback clamps later, but clamp up front so the
     # widget never renders an invalid value.
-    init_year = max(first, min(last, init_year))
+    init_lo = max(first, min(last, init_lo))
+    init_hi = max(first, min(last, init_hi))
+    if init_hi < init_lo:
+        init_lo, init_hi = init_hi, init_lo
     return html.Div(className="yr", children=[
         html.Div(className="yr-head", children=[
             html.Span("SEASON", className="yr-label"),
-            html.Span(str(init_year), id="season-val", className="yr-val"),
+            html.Span(season_label(init_lo, init_hi), id="season-val",
+                      className="yr-val"),
         ]),
-        dcc.Slider(id="season-slider", min=first, max=last, step=None,
-                   value=init_year, marks={}, included=True,
-                   className="season-slider"),
+        # Two handles: drag to pick a single season (handles together) or a
+        # multi-season span. allowCross=False keeps from ≤ to.
+        dcc.RangeSlider(id="season-slider", min=first, max=last, step=None,
+                        value=[init_lo, init_hi], marks={}, allowCross=False,
+                        className="season-slider"),
         html.Div(className="yr-step", children=[
-            html.Button("◂", id="season-prev", n_clicks=0),
-            dcc.Input(id="season-input", type="number", value=init_year,
+            dcc.Input(id="season-from", type="number", value=init_lo,
                       min=first, max=last, debounce=True),
-            html.Button("▸", id="season-next", n_clicks=0),
+            html.Span("→", className="yr-arrow"),
+            dcc.Input(id="season-to", type="number", value=init_hi,
+                      min=first, max=last, debounce=True),
         ]),
     ])
 
@@ -257,7 +264,8 @@ def sidebar(init):
         ]),
         team_axes,
         player_axes,
-        html.Div(className="sb-section", children=[_year_scrubber(init["season"])]),
+        html.Div(className="sb-section",
+                 children=[_year_scrubber(init["season"], init["season_end"])]),
         team_extra,
         player_extra,
         html.Div(id="rank-legend", className="sb-section",
@@ -366,7 +374,8 @@ def leaderboard_cards(rows, axis_count):
         ]),
         html.Div(className="lb-strip", children=[
             html.Button(className="lb-card", n_clicks=0,
-                        id={"kind": "lb-card", "team": r["team"]}, children=[
+                        id={"kind": "lb-card", "ref": r["ref"],
+                            "rank": r["rank"]}, children=[
                 html.Span(f"{r['rank']:02d}", className="lb-rank"),
                 html.Span(r["team"], className="lb-mono",
                           style={"background": r["color"]}),
@@ -491,4 +500,87 @@ def detail_body(team, year, composite, sparks, groups):
 
     return [head, spark_section] + stat_sections + [
         html.Div("Stats shown vs. all teams that season.", className="dt-foot"),
+    ]
+
+
+def player_detail_body(name, team, span, composite, sparks, groups):
+    """Slide-in player detail panel — the player analogue of detail_body.
+    Shares the dt-* / spark CSS so it matches the team panel. Tiles click
+    through to the player X axis (kind=pdt-stat). `span` is the season label."""
+    color = TEAM_COLORS.get(team, "#f5a524")
+    alt = TEAM_COLOR_ALT.get(team, "#0a0d12")
+    initials = "".join(p[0] for p in str(name).split()[:2]).upper() or "—"
+    head = html.Div(className="dt-head", style={
+        "background": f"linear-gradient(135deg, {color} 0%, {alt} 100%)"}, children=[
+        html.Div(className="dt-mono-big", children=[
+            html.Div(initials, className="lb-mono",
+                     style={"background": color, "width": 56, "height": 56,
+                            "fontSize": 18}),
+        ]),
+        html.Div(className="dt-name-block", children=[
+            html.Div(f"{TEAM_FULL_NAME.get(team, team or '—')} · {span}",
+                     className="dt-eyebrow"),
+            html.H2(str(name), className="dt-name"),
+            html.Div(className="dt-sub", children=[
+                "Composite ",
+                html.Span([str(composite),
+                           html.Span("th", style={"opacity": 0.55,
+                                                  "fontSize": "0.7em"})],
+                          className="dt-rank-badge"),
+            ]),
+        ]),
+    ])
+
+    spark_section = html.Div(className="dt-section", children=[
+        html.Div(className="dt-section-head", children=[
+            html.Span("5-YEAR TRAJECTORY", className="dt-section-title"),
+        ]),
+        html.Div(className="dt-spark-row", children=[
+            html.Div(className="spark", children=[
+                html.Div(className="spark-head", children=[
+                    html.Span(s["label"], className="spark-label"),
+                    html.Span(s["last"], className="spark-val"),
+                ]),
+                html.Img(src=_sparkline(s["values"]),
+                         style={"width": "100%", "height": "48px"}),
+                html.Div(className="spark-years", children=[
+                    html.Span(str(s["years"][0]) if s["years"] else ""),
+                    html.Span(str(s["years"][-1]) if s["years"] else ""),
+                ]),
+            ]) for s in sparks if s["values"]
+        ]),
+    ])
+
+    stat_sections = [
+        html.Div(className="dt-section", children=[
+            html.Div(className="dt-section-head", children=[
+                html.Span(g["name"].upper(), className="dt-section-title"),
+            ]),
+            html.Div(className="dt-statgrid", children=[
+                html.Button(className="dt-stat", n_clicks=0,
+                            id={"kind": "pdt-stat", "stat": t["label"]}, children=[
+                    html.Div(className="dt-stat-head", children=[
+                        html.Span(t["label"], className="dt-stat-label"),
+                        html.Span([str(t["pct"]),
+                                   html.Span("th", style={"opacity": 0.5})],
+                                  className="dt-stat-pct",
+                                  style={"color": t["ramp"]}),
+                    ]),
+                    html.Div(t["value"], className="dt-stat-val"),
+                    html.Div(className="dt-stat-bar", children=[
+                        html.Div(className="dt-stat-bar-fill",
+                                 style={"width": f"{t['pct']}%",
+                                        "background": t["ramp"]}),
+                        html.Div(className="dt-stat-bar-mean"),
+                    ]),
+                ])
+                for t in g["tiles"]
+            ]),
+        ])
+        for g in groups
+    ]
+
+    return [head, spark_section] + stat_sections + [
+        html.Div("Stats shown vs. the players matching your filters.",
+                 className="dt-foot"),
     ]

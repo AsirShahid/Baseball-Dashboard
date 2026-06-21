@@ -76,6 +76,11 @@ def serve_layout():
         else "team"
     season = safe_int(p.get("season") or p.get("p_season"),
                       config["current_year"])
+    # season_end seeds the upper handle of the range slider; absent → single
+    # season (end == start), preserving the old single-year share links.
+    season_end = safe_int(p.get("season_end"), season)
+    if season_end < season:
+        season, season_end = season_end, season
 
     x_type = p.get("x_type", "Batting")
     y_type = p.get("y_type", "Pitching")
@@ -102,7 +107,7 @@ def serve_layout():
     min_ip = raw_ip if raw_ip == "Qualified" else safe_int(raw_ip, "Qualified")
 
     init = dict(
-        view=view, season=season,
+        view=view, season=season, season_end=season_end,
         x_type=x_type, y_type=y_type, z_type=z_type,
         x_stat=x_stat, y_stat=y_stat, z_stat=z_stat,
         show_v=show_v, show_h=show_h, color_rank=color_rank, logos=logos,
