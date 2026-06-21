@@ -132,6 +132,25 @@ TEAM_DIVISION = {
     "TOR": "AL East",   "WAS": "NL East",
 }
 
+# Team-view filter options (the team analogue of the player AL/NL/team filter).
+# Leagues use the AL/NL sets (which include historical franchise codes, so the
+# league filter still works for old seasons); divisions only match the modern
+# 30 via TEAM_DIVISION and are naturally empty for pre-division seasons.
+LEAGUE_FILTERS = ["All Teams", "AL", "NL",
+                  "AL East", "AL Central", "AL West",
+                  "NL East", "NL Central", "NL West"]
+
+
+def team_in_league(team: str, league) -> bool:
+    """Whether a team code belongs to the selected league/division filter."""
+    if league in (None, "", "All Teams"):
+        return True
+    if league == "AL":
+        return team in AL_TEAMS
+    if league == "NL":
+        return team in NL_TEAMS
+    return TEAM_DIVISION.get(team) == league
+
 # ── Theme palette (drives Plotly figures so the chart matches the CSS theme) ──
 
 PALETTE = {

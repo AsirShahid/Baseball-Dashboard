@@ -114,6 +114,7 @@ def serve_layout():
         player_type=player_type, p_x_stat=p_x_stat, p_y_stat=p_y_stat,
         p_z_stat=p_z_stat, min_pa=min_pa, min_ip=min_ip,
         team=p.get("team", "All Teams"),
+        league=p.get("league", "All Teams"),
         p_color_rank=p.get("p_color_rank", "false") == "true",
         p_show_v=p_show_v, p_show_h=p_show_h,
         preset=None,

@@ -365,6 +365,40 @@ def test_player_point_carries_idfg_for_detail():
     assert seen and seen <= valid
 
 
+def test_team_league_filter_chart_and_leaderboard():
+    """The team-view league/division filter must restrict both the scatter and
+    the leaderboard to the selected teams (parity with the player team filter)."""
+    from charts import render_team
+    from callbacks import _leaderboard_rows
+    from data import AL_TEAMS, NL_TEAMS
+
+    fig, *_ = render_team(SEASON, False, "Batting", "Pitching", "WAR", "ERA",
+                          True, True, False, "Batting", None, "dark", "AL")
+    chart_teams = list(fig.data[0].text)
+    assert chart_teams and all(t in AL_TEAMS for t in chart_teams)
+
+    # A division narrows further to exactly that division's clubs.
+    fig2, *_ = render_team(SEASON, False, "Batting", "Pitching", "WAR", "ERA",
+                           True, True, False, "Batting", None, "dark", "AL East")
+    assert set(fig2.data[0].text) == {"BAL", "BOS", "NYY", "TBR", "TOR"}
+
+    # Leaderboard ranks within the league only.
+    rows, n = _leaderboard_rows(SEASON, "Batting", "Pitching", "WAR", "ERA",
+                                "Batting", None, "NL")
+    assert rows and all(r["team"] in NL_TEAMS for r in rows)
+    # Default is unchanged (all 30 → a full top-10).
+    rows_all, _ = _leaderboard_rows(SEASON, "Batting", "Pitching", "WAR", "ERA",
+                                    "Batting", None, "All Teams")
+    assert len(rows_all) == 10
+
+
+def test_team_in_league_helper():
+    from data import team_in_league
+    assert team_in_league("NYY", "AL") and not team_in_league("NYY", "NL")
+    assert team_in_league("LAD", "NL West") and not team_in_league("LAD", "AL West")
+    assert team_in_league("NYY", "All Teams") and team_in_league("ANY", None)
+
+
 def test_fetch_team_passes_month_through(monkeypatch):
     """Live split selection must reach the team roll-up too."""
     import fangraphs_api as fa
