@@ -452,12 +452,19 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
     if use_color_rank:
         h_data["Composite Rank"] = True
 
+    # IDfg rides along as customdata[0] (Plotly Express prepends custom_data
+    # ahead of hover_data and rewrites the hovertemplate indices to match) so a
+    # point click can identify the exact player for the detail panel — robust to
+    # duplicate names. Unused by the hovertemplate itself.
+    cdata = ["IDfg"] if "IDfg" in df.columns else None
+
     tmpl = "plotly_dark" if theme == "dark" else "plotly_white"
 
     if is_3d:
         h_data[z_stat] = True
         fig = px.scatter_3d(df, x=x_stat, y=y_stat, z=z_stat, text="Label",
-                            hover_name="Name", hover_data=h_data, color=color_col,
+                            hover_name="Name", hover_data=h_data, custom_data=cdata,
+                            color=color_col,
                             color_discrete_map=c_map, color_continuous_scale=c_scale,
                             range_color=c_range, template=tmpl)
         fig.update_traces(mode="markers+text", textposition="top center",
@@ -483,7 +490,8 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
             fig.update_layout(coloraxis_colorbar=colorbar_cfg("Composite<br>Rank", theme))
     else:
         fig = px.scatter(df, x=x_stat, y=y_stat, text="Label", hover_name="Name",
-                         hover_data=h_data, color=color_col, color_discrete_map=c_map,
+                         hover_data=h_data, custom_data=cdata, color=color_col,
+                         color_discrete_map=c_map,
                          color_continuous_scale=c_scale, range_color=c_range, template=tmpl)
         fig.update_traces(mode="markers+text", textposition="top center",
                           textfont=dict(size=10, color=c["text"], family="Geist, sans-serif"),

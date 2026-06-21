@@ -325,6 +325,46 @@ def test_render_player_single_z_value_stays_2d():
     assert eyebrow[0] == "2D SCATTER"
 
 
+def test_player_detail_panel_builds():
+    """Clicking a player builds a detail panel: tiles + composite + sparklines,
+    for batters and pitchers, single season and range."""
+    from callbacks import _player_detail, _player_leaderboard_rows
+    rows, _ = _player_leaderboard_rows(SEASON, "Batters", "WAR", "wRC+", None,
+                                       "Qualified", "Qualified", "All Teams")
+    idfg = int(rows[0]["ref"])
+    body = _player_detail(idfg, SEASON, SEASON, "Batters",
+                          "Qualified", "Qualified", "All Teams")
+    assert body is not None and len(body) >= 3          # head + sparks + tiles
+    # Multi-season range still resolves the same player
+    assert _player_detail(idfg, 2022, SEASON, "Batters",
+                          "Qualified", "Qualified", "All Teams") is not None
+    # A player outside an active team filter still renders (fallback pool)
+    assert _player_detail(idfg, SEASON, SEASON, "Batters",
+                          "Qualified", "Qualified", "BOS") is not None
+    # Unknown id → no panel
+    assert _player_detail(10 ** 12, SEASON, SEASON, "Batters",
+                          "Qualified", "Qualified", "All Teams") is None
+
+
+def test_player_point_carries_idfg_for_detail():
+    """The scatter must tag each point with its IDfg (customdata[0]) so a click
+    can open the right player's panel even when two players share a name."""
+    from charts import render_player, player_frame
+    import numpy as np
+    fig, *_ = render_player(SEASON, "Batters", "WAR", "wRC+",
+                            "Qualified", "Qualified", "All Teams", False, None)
+    pool = player_frame(SEASON, SEASON, "Batters", "Qualified", "Qualified",
+                        "All Teams")
+    valid = set(int(x) for x in pool["IDfg"])
+    seen = set()
+    for tr in fig.data:
+        if getattr(tr, "customdata", None) is None:
+            continue
+        for r in tr.customdata:
+            seen.add(int(r[0]))
+    assert seen and seen <= valid
+
+
 def test_fetch_team_passes_month_through(monkeypatch):
     """Live split selection must reach the team roll-up too."""
     import fangraphs_api as fa

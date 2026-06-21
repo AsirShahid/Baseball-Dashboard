@@ -8,7 +8,7 @@ from dash import Input, Output, State, MATCH, ALL, no_update, ctx
 
 from data import (
     config, load_csv, load_stats, season_bounds, season_label, process_columns,
-    seasons_with_data, opts,
+    seasons_with_data, opts, stat_higher_better,
     TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
     TEAM_FULL_NAME, TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS, ramp_color,
 )
@@ -16,7 +16,9 @@ from charts import (
     render_team, render_player, player_frame,
     compute_composite_rank, rank_items,
 )
-from components import leaderboard_cards, detail_body, player_preset_chips
+from components import (
+    leaderboard_cards, detail_body, player_detail_body, player_preset_chips,
+)
 
 # Curated, direction-aware stats for the team detail panel.
 # Each entry: (stat, higher_is_better)
@@ -29,6 +31,25 @@ DETAIL_GROUPS = [
 SPARK_STATS = [("wRC+", "team_batting_dir"),
                ("ERA",  "team_pitching_dir"),
                ("WAR",  "team_batting_dir")]
+
+# Curated stat tiles for the player detail panel (direction is derived from
+# stat_higher_better, so no need to hand-annotate higher/lower here). Stats
+# missing for a season/player are skipped at render time.
+PLAYER_DETAIL_GROUPS = {
+    "Batters":  [("Value & power", ["WAR", "wRC+", "OBP", "SLG", "ISO"]),
+                 ("Plate skills",  ["BB%", "K%", "Barrel%", "HardHit%"])],
+    "Pitchers": [("Run prevention", ["WAR", "ERA", "FIP", "WHIP"]),
+                 ("Stuff & control", ["K/9", "BB/9", "K%", "HR/9"])],
+}
+# (stat, dir for both batter/pitcher) for the player trajectory sparklines.
+PLAYER_SPARKS = {
+    "Batters":  [("WAR", "qualified_batting_dir"),
+                 ("wRC+", "qualified_batting_dir"),
+                 ("OPS", "qualified_batting_dir")],
+    "Pitchers": [("WAR", "qualified_pitching_dir"),
+                 ("ERA", "qualified_pitching_dir"),
+                 ("K/9", "qualified_pitching_dir")],
+}
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -94,6 +115,66 @@ def _spark(stat, dir_key, team, season):
             "last": _fmt_val(values[-1]) if values else "—"}
 
 
+def _player_spark(idfg, stat, dir_key, hi):
+    """Per-season trajectory of one stat for a single player, joined by IDfg.
+    fetch=False so drawing the panel never blocks on a missing neighbour CSV."""
+    years, values = [], []
+    for y in range(hi - 4, hi + 1):
+        df = load_csv(f"{config[dir_key]}/{y}.csv", fetch=False)
+        if df.empty or "IDfg" not in df.columns or stat not in df.columns:
+            continue
+        row = df[df["IDfg"] == idfg]
+        if row.empty:
+            continue
+        v = row.iloc[0][stat]
+        if pd.notna(v):
+            years.append(y)
+            values.append(float(v))
+    return {"label": stat, "values": values, "years": years,
+            "last": _fmt_val(values[-1]) if values else "—"}
+
+
+def _player_detail(idfg, lo, hi, ptype, mpa, mip, tf):
+    """Build the player detail panel: percentile tiles vs the current player
+    pool (same filters as the chart), a composite badge, and 5-year sparklines."""
+    pool = player_frame(lo, hi, ptype, mpa, mip, tf)
+    prow = pool[pool["IDfg"] == idfg] if "IDfg" in pool.columns else pool.iloc[0:0]
+    if prow.empty:
+        # The clicked player can sit outside the filtered pool (e.g. an active
+        # team filter, or a min-PA threshold). Fall back to the unfiltered
+        # all-teams pool so the panel still renders the player in context.
+        pool = player_frame(lo, hi, ptype, "Qualified", "Qualified", "All Teams")
+        prow = pool[pool["IDfg"] == idfg] if "IDfg" in pool.columns else pool.iloc[0:0]
+    if prow.empty:
+        return None
+    prow = prow.iloc[0]
+    name = str(prow.get("Name", "—"))
+    team = str(prow.get("Team", "")).strip()
+    is_pitch = (ptype == "Pitchers")
+
+    groups, all_pcts = [], []
+    for gname, stats in PLAYER_DETAIL_GROUPS.get(ptype, []):
+        tiles = []
+        for stat in stats:
+            if stat not in pool.columns:
+                continue
+            v = prow.get(stat)
+            if v is None or (isinstance(v, float) and v != v):
+                continue
+            hib = stat_higher_better(stat, is_pitch)
+            pct = _pct(pool[stat], v, hib)
+            all_pcts.append(pct)
+            tiles.append({"label": stat, "value": _fmt_val(v), "pct": pct,
+                          "ramp": ramp_color(pct / 100)})
+        if tiles:
+            groups.append({"name": gname, "tiles": tiles})
+    composite = int(round(sum(all_pcts) / len(all_pcts))) if all_pcts else 50
+    sparks = [_player_spark(idfg, s, dk, hi)
+              for s, dk in PLAYER_SPARKS.get(ptype, [])]
+    return player_detail_body(name, team, season_label(lo, hi),
+                              composite, sparks, groups)
+
+
 def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
     lo, hi = season_bounds(season)
     if lo is None:
@@ -132,7 +213,7 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
     out = []
     for i, r in enumerate(rows[:10]):
         pct = int(round(r["score"]))
-        out.append({"rank": i + 1, "team": r["team"],
+        out.append({"rank": i + 1, "team": r["team"], "ref": r["team"],
                     "name": TEAM_FULL_NAME.get(r["team"], r["team"]),
                     "pct": pct, "color": TEAM_COLORS.get(r["team"], "#7d8590"),
                     "ramp": ramp_color(pct / 100)})
@@ -165,7 +246,8 @@ def _player_leaderboard_rows(season, ptype, pxs, pys, pzs, min_pa, min_ip, team)
         row = df.loc[idx]
         tm = str(row.get("Team", "")).strip()
         pct = int(round(float(comp.loc[idx])))
-        out.append({"rank": i + 1, "team": tm,
+        ref = str(int(row["IDfg"])) if "IDfg" in df.columns else str(row.get("Name", ""))
+        out.append({"rank": i + 1, "team": tm, "ref": ref,
                     "name": str(row.get("Name", "—")),
                     "pct": pct, "color": TEAM_COLORS.get(tm, "#7d8590"),
                     "ramp": ramp_color(pct / 100)})
@@ -659,12 +741,12 @@ def register_callbacks(app):
             return [], {"display": "none"}
         return leaderboard_cards(rows, n), {}
 
-    # ---- team detail panel ----
+    # ---- detail panel (teams and players) ----
     @app.callback(
         Output("detail-overlay", "style"),
         Output("detail-store", "data"),
         Input("main-graph", "clickData"),
-        Input({"kind": "lb-card", "team": ALL, "rank": ALL}, "n_clicks"),
+        Input({"kind": "lb-card", "ref": ALL, "rank": ALL}, "n_clicks"),
         Input("detail-close", "n_clicks"),
         State({"kind": "seg-store", "group": "view"}, "data"),
         prevent_initial_call=True,
@@ -674,20 +756,32 @@ def register_callbacks(app):
         trig = ctx.triggered_id
         if trig == "detail-close":
             return hidden, no_update
+        # Store a bare team abbr for teams, or {"type":"player","idfg":N} for
+        # players; render_detail branches on the shape.
         if isinstance(trig, dict) and trig.get("kind") == "lb-card":
-            # Player cards carry a team abbr too, but clicking a *player* row
-            # must not open that team's panel; the player detail panel is a
-            # separate follow-up. Only the team leaderboard opens detail today.
-            if view != "team" or not any(lb_clicks or []):
+            if not any(lb_clicks or []):
                 return no_update, no_update
-            return {}, trig["team"]
+            ref = trig["ref"]
+            if view == "player":
+                try:
+                    return {}, {"type": "player", "idfg": int(ref)}
+                except (TypeError, ValueError):
+                    return no_update, no_update
+            return {}, ref
         if trig == "main-graph":
-            if view != "team" or not click:
+            if not click:
                 return no_update, no_update
             try:
-                abbr = click["points"][0]["text"]
+                pt = click["points"][0]
             except (KeyError, IndexError, TypeError):
                 return no_update, no_update
+            if view == "player":
+                cd = pt.get("customdata")
+                try:
+                    return {}, {"type": "player", "idfg": int(cd[0])}
+                except (TypeError, ValueError, IndexError):
+                    return no_update, no_update
+            abbr = pt.get("text")
             if abbr not in TEAM_COLORS:
                 return no_update, no_update
             return {}, abbr
@@ -711,16 +805,40 @@ def register_callbacks(app):
         return trig["type"], trig["stat"], {"display": "none"}
 
     @app.callback(
+        Output("p-x-stat", "value", allow_duplicate=True),
+        Output("detail-overlay", "style", allow_duplicate=True),
+        Input({"kind": "pdt-stat", "stat": ALL}, "n_clicks"),
+        State({"kind": "seg-store", "group": "view"}, "data"),
+        prevent_initial_call=True,
+    )
+    def pick_player_detail_stat(clicks, view):
+        """Clicking a tile in the player panel sets it as the X axis (parity
+        with the team panel's stat → axis behaviour) and closes the panel."""
+        if not clicks or not any(clicks) or view != "player":
+            return no_update, no_update
+        trig = ctx.triggered_id
+        if not isinstance(trig, dict):
+            return no_update, no_update
+        return trig["stat"], {"display": "none"}
+
+    @app.callback(
         Output("detail-body", "children"),
         Input("detail-store", "data"),
         State("season-slider", "value"),
+        State({"kind": "seg-store", "group": "ptype"}, "data"),
+        State("min-pa", "value"), State("min-ip", "value"),
+        State("team-filter", "value"),
     )
-    def render_detail(team, season):
-        if not team:
+    def render_detail(store, season, ptype, mpa, mip, tf):
+        if not store:
             return None
         lo, hi = season_bounds(season)
         if lo is None:
             lo = hi = config["current_year"]
+        if isinstance(store, dict) and store.get("type") == "player":
+            return _player_detail(store["idfg"], lo, hi, ptype or "Batters",
+                                  mpa, mip, tf or "All Teams")
+        team = store
         groups, all_pcts = [], []
         for gname, gtype, dir_key, stats in DETAIL_GROUPS:
             tiles = []
