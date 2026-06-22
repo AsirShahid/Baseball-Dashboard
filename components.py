@@ -7,8 +7,8 @@ from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 from data import (
-    config, opts, season_label, MIN_PA_LIST, MIN_IP_LIST, TEAM_PRESETS,
-    BATTER_PRESETS, PITCHER_PRESETS,
+    config, opts, season_label, MIN_PA_LIST, MIN_IP_LIST, LEAGUE_FILTERS,
+    TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS,
     TEAM_COLORS, TEAM_COLOR_ALT, TEAM_FULL_NAME, TEAM_DIVISION, logo_b64,
 )
 
@@ -206,6 +206,12 @@ def sidebar(init):
         html.Div(className="sb-section", children=[
             sb_label("PRESETS"),
             preset_chips(init["preset"]),
+        ]),
+        html.Div(className="sb-section", children=[
+            sb_label("TEAM FILTER"),
+            html.Div("League / division", className="field-label"),
+            dcc.Dropdown(id="team-league", options=opts(LEAGUE_FILTERS),
+                         value=init["league"], clearable=False),
         ]),
         html.Div(className="sb-section", children=[
             sb_label("DISPLAY"),
@@ -439,7 +445,7 @@ def detail_body(team, year, composite, sparks, groups):
                      className="dt-eyebrow"),
             html.H2(TEAM_FULL_NAME.get(team, team), className="dt-name"),
             html.Div(className="dt-sub", children=[
-                "Composite ",
+                "Overall ",
                 html.Span([str(composite),
                            html.Span("th", style={"opacity": 0.55,
                                                   "fontSize": "0.7em"})],
@@ -522,7 +528,7 @@ def player_detail_body(name, team, span, composite, sparks, groups):
                      className="dt-eyebrow"),
             html.H2(str(name), className="dt-name"),
             html.Div(className="dt-sub", children=[
-                "Composite ",
+                "Overall ",
                 html.Span([str(composite),
                            html.Span("th", style={"opacity": 0.55,
                                                   "fontSize": "0.7em"})],

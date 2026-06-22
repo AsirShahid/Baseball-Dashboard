@@ -7,7 +7,7 @@ import plotly.express as px
 import pandas as pd
 
 from data import (
-    load_stats, stat_higher_better, season_bounds, season_label,
+    load_stats, stat_higher_better, season_bounds, season_label, team_in_league,
     TEAM_COLORS, NL_TEAMS, AL_TEAMS, PALETTE, RANK_COLORSCALE,
     logo_b64, logo_aspect,
 )
@@ -170,7 +170,8 @@ def _err(msg: str, theme: str):
 # ── Team render ───────────────────────────────────────────────────────────────
 
 def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
-                show_v, show_h, use_color_rank, z_type, z_stat, theme="dark"):
+                show_v, show_h, use_color_rank, z_type, z_stat, theme="dark",
+                league="All Teams"):
     c = PALETTE[theme]
     if not x_stat or not y_stat:
         return _err("Select stats to view", theme)
@@ -218,6 +219,14 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
             if merged_z["_z"].notna().sum() >= 2:
                 merged = merged_z
                 is_3d = True
+
+    # League/division filter (team analogue of the player AL/NL/team filter).
+    # Filter before means/ranks so a within-league view averages and ranks only
+    # the teams shown.
+    if league not in (None, "", "All Teams"):
+        merged = merged[merged["Team"].map(lambda t: team_in_league(str(t), league))]
+        if merged.empty:
+            return _err(f"No {league} teams for {span}", theme)
 
     if merged.empty:
         return _err(f"No data for {span}", theme)

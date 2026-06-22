@@ -8,7 +8,7 @@ from dash import Input, Output, State, MATCH, ALL, no_update, ctx
 
 from data import (
     config, load_csv, load_stats, season_bounds, season_label, process_columns,
-    seasons_with_data, opts, stat_higher_better,
+    seasons_with_data, opts, stat_higher_better, team_in_league,
     TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
     TEAM_FULL_NAME, TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS, ramp_color,
 )
@@ -175,7 +175,7 @@ def _player_detail(idfg, lo, hi, ptype, mpa, mip, tf):
                               composite, sparks, groups)
 
 
-def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
+def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs, league="All Teams"):
     lo, hi = season_bounds(season)
     if lo is None:
         return [], 0
@@ -190,10 +190,14 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs):
         # Index by team so axes loaded from different CSVs (batting vs
         # pitching) align by team, not by row position.
         s = pd.Series(df[stat].values, index=df["Team"].astype(str))
+        # Restrict to the league/division so the board ranks within the same
+        # set of teams the chart shows.
+        if league not in (None, "", "All Teams"):
+            s = s[[team_in_league(t, league) for t in s.index]]
         # An all-NaN axis carries no signal; drop it so it neither produces a
         # meaningless all-50 ranking (x/y) nor inflates the axis count (z) —
         # mirroring render_team, which won't plot or count an empty axis.
-        if s.isna().all():
+        if s.empty or s.isna().all():
             return None
         return s
 
@@ -635,10 +639,11 @@ def register_callbacks(app):
         Input("min-pa", "value"), Input("min-ip", "value"),
         Input("team-filter", "value"), Input("tg-player-rank", "value"),
         Input("tg-player-vmean", "value"), Input("tg-player-hmean", "value"),
+        Input("team-league", "value"),
         prevent_initial_call=True,
     )
     def sync_url(view, season, xt, yt, zt, xs, ys, zs, vm, hm, tr, lg,
-                 ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm):
+                 ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm, league):
         lo, hi = season_bounds(season)
         season_q = "" if lo is None else lo
         season_end_q = "" if lo is None else hi
@@ -659,7 +664,8 @@ def register_callbacks(app):
                           show_v=str(bool(vm)).lower(),
                           show_h=str(bool(hm)).lower(),
                           color_rank=str(bool(tr)).lower(),
-                          logos=str(bool(lg)).lower())
+                          logos=str(bool(lg)).lower(),
+                          league=league or "All Teams")
         return "?" + urlencode(params)
 
     app.clientside_callback(
@@ -705,16 +711,18 @@ def register_callbacks(app):
         Input("min-pa", "value"), Input("min-ip", "value"),
         Input("team-filter", "value"), Input("tg-player-rank", "value"),
         Input("tg-player-vmean", "value"), Input("tg-player-hmean", "value"),
+        Input("team-league", "value"),
         Input("theme-store", "data"),
     )
     def render(view, season, xt, yt, zt, xs, ys, zs, vm, hm, tr, lg,
-               ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm, theme):
+               ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm, league, theme):
         theme = theme or "dark"
         if view == "player":
             return render_player(season, ptype, pxs, pys, mpa, mip, tf,
                                   bool(pr), pzs, bool(pvm), bool(phm), theme)
         return render_team(season, bool(lg), xt, yt, xs, ys,
-                            bool(vm), bool(hm), bool(tr), zt, zs, theme)
+                            bool(vm), bool(hm), bool(tr), zt, zs, theme,
+                            league or "All Teams")
 
     @app.callback(
         Output("leaderboard", "children"), Output("leaderboard", "style"),
@@ -728,15 +736,16 @@ def register_callbacks(app):
         Input("p-x-stat", "value"), Input("p-y-stat", "value"),
         Input("p-z-stat", "value"),
         Input("min-pa", "value"), Input("min-ip", "value"),
-        Input("team-filter", "value"),
+        Input("team-filter", "value"), Input("team-league", "value"),
     )
     def update_leaderboard(view, season, xt, yt, zt, xs, ys, zs,
-                           ptype, pxs, pys, pzs, mpa, mip, tf):
+                           ptype, pxs, pys, pzs, mpa, mip, tf, league):
         if view == "player":
             rows, n = _player_leaderboard_rows(season, ptype, pxs, pys, pzs,
                                                mpa, mip, tf)
         else:
-            rows, n = _leaderboard_rows(season, xt, yt, xs, ys, zt, zs)
+            rows, n = _leaderboard_rows(season, xt, yt, xs, ys, zt, zs,
+                                        league or "All Teams")
         if not rows:
             return [], {"display": "none"}
         return leaderboard_cards(rows, n), {}
