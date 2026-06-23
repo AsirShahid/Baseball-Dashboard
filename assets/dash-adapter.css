@@ -136,57 +136,63 @@
 }
 
 /* ─────────── dcc.Input (year box) ─────────── */
-input[type="number"].form-control,
-.yr-step input {
+input[type="number"].form-control {
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--text);
 }
 
-/* ─────────── dcc.Slider (year scrubber) → .yr-track look ─────────── */
-.season-slider .rc-slider { height: 22px; padding: 0; margin: 2px 0; }
+/* ─────────── dcc.RangeSlider (season scrubber) ─────────── */
+/* Inset the rail so a handle at either extreme never hangs off the panel. */
+.season-slider { padding: 4px 9px 2px; }
+.season-slider .rc-slider { height: 20px; padding: 0; margin: 0; }
 .season-slider .rc-slider-rail {
-  height: 18px; top: 2px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 5px;
+  height: 5px; top: 50%; transform: translateY(-50%);
+  background: var(--surface-3);
+  border-radius: 999px;
 }
 .season-slider .rc-slider-track {
-  height: 18px; top: 2px;
+  height: 5px; top: 50%; transform: translateY(-50%);
   background: linear-gradient(90deg,
-    color-mix(in oklab, var(--accent) 32%, transparent),
-    color-mix(in oklab, var(--accent) 16%, transparent));
-  border-radius: 4px 0 0 4px;
+    color-mix(in oklab, var(--accent) 72%, #fff),
+    var(--accent));
+  border-radius: 999px;
 }
-.season-slider .rc-slider-step { height: 18px; top: 2px; }
+.season-slider .rc-slider-step { height: 5px; top: 50%; transform: translateY(-50%); }
+/* Round knobs read cleanly when the two handles coincide (single season). */
 .season-slider .rc-slider-handle {
-  width: 12px; height: 22px; top: 0; margin-top: 0;
-  background: var(--accent);
-  border: 1px solid var(--surface);
-  border-radius: 3px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  width: 15px; height: 15px; top: 50%;
+  margin: 0 !important;
+  transform: translate(-50%, -50%) !important;
+  background: var(--surface);
+  border: 3px solid var(--accent);
+  border-radius: 50%;
   opacity: 1;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.45);
+  transition: box-shadow 120ms ease, border-color 120ms ease;
 }
 .season-slider .rc-slider-handle:hover,
 .season-slider .rc-slider-handle:focus,
 .season-slider .rc-slider-handle-active,
 .season-slider .rc-slider-handle-dragging {
-  border-color: var(--surface) !important;
-  box-shadow: 0 0 0 4px var(--accent-soft), 0 1px 4px rgba(0,0,0,0.4) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 5px var(--accent-soft), 0 1px 5px rgba(0,0,0,0.45) !important;
 }
+/* Decade ticks sit just beneath the rail; labels below them. */
 .season-slider .rc-slider-dot {
-  width: 1px; height: 6px; bottom: 6px;
+  width: 2px; height: 2px; bottom: -6px;
   background: var(--text-4);
-  border: 0; border-radius: 0;
+  border: 0; border-radius: 50%;
+  margin-left: -1px;
   opacity: 0.5;
-  margin-left: 0;
 }
-.season-slider .rc-slider-dot-active { background: var(--text-4); }
+.season-slider .rc-slider-dot-active { background: var(--text-4); opacity: 0.5; }
+.season-slider .rc-slider-mark { top: 15px; }
 .season-slider .rc-slider-mark-text {
   color: var(--text-3) !important;
   font-family: 'Geist Mono', ui-monospace, monospace;
-  font-size: 9.5px;
-  margin-top: 2px;
+  font-size: 10px;
+  letter-spacing: -0.01em;
 }
 .season-slider .rc-slider-mark-text-active { color: var(--text-3) !important; }
 
