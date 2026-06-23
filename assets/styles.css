@@ -329,113 +329,36 @@ button { font-family: inherit; }
   font-size: 18px; font-weight: 600; color: var(--text); letter-spacing: -0.02em;
 }
 
-/* Milestone dots row above the track */
-.yr-ms-row {
-  position: relative;
-  height: 12px;
-  margin: 0 4px;
-}
-.yr-ms {
-  position: absolute; top: 0; transform: translateX(-50%);
-  cursor: pointer;
-  padding: 2px 4px;
-}
-.yr-ms-dot {
-  width: 4px; height: 4px; border-radius: 50%;
-  background: color-mix(in oklab, var(--accent) 70%, transparent);
-  transition: transform 120ms, background 120ms;
-  margin-top: 4px;
-}
-.yr-ms:hover .yr-ms-dot {
-  background: var(--accent);
-  transform: scale(1.6);
-}
-.yr-ms-tip {
-  position: absolute; bottom: calc(100% + 4px); left: 50%;
-  transform: translateX(-50%);
-  background: var(--surface);
-  border: 1px solid var(--border-2);
-  border-radius: 6px;
-  padding: 5px 8px;
-  white-space: nowrap;
-  box-shadow: var(--shadow);
-  z-index: 10;
-  pointer-events: none;
-}
-.yr-ms-tip-y {
-  font-family: 'Geist Mono', ui-monospace, monospace;
-  font-size: 10px; font-weight: 600; color: var(--accent); line-height: 1.1;
-}
-.yr-ms-tip-l {
-  font-size: 11px; color: var(--text); margin-top: 1px;
-}
-
-.yr-track {
-  position: relative;
-  height: 18px;
+/* From → to range field: one unified pill so the two inputs can never
+   overflow the narrow sidebar (flex items need min-width:0 to shrink). */
+.yr-step {
+  display: flex; align-items: stretch; margin-top: 14px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  cursor: pointer;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 120ms ease;
 }
-.yr-fill {
-  position: absolute; left: 0; top: 0; bottom: 0;
-  background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 32%, transparent), color-mix(in oklab, var(--accent) 16%, transparent));
-  border-radius: 4px 0 0 4px;
+.yr-step:focus-within {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--border));
 }
-.yr-dec {
-  position: absolute; top: 50%;
-  width: 1px; height: 6px;
-  background: var(--text-4);
-  transform: translate(-50%, -50%);
-  opacity: 0.5;
-  pointer-events: none;
-}
-.yr-handle {
-  position: absolute; top: 50%; transform: translate(-50%, -50%);
-  width: 12px; height: 22px;
-  border-radius: 3px;
-  background: var(--accent);
-  border: 1px solid var(--surface);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-  pointer-events: none;
-}
-.yr-handle-dot {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: 2px; height: 10px; background: rgba(0,0,0,0.30); border-radius: 1px;
-}
-
-/* Decade labels below */
-.yr-scale {
-  position: relative;
-  height: 14px;
-  margin: 0 4px;
-}
-.yr-scale-mark {
-  position: absolute;
-  font-family: 'Geist Mono', ui-monospace, monospace;
-  font-size: 9.5px;
-  color: var(--text-3);
-  white-space: nowrap;
-  top: 2px;
-}
-
-.yr-step { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
-.yr-step button {
-  width: 28px; height: 28px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 6px; cursor: pointer; color: var(--text-2);
-  font-family: 'Geist Mono', monospace;
-}
-.yr-step button:hover { color: var(--text); border-color: var(--border-2); }
 .yr-step input {
-  flex: 1; background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 6px; padding: 6px 10px; color: var(--text); text-align: center;
-  font-family: 'Geist Mono', monospace; font-size: 13px;
+  flex: 1 1 0; min-width: 0; width: 0;
+  background: transparent; border: 0;
+  padding: 9px 6px; color: var(--text); text-align: center;
+  font-family: 'Geist Mono', monospace; font-size: 14px; font-weight: 500;
   outline: none;
 }
-.yr-step input:focus { border-color: color-mix(in oklab, var(--accent) 55%, var(--border)); }
-.yr-arrow { color: var(--text-3); font-family: 'Geist Mono', monospace; font-size: 13px; }
+.yr-step input:focus {
+  background: color-mix(in oklab, var(--accent) 9%, transparent);
+}
+.yr-arrow {
+  display: flex; align-items: center; padding: 0 11px;
+  color: var(--text-3); font-family: 'Geist Mono', monospace; font-size: 12px;
+  background: color-mix(in oklab, var(--surface-3) 45%, transparent);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
 
 /* Presets */
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
