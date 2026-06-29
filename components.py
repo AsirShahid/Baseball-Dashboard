@@ -177,9 +177,9 @@ def sidebar(init):
                                type_group="xtype", type_value=init["x_type"]),
                 statpicker_row("Y", "y-stat", init["y_stat"],
                                type_group="ytype", type_value=init["y_type"]),
-                statpicker_row("Z", "z-stat", init["z_stat"],
+                statpicker_row("Size", "z-stat", init["z_stat"],
                                type_group="ztype", type_value=init["z_type"],
-                               clearable=True, placeholder="None — keep 2D"),
+                               clearable=True, placeholder="None — fixed size"),
             ]),
         ]),
     ])
@@ -196,8 +196,8 @@ def sidebar(init):
             html.Div(className="picker-stack", children=[
                 statpicker_row("X", "p-x-stat", init["p_x_stat"]),
                 statpicker_row("Y", "p-y-stat", init["p_y_stat"]),
-                statpicker_row("Z", "p-z-stat", init["p_z_stat"],
-                               clearable=True, placeholder="None — keep 2D"),
+                statpicker_row("Size", "p-z-stat", init["p_z_stat"],
+                               clearable=True, placeholder="None — fixed size"),
             ]),
         ]),
     ])
@@ -350,8 +350,8 @@ def about_view():
                     "baseball statistics.",
                 ]),
                 html.P("Pick a stat for the x-axis and another for the y-axis — "
-                       "optionally a third for the z — and it draws the dots. "
-                       "Every team and player season from 1871 to today.",
+                       "optionally a third to size the dots — and it draws the "
+                       "scatter. Every team and player season from 1871 to today.",
                        className="ab-p"),
                 html.P(className="ab-p ab-dim", children=[
                     "Stats come from FanGraphs via pybaseball. The chart is "

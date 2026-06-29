@@ -4,6 +4,7 @@
 from dash import html
 import plotly.graph_objects as go
 import plotly.express as px
+import numpy as np
 import pandas as pd
 
 from data import (
@@ -14,7 +15,10 @@ from data import (
 
 RANK_COLORS = [c for _, c in RANK_COLORSCALE]   # flat list for plotly express
 MEAN_LINE = "rgba(245,165,36,0.55)"             # amber reference line
-MEAN_PLANE = "rgba(245,165,36,0.16)"            # amber reference plane
+
+# Dot-size range (pixels) when a third stat is mapped to marker size.
+TEAM_SIZE_RANGE   = (8, 28)
+PLAYER_SIZE_RANGE = (5, 22)
 
 
 def _axis_dir(stat, is_pitching):
@@ -24,6 +28,26 @@ def _axis_dir(stat, is_pitching):
     are unchanged — only the visual direction flips.
     """
     return "reversed" if not stat_higher_better(stat, is_pitching) else None
+
+
+def _size_array(values: pd.Series, stat: str, is_pitching: bool,
+                size_range: tuple[float, float]) -> np.ndarray:
+    """Map a stat series to marker sizes in *size_range*.
+
+    For higher-is-better stats the largest value gets the biggest dot.
+    For lower-is-better stats (e.g. ERA) the relationship is inverted so
+    "better" always means bigger.
+    """
+    lo, hi = size_range
+    v = values.astype(float)
+    vmin, vmax = v.min(), v.max()
+    span = vmax - vmin
+    if span == 0:
+        return np.full(len(v), (lo + hi) / 2)
+    normed = (v - vmin) / span
+    if not stat_higher_better(stat, is_pitching):
+        normed = 1.0 - normed
+    return lo + normed * (hi - lo)
 
 
 # ── Theme-aware layout helpers ────────────────────────────────────────────────
@@ -45,28 +69,6 @@ def base_layout(theme: str = "dark") -> dict:
         hoverlabel=dict(bgcolor=c["hover_bg"], bordercolor=c["hover_border"],
                         font_color=c["text"], font_size=12),
         margin=dict(l=70, r=30, t=24, b=56),
-    )
-
-
-def base_layout_3d(theme: str = "dark") -> dict:
-    c = PALETTE[theme]
-    _ax = dict(
-        backgroundcolor=c["plot"], gridcolor=c["grid"],
-        showbackground=True, zerolinecolor=c["axis"],
-        tickfont=dict(color=c["muted"], size=10),
-        title_font=dict(color=c["text"], size=12),
-    )
-    return dict(
-        paper_bgcolor=c["paper"],
-        font=dict(color=c["text"], size=12,
-                  family="Geist, ui-sans-serif, system-ui, -apple-system, sans-serif"),
-        scene=dict(
-            bgcolor=c["plot"],
-            xaxis=dict(**_ax), yaxis=dict(**_ax), zaxis=dict(**_ax),
-        ),
-        hoverlabel=dict(bgcolor=c["hover_bg"], bordercolor=c["hover_border"],
-                        font_color=c["text"], font_size=12),
-        margin=dict(l=0, r=0, t=24, b=0),
     )
 
 
@@ -114,43 +116,11 @@ def rank_items(*axes):
             for series, stat, is_pitching in axes if series is not None]
 
 
-def add_mean_planes_3d(fig, x_vals, y_vals, z_vals, show_x_plane, show_y_plane):
-    """Add semi-transparent amber mean reference planes to a 3D figure.
-
-    The x/y planes follow the 2D vertical/horizontal-mean toggles; the z plane
-    is always drawn because there is no third toggle in the UI."""
-    xlo, xhi = float(x_vals.min()), float(x_vals.max())
-    ylo, yhi = float(y_vals.min()), float(y_vals.max())
-    zlo, zhi = float(z_vals.min()), float(z_vals.max())
-    xpad = (xhi - xlo) * 0.12 or 0.5
-    ypad = (yhi - ylo) * 0.12 or 0.5
-    zpad = (zhi - zlo) * 0.12 or 0.5
-    xlo -= xpad; xhi += xpad
-    ylo -= ypad; yhi += ypad
-    zlo -= zpad; zhi += zpad
-
-    _plane = dict(
-        colorscale=[[0, MEAN_PLANE], [1, MEAN_PLANE]],
-        showscale=False, hoverinfo="skip", showlegend=False,
-    )
-    if show_x_plane:
-        mx = float(x_vals.mean())
-        fig.add_trace(go.Surface(x=[[mx, mx], [mx, mx]], y=[[ylo, yhi], [ylo, yhi]],
-                                 z=[[zlo, zlo], [zhi, zhi]], **_plane))
-    if show_y_plane:
-        my = float(y_vals.mean())
-        fig.add_trace(go.Surface(x=[[xlo, xhi], [xlo, xhi]], y=[[my, my], [my, my]],
-                                 z=[[zlo, zlo], [zhi, zhi]], **_plane))
-    mz = float(z_vals.mean())
-    fig.add_trace(go.Surface(x=[[xlo, xhi], [xlo, xhi]], y=[[ylo, ylo], [yhi, yhi]],
-                             z=[[mz, mz], [mz, mz]], **_plane))
-
-
 # ── Topbar title builders ─────────────────────────────────────────────────────
 
-def _eyebrow(view: str, label, is_3d: bool):
+def _eyebrow(view: str, label, has_size: bool):
     dot = html.Span("·", className="dot")
-    return [("3D SCATTER" if is_3d else "2D SCATTER"), dot,
+    return [("SIZE-MAPPED" if has_size else "SCATTER"), dot,
             ("PLAYERS" if view == "player" else "TEAMS"), dot, str(label)]
 
 
@@ -159,7 +129,8 @@ def _title(y_label: str, x_label: str, z_label: str | None = None):
            html.Span("vs", className="vs"),
            html.Span(x_label, className="ax")]
     if z_label:
-        out += [html.Span("·", className="vs"), html.Span(z_label, className="ax")]
+        out += [html.Span("sized by", className="vs"),
+                html.Span(z_label, className="ax")]
     return out
 
 
@@ -193,17 +164,13 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
     if x_stat not in x_df.columns or y_stat not in y_df.columns:
         return _err("Stat not available for this season", theme)
 
-    # Join axes on Team so values loaded from different CSVs (batting vs
-    # pitching, possibly stored in different row orders) pair up by team
-    # rather than by row position.
     merged = pd.merge(
         x_df[["Team", x_stat]].rename(columns={x_stat: "_x"}),
         y_df[["Team", y_stat]].rename(columns={y_stat: "_y"}),
         on="Team",
     )
 
-    # 3D: load Z data
-    is_3d = False
+    has_size = False
     if z_stat:
         zkey = "team_batting_dir" if z_type == "Batting" else "team_pitching_dir"
         z_df = load_stats(zkey, lo, hi)
@@ -213,16 +180,10 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
                 merged, z_df[["Team", z_stat]].rename(columns={z_stat: "_z"}),
                 on="Team",
             )
-            # Need at least two real Z values for a meaningful third axis;
-            # a single point collapses the scatter and the mean plane to a
-            # line, so fall back to 2D instead.
             if merged_z["_z"].notna().sum() >= 2:
                 merged = merged_z
-                is_3d = True
+                has_size = True
 
-    # League/division filter (team analogue of the player AL/NL/team filter).
-    # Filter before means/ranks so a within-league view averages and ranks only
-    # the teams shown.
     if league not in (None, "", "All Teams"):
         merged = merged[merged["Team"].map(lambda t: team_in_league(str(t), league))]
         if merged.empty:
@@ -232,7 +193,7 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         return _err(f"No data for {span}", theme)
     x_vals = merged["_x"]
     y_vals = merged["_y"]
-    z_vals = merged["_z"] if is_3d else None
+    z_vals = merged["_z"] if has_size else None
     teams  = merged["Team"]
 
     if x_vals.isna().all() or y_vals.isna().all():
@@ -245,52 +206,22 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
                            (z_vals, z_stat, z_type == "Pitching"))
         rank_score = compute_composite_rank(*items).round(1)
 
+    sizes = None
+    if has_size:
+        sizes = _size_array(z_vals, z_stat, z_type == "Pitching", TEAM_SIZE_RANGE)
+
     fig = go.Figure()
 
-    if is_3d:
-        if use_color_rank:
-            marker = dict(size=8, color=rank_score, colorscale=RANK_COLORSCALE,
-                          cmin=0, cmax=100, showscale=True,
-                          colorbar=colorbar_cfg("Composite<br>Rank", theme),
-                          opacity=0.95, line=dict(color=c["marker_line"], width=1))
-        else:
-            marker = dict(size=8,
-                          color=[TEAM_COLORS.get(str(t), c["accent"]) for t in teams],
-                          opacity=0.95, line=dict(color=c["marker_line"], width=1))
-        hover_rank = "<br>Composite rank: %{customdata:.1f}" if use_color_rank else ""
-        fig.add_trace(go.Scatter3d(
-            x=x_vals, y=y_vals, z=z_vals, mode="markers+text",
-            text=teams, textposition="top center",
-            textfont=dict(size=10, color=c["text"]), marker=marker,
-            customdata=rank_score if use_color_rank else None,
-            hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:.2f}}<br>"
-                           f"{y_type} {y_stat}: %{{y:.2f}}<br>"
-                           f"{z_type} {z_stat}: %{{z:.2f}}" + hover_rank + "<extra></extra>"),
-        ))
-        add_mean_planes_3d(fig, x_vals, y_vals, z_vals, show_v, show_h)
-        layout = base_layout_3d(theme)
-        layout["scene"]["xaxis"]["title"] = f"{x_type}: {x_stat}"
-        layout["scene"]["yaxis"]["title"] = f"{y_type}: {y_stat}"
-        layout["scene"]["zaxis"]["title"] = f"{z_type}: {z_stat}"
-        # Reverse axes for lower-is-better stats so up-right-forward = good
-        x_dir = _axis_dir(x_stat, x_type == "Pitching")
-        y_dir = _axis_dir(y_stat, y_type == "Pitching")
-        z_dir = _axis_dir(z_stat, z_type == "Pitching")
-        if x_dir:
-            layout["scene"]["xaxis"]["autorange"] = x_dir
-        if y_dir:
-            layout["scene"]["yaxis"]["autorange"] = y_dir
-        if z_dir:
-            layout["scene"]["zaxis"]["autorange"] = z_dir
-        fig.update_layout(**layout, showlegend=False)
-
-    elif show_logos and not use_color_rank:
+    if show_logos and not use_color_rank:
         fig.add_trace(go.Scatter(
             x=x_vals, y=y_vals, mode="markers",
-            marker=dict(size=18, opacity=0),   # invisible but clickable hit target
+            marker=dict(size=18, opacity=0),
             text=teams,
             hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:.2f}}<br>"
-                           f"{y_type} {y_stat}: %{{y:.2f}}<extra></extra>"),
+                           f"{y_type} {y_stat}: %{{y:.2f}}"
+                           + (f"<br>{z_type} {z_stat}: %{{customdata:.2f}}" if has_size else "")
+                           + "<extra></extra>"),
+            customdata=z_vals if has_size else None,
         ))
         x_min, x_max = float(x_vals.min()), float(x_vals.max())
         y_min, y_max = float(y_vals.min()), float(y_vals.max())
@@ -299,15 +230,9 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         x_lo, x_hi = x_min - x_pad, x_max + x_pad
         y_lo, y_hi = y_min - y_pad, y_max + y_pad
         images = []
-        # Box (0.07 × 0.11 of the data range) is tuned for a square logo. Size
-        # each team's box to its logo's native aspect while holding the box
-        # *area* constant, so banner-shaped logos (Braves, Reds) and tall ones
-        # (Pirates, Angels) render with the same visible area as square ones
-        # instead of getting letterboxed.
         for team, xv, yv in zip(teams, x_vals, y_vals):
             src = logo_b64(str(team))
             if src:
-                # Anchored in data coordinates so logos track zoom/pan.
                 k = (logo_aspect(str(team)) or 1.0) ** 0.5
                 images.append(dict(
                     source=src, xref="x", yref="y",
@@ -317,9 +242,6 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
                     sizing="contain",
                     xanchor="center", yanchor="middle", layer="above",
                 ))
-        # Reverse a logo axis by flipping its padded range (rather than
-        # autorange="reversed", which would discard the padding and clip the
-        # edge logos).
         x_dir = _axis_dir(x_stat, x_type == "Pitching")
         y_dir = _axis_dir(y_stat, y_type == "Pitching")
         fig.update_layout(
@@ -328,23 +250,37 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
             yaxis_range=[y_hi, y_lo] if y_dir else [y_lo, y_hi])
 
     else:
+        base_size = 14
         if use_color_rank:
-            marker = dict(size=14, color=rank_score, colorscale=RANK_COLORSCALE,
+            marker = dict(size=sizes if sizes is not None else base_size,
+                          color=rank_score, colorscale=RANK_COLORSCALE,
                           cmin=0, cmax=100, showscale=True,
                           colorbar=colorbar_cfg("Composite<br>Rank", theme),
                           opacity=0.95, line=dict(color=c["marker_line"], width=1.5))
         else:
-            marker = dict(size=14,
+            marker = dict(size=sizes if sizes is not None else base_size,
                           color=[TEAM_COLORS.get(str(t), c["accent"]) for t in teams],
                           opacity=0.95, line=dict(color=c["marker_line"], width=1.5))
-        hover_rank = "<br>Composite rank: %{customdata:.1f}" if use_color_rank else ""
+        cdata = None
+        hover_parts = (f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:.2f}}<br>"
+                        f"{y_type} {y_stat}: %{{y:.2f}}")
+        if has_size and use_color_rank:
+            cdata = list(zip(z_vals, rank_score))
+            hover_parts += (f"<br>{z_type} {z_stat}: %{{customdata[0]:.2f}}"
+                            "<br>Composite rank: %{customdata[1]:.1f}")
+        elif has_size:
+            cdata = z_vals
+            hover_parts += f"<br>{z_type} {z_stat}: %{{customdata:.2f}}"
+        elif use_color_rank:
+            cdata = rank_score
+            hover_parts += "<br>Composite rank: %{customdata:.1f}"
+        hover_parts += "<extra></extra>"
         fig.add_trace(go.Scatter(
             x=x_vals, y=y_vals, mode="markers+text",
             text=teams, textposition="top center",
             textfont=dict(size=11, color=c["text"], family="Geist, sans-serif"),
-            marker=marker, customdata=rank_score if use_color_rank else None,
-            hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:.2f}}<br>"
-                           f"{y_type} {y_stat}: %{{y:.2f}}" + hover_rank + "<extra></extra>"),
+            marker=marker, customdata=cdata,
+            hovertemplate=hover_parts,
         ))
 
     if show_h:
@@ -358,22 +294,19 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
                       annotation_text=f"avg {mean_x:.2f}", annotation_position="top right",
                       annotation_font=dict(color=c["muted"], size=11))
 
-    if not is_3d:
-        fig.update_layout(**base_layout(theme),
-                          xaxis_title=f"{x_type}: {x_stat}",
-                          yaxis_title=f"{y_type}: {y_stat}", showlegend=False)
-        # Reverse axes for lower-is-better stats so up-right = good.
-        # (Logo mode already encodes direction in its flipped padded range.)
-        if not (show_logos and not use_color_rank):
-            x_dir = _axis_dir(x_stat, x_type == "Pitching")
-            y_dir = _axis_dir(y_stat, y_type == "Pitching")
-            if x_dir:
-                fig.update_xaxes(autorange=x_dir)
-            if y_dir:
-                fig.update_yaxes(autorange=y_dir)
+    fig.update_layout(**base_layout(theme),
+                      xaxis_title=f"{x_type}: {x_stat}",
+                      yaxis_title=f"{y_type}: {y_stat}", showlegend=False)
+    if not (show_logos and not use_color_rank):
+        x_dir = _axis_dir(x_stat, x_type == "Pitching")
+        y_dir = _axis_dir(y_stat, y_type == "Pitching")
+        if x_dir:
+            fig.update_xaxes(autorange=x_dir)
+        if y_dir:
+            fig.update_yaxes(autorange=y_dir)
 
-    eyebrow = _eyebrow("team", span, is_3d)
-    title = _title(f"{y_stat}", f"{x_stat}", z_stat if is_3d else None)
+    eyebrow = _eyebrow("team", span, has_size)
+    title = _title(f"{y_stat}", f"{x_stat}", z_stat if has_size else None)
     return fig, eyebrow, title
 
 
@@ -438,16 +371,13 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
 
     df["Label"]  = df["Name"].apply(fmt)
     use_team_clr = team in (None, "All Teams", "AL", "NL")
-    # Need at least two real Z values for a meaningful third axis; a single
-    # point collapses the scatter and the mean plane to a line, so stay 2D.
-    # (Mirrors the guard in render_team.)
-    is_3d = bool(z_stat) and z_stat in df.columns and df[z_stat].notna().sum() >= 2
+    is_pitch = (player_type == "Pitchers")
+    has_size = bool(z_stat) and z_stat in df.columns and df[z_stat].notna().sum() >= 2
 
     if use_color_rank:
-        is_pitch = (player_type == "Pitchers")
         items = rank_items((df[x_stat], x_stat, is_pitch),
                            (df[y_stat], y_stat, is_pitch),
-                           (df[z_stat] if is_3d else None, z_stat, is_pitch))
+                           (df[z_stat] if has_size else None, z_stat, is_pitch))
         df["Composite Rank"] = compute_composite_rank(*items).round(1).values
 
     if use_color_rank:
@@ -458,90 +388,66 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
         color_col, c_map, c_scale, c_range = None, None, None, None
 
     h_data = {x_stat: True, y_stat: True, "Team": True, "Label": False}
+    if has_size:
+        h_data[z_stat] = True
+        h_data["_dot_size"] = False
     if use_color_rank:
         h_data["Composite Rank"] = True
 
-    # IDfg rides along as customdata[0] (Plotly Express prepends custom_data
-    # ahead of hover_data and rewrites the hovertemplate indices to match) so a
-    # point click can identify the exact player for the detail panel — robust to
-    # duplicate names. Unused by the hovertemplate itself.
     cdata = ["IDfg"] if "IDfg" in df.columns else None
 
     tmpl = "plotly_dark" if theme == "dark" else "plotly_white"
 
-    if is_3d:
-        h_data[z_stat] = True
-        fig = px.scatter_3d(df, x=x_stat, y=y_stat, z=z_stat, text="Label",
-                            hover_name="Name", hover_data=h_data, custom_data=cdata,
-                            color=color_col,
-                            color_discrete_map=c_map, color_continuous_scale=c_scale,
-                            range_color=c_range, template=tmpl)
-        fig.update_traces(mode="markers+text", textposition="top center",
-                          textfont=dict(size=9, color=c["text"]),
-                          marker=dict(size=5, opacity=0.9,
-                                      line=dict(color=c["marker_line"], width=0.5)))
-        add_mean_planes_3d(fig, df[x_stat].dropna(), df[y_stat].dropna(),
-                           df[z_stat].dropna(), show_x_plane=show_v, show_y_plane=show_h)
-        layout = base_layout_3d(theme)
-        layout["scene"]["xaxis"]["title"] = x_stat
-        layout["scene"]["yaxis"]["title"] = y_stat
-        layout["scene"]["zaxis"]["title"] = z_stat
-        # Reverse axes for lower-is-better stats
-        is_pitch = (player_type == "Pitchers")
-        for ax, stat in [("xaxis", x_stat), ("yaxis", y_stat), ("zaxis", z_stat)]:
-            d = _axis_dir(stat, is_pitch)
-            if d:
-                layout["scene"][ax]["autorange"] = d
-        fig.update_layout(**layout,
-                          showlegend=(use_team_clr and not use_color_rank
-                                      and team in ("AL", "NL")))
-        if use_color_rank:
-            fig.update_layout(coloraxis_colorbar=colorbar_cfg("Composite<br>Rank", theme))
-    else:
-        fig = px.scatter(df, x=x_stat, y=y_stat, text="Label", hover_name="Name",
-                         hover_data=h_data, custom_data=cdata, color=color_col,
-                         color_discrete_map=c_map,
-                         color_continuous_scale=c_scale, range_color=c_range, template=tmpl)
-        fig.update_traces(mode="markers+text", textposition="top center",
-                          textfont=dict(size=10, color=c["text"], family="Geist, sans-serif"),
-                          marker=dict(size=10, opacity=0.92,
-                                      line=dict(color=c["marker_line"], width=0.8)))
-        fig.update_layout(**base_layout(theme), xaxis_title=x_stat, yaxis_title=y_stat,
-                          showlegend=(use_team_clr and not use_color_rank
-                                      and team in ("AL", "NL")),
-                          legend=dict(bgcolor=c["plot"], bordercolor=c["axis"],
-                                      borderwidth=1, font=dict(color=c["text"], size=11),
-                                      itemsizing="constant"))
-        if use_color_rank:
-            fig.update_layout(coloraxis_colorbar=colorbar_cfg("Composite<br>Rank", theme))
-        # Reverse axes for lower-is-better stats so up-right = good
-        is_pitch = (player_type == "Pitchers")
-        x_dir = _axis_dir(x_stat, is_pitch)
-        y_dir = _axis_dir(y_stat, is_pitch)
-        if x_dir:
-            fig.update_xaxes(autorange=x_dir)
-        if y_dir:
-            fig.update_yaxes(autorange=y_dir)
+    sizes = None
+    if has_size:
+        sizes = _size_array(df[z_stat], z_stat, is_pitch, PLAYER_SIZE_RANGE)
+        df["_dot_size"] = sizes
 
-    # Mean reference lines — 2D only (3D already uses mean planes)
-    if not is_3d:
-        x_vals = df[x_stat].dropna()
-        y_vals = df[y_stat].dropna()
-        if show_h and not y_vals.empty:
-            mean_y = float(y_vals.mean())
-            fig.add_hline(y=mean_y, line_dash="dot", line_color=MEAN_LINE,
-                          line_width=1.5,
-                          annotation_text=f"avg {mean_y:.2f}",
-                          annotation_position="top right",
-                          annotation_font=dict(color=c["muted"], size=11))
-        if show_v and not x_vals.empty:
-            mean_x = float(x_vals.mean())
-            fig.add_vline(x=mean_x, line_dash="dot", line_color=MEAN_LINE,
-                          line_width=1.5,
-                          annotation_text=f"avg {mean_x:.2f}",
-                          annotation_position="top right",
-                          annotation_font=dict(color=c["muted"], size=11))
+    fig = px.scatter(df, x=x_stat, y=y_stat, text="Label", hover_name="Name",
+                     hover_data=h_data, custom_data=cdata, color=color_col,
+                     color_discrete_map=c_map,
+                     color_continuous_scale=c_scale, range_color=c_range,
+                     size="_dot_size" if has_size else None,
+                     size_max=int(PLAYER_SIZE_RANGE[1]) if has_size else None,
+                     template=tmpl)
+    base_marker_size = 10 if not has_size else None
+    fig.update_traces(mode="markers+text", textposition="top center",
+                      textfont=dict(size=10, color=c["text"], family="Geist, sans-serif"),
+                      marker=dict(opacity=0.92,
+                                  line=dict(color=c["marker_line"], width=0.8),
+                                  **({"size": base_marker_size} if base_marker_size else {})))
+    fig.update_layout(**base_layout(theme), xaxis_title=x_stat, yaxis_title=y_stat,
+                      showlegend=(use_team_clr and not use_color_rank
+                                  and team in ("AL", "NL")),
+                      legend=dict(bgcolor=c["plot"], bordercolor=c["axis"],
+                                  borderwidth=1, font=dict(color=c["text"], size=11),
+                                  itemsizing="constant"))
+    if use_color_rank:
+        fig.update_layout(coloraxis_colorbar=colorbar_cfg("Composite<br>Rank", theme))
+    x_dir = _axis_dir(x_stat, is_pitch)
+    y_dir = _axis_dir(y_stat, is_pitch)
+    if x_dir:
+        fig.update_xaxes(autorange=x_dir)
+    if y_dir:
+        fig.update_yaxes(autorange=y_dir)
 
-    eyebrow = _eyebrow("player", span, is_3d)
-    title = _title(f"{y_stat}", f"{x_stat}", z_stat if is_3d else None)
+    x_vals = df[x_stat].dropna()
+    y_vals = df[y_stat].dropna()
+    if show_h and not y_vals.empty:
+        mean_y = float(y_vals.mean())
+        fig.add_hline(y=mean_y, line_dash="dot", line_color=MEAN_LINE,
+                      line_width=1.5,
+                      annotation_text=f"avg {mean_y:.2f}",
+                      annotation_position="top right",
+                      annotation_font=dict(color=c["muted"], size=11))
+    if show_v and not x_vals.empty:
+        mean_x = float(x_vals.mean())
+        fig.add_vline(x=mean_x, line_dash="dot", line_color=MEAN_LINE,
+                      line_width=1.5,
+                      annotation_text=f"avg {mean_x:.2f}",
+                      annotation_position="top right",
+                      annotation_font=dict(color=c["muted"], size=11))
+
+    eyebrow = _eyebrow("player", span, has_size)
+    title = _title(f"{y_stat}", f"{x_stat}", z_stat if has_size else None)
     return fig, eyebrow, title
