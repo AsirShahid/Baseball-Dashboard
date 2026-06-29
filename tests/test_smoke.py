@@ -48,11 +48,11 @@ def test_render_team_aligns_on_team():
     assert tr.y[i] == pytest.approx(exp["ERA"])
 
 
-def test_render_team_3d_and_rank():
+def test_render_team_size_and_rank():
     from charts import render_team
     fig, *_ = render_team(SEASON, False, "Batting", "Pitching", "wRC+", "ERA",
                           True, True, True, "Batting", "HR")
-    assert len(fig.data) >= 1  # scatter + mean planes
+    assert len(fig.data) >= 1  # scatter + mean lines
 
 
 def test_render_team_logos_use_data_coords():
@@ -105,15 +105,15 @@ def test_leaderboard_drops_all_nan_axis():
     assert len(rows) == 10 and n == 2
 
 
-def test_render_team_degenerate_z_falls_back_to_2d():
-    """A Z axis with no team-level data must not force a collapsed 3D plot."""
+def test_render_team_degenerate_z_falls_back_to_fixed_size():
+    """A Z stat with no team-level data must not apply size mapping."""
     from charts import render_team
     import plotly.graph_objects as go
     fig, eyebrow, _ = render_team(SEASON, False, "Batting", "Pitching",
                                   "wRC+", "ERA", True, True, False,
                                   "Batting", "xwOBA")
-    assert not any(isinstance(t, go.Scatter3d) for t in fig.data)
-    assert eyebrow[0] == "2D SCATTER"
+    assert all(isinstance(t, go.Scatter) for t in fig.data)
+    assert eyebrow[0] == "SCATTER"
 
 
 def test_load_csv_copy_on_read_and_mtime_invalidation():
@@ -307,12 +307,10 @@ def test_player_leaderboard_single_and_range():
     assert len(rrows) == 10 and rn == 2
 
 
-def test_render_player_single_z_value_stays_2d():
-    """A Z axis with <2 real values must fall back to 2D (parity with teams)."""
+def test_render_player_single_z_value_stays_fixed_size():
+    """A Z stat with <2 real values must not apply size mapping."""
     from charts import render_player, player_frame
     import plotly.graph_objects as go
-    # Find a specific team whose qualified roster that season is a single player,
-    # so any per-player Z column has <2 non-null values.
     df = player_frame(SEASON, SEASON, "Batters", "Qualified", "Qualified", "All Teams")
     counts = df["Team"].value_counts()
     solo = counts[counts == 1]
@@ -321,8 +319,8 @@ def test_render_player_single_z_value_stays_2d():
     team = solo.index[0]
     fig, eyebrow, _ = render_player(SEASON, "Batters", "WAR", "wRC+",
                                     "Qualified", "Qualified", team, False, "HR")
-    assert not any(isinstance(t, go.Scatter3d) for t in fig.data)
-    assert eyebrow[0] == "2D SCATTER"
+    assert all(isinstance(t, go.Scatter) for t in fig.data)
+    assert eyebrow[0] == "SCATTER"
 
 
 def test_player_detail_panel_builds():
