@@ -7,7 +7,8 @@ import pandas as pd
 from dash import Input, Output, State, MATCH, ALL, no_update, ctx, dcc
 
 from data import (
-    config, load_csv, load_stats, season_bounds, season_label, process_columns,
+    config, load_csv, load_stats, load_stats_pct, season_bounds, season_label,
+    process_columns,
     seasons_with_data, opts, stat_higher_better, team_in_league, decade_marks,
     team_display, MULTI_TEAM, SEASONS, TEAM_COLORS,
     TEAM_FULL_NAME, TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS, ramp_color,
@@ -175,7 +176,8 @@ def _player_detail(idfg, lo, hi, ptype, mpa, mip, tf):
                               composite, sparks, groups)
 
 
-def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs, league="All Teams"):
+def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs, league="All Teams",
+                      era=False):
     lo, hi = season_bounds(season)
     if lo is None:
         return [], 0
@@ -184,7 +186,10 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs, league="All Teams"):
         if not stat:
             return None
         key = "team_batting_dir" if typ == "Batting" else "team_pitching_dir"
-        df = load_stats(key, lo, hi)
+        # Era-adjusted mode ranks the same within-season percentiles the chart
+        # plots, so the board and the chart agree over multi-season spans.
+        df = (load_stats_pct(key, lo, hi, [stat]) if era
+              else load_stats(key, lo, hi))
         if df.empty or stat not in df.columns or "Team" not in df.columns:
             return None
         # Index by team so axes loaded from different CSVs (batting vs
@@ -210,7 +215,7 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs, league="All Teams"):
     items = rank_items((xv, xs, xt == "Pitching"),
                        (yv, ys, yt == "Pitching"),
                        (zv, zs, zt == "Pitching"))
-    comp = compute_composite_rank(*items)
+    comp = compute_composite_rank(*items).dropna()
     rows = sorted(
         ({"team": str(t), "score": float(s)} for t, s in comp.items()),
         key=lambda r: r["score"], reverse=True,
@@ -225,14 +230,17 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs, league="All Teams"):
     return out, len(items)
 
 
-def _player_leaderboard_rows(season, ptype, pxs, pys, pzs, min_pa, min_ip, team):
+def _player_leaderboard_rows(season, ptype, pxs, pys, pzs, min_pa, min_ip,
+                             team, era=False):
     """Top-10 players by composite rank across the selected axes — the player
     analogue of _leaderboard_rows. Ranks the exact frame the scatter plots
-    (player_frame), so a multi-season range yields a cumulative leaderboard."""
+    (player_frame, era percentiles included), so a multi-season range yields
+    a cumulative leaderboard that agrees with the chart."""
     lo, hi = season_bounds(season)
     if lo is None or not pxs or not pys:
         return [], 0
-    df = player_frame(lo, hi, ptype, min_pa, min_ip, team)
+    df = player_frame(lo, hi, ptype, min_pa, min_ip, team,
+                      pct_stats=[pxs, pys, pzs] if era else None)
     if df.empty or pxs not in df.columns or pys not in df.columns:
         return [], 0
     if df[pxs].isna().all() or df[pys].isna().all():
@@ -243,7 +251,7 @@ def _player_leaderboard_rows(season, ptype, pxs, pys, pzs, min_pa, min_ip, team)
     items = rank_items((df[pxs], pxs, is_pitch),
                        (df[pys], pys, is_pitch),
                        (zser, pzs, is_pitch))
-    comp = compute_composite_rank(*items).round(1)
+    comp = compute_composite_rank(*items).round(1).dropna()
 
     order = comp.sort_values(ascending=False).index[:10]
     out = []
@@ -283,12 +291,6 @@ def _export_frame(view, season, xt, yt, xs, ys, zt, zs, league, era,
                           pct_stats=stats if p_era else None)
         if df.empty or pxs not in df.columns or pys not in df.columns:
             return None, None
-        find = (find or "").strip()
-        if find:
-            df = df[df["Name"].astype(str).str.contains(find, case=False,
-                                                        regex=False)]
-            if df.empty:
-                return None, None
         is_pitch = (ptype == "Pitchers")
         keep = [c for c in ("Name", "Team", "IDfg", "PA", "IP") if c in df.columns]
         out = df[keep + [s for s in stats if s in df.columns]].copy()
@@ -296,6 +298,12 @@ def _export_frame(view, season, xt, yt, xs, ys, zt, zs, league, era,
             (df[pxs], pxs, is_pitch), (df[pys], pys, is_pitch),
             (df[pzs] if (pzs and pzs in df.columns) else None, pzs, is_pitch))
         out["Composite Rank"] = compute_composite_rank(*items).round(1).values
+        # The chart plots everyone even mid-search (non-matches dim, they
+        # don't vanish); the export mirrors that and flags the matches.
+        find = (find or "").strip()
+        if find:
+            out["Matched"] = df["Name"].astype(str).str.contains(
+                find, case=False, regex=False).values
         out = out.sort_values("Composite Rank", ascending=False)
         fname = (f"players_{_fname_part(span)}_{_fname_part(pys)}"
                  f"_vs_{_fname_part(pxs)}{'_era-pctl' if p_era else ''}.csv")
@@ -413,6 +421,35 @@ def register_callbacks(app):
         on = ((view == "team" and team_rank) or
               (view == "player" and player_rank))
         return {} if on else {"display": "none"}
+
+    # Trajectory mode draws season paths: mean lines, trend fit, rank
+    # coloring, logos and the Z axis don't apply there. Disable (dim) those
+    # controls while it's active so they don't read as broken no-ops.
+    @app.callback(
+        Output("tg-vmean", "disabled"), Output("tg-hmean", "disabled"),
+        Output("tg-trend", "disabled"), Output("tg-team-rank", "disabled"),
+        Output("tg-logos", "disabled"), Output("z-stat", "disabled"),
+        Input("tg-traj", "value"), Input("season-slider", "value"),
+    )
+    def gray_team_controls_in_traj(traj, season):
+        lo, hi = season_bounds(season)
+        # A single-season "trajectory" falls back to the normal scatter, so
+        # the controls stay live there.
+        off = bool(traj) and lo is not None and hi > lo
+        return (off,) * 6
+
+    @app.callback(
+        Output("tg-player-vmean", "disabled"),
+        Output("tg-player-hmean", "disabled"),
+        Output("tg-player-trend", "disabled"),
+        Output("tg-player-rank", "disabled"),
+        Output("p-z-stat", "disabled"),
+        Input("tg-player-traj", "value"), Input("season-slider", "value"),
+    )
+    def gray_player_controls_in_traj(traj, season):
+        lo, hi = season_bounds(season)
+        off = bool(traj) and lo is not None and hi > lo
+        return (off,) * 5
 
     # ---- stat option lists ----
     def _team_stat(stat_type, season, current, fallback_idx=0, allow_none=False):
@@ -818,15 +855,17 @@ def register_callbacks(app):
         Input("p-z-stat", "value"),
         Input("min-pa", "value"), Input("min-ip", "value"),
         Input("team-filter", "value"), Input("team-league", "value"),
+        Input("tg-era", "value"), Input("tg-player-era", "value"),
     )
     def update_leaderboard(view, season, xt, yt, zt, xs, ys, zs,
-                           ptype, pxs, pys, pzs, mpa, mip, tf, league):
+                           ptype, pxs, pys, pzs, mpa, mip, tf, league,
+                           era, pera):
         if view == "player":
             rows, n = _player_leaderboard_rows(season, ptype, pxs, pys, pzs,
-                                               mpa, mip, tf)
+                                               mpa, mip, tf, era=bool(pera))
         else:
             rows, n = _leaderboard_rows(season, xt, yt, xs, ys, zt, zs,
-                                        league or "All Teams")
+                                        league or "All Teams", era=bool(era))
         if not rows:
             return [], {"display": "none"}
         return leaderboard_cards(rows, n), {}
@@ -904,6 +943,13 @@ def register_callbacks(app):
                 except (TypeError, ValueError, IndexError):
                     return no_update, no_update
             abbr = pt.get("text")
+            if not abbr:
+                # Trajectory paths label only their final point; the team code
+                # rides in customdata[0] so mid-path clicks work too. (In
+                # rank-color mode customdata is a scalar score — skip it.)
+                cd = pt.get("customdata")
+                if isinstance(cd, (list, tuple)) and cd:
+                    abbr = cd[0]
             if abbr not in TEAM_COLORS:
                 return no_update, no_update
             return {}, abbr

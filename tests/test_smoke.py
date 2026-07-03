@@ -601,9 +601,13 @@ def test_team_trajectory_one_trace_per_team():
     assert eyebrow[0] == "TRAJECTORY"
     assert len(fig.data) == 30
     assert all(len(t.x) == 3 for t in fig.data)
-    # Only the final point of each path is labeled, with the team code.
+    # Only the final point of each path is labeled, with the team code —
+    # but every point carries [Team, Season] customdata so any point on the
+    # path click-opens the right detail panel.
     for t in fig.data:
         assert t.text[-1] and not any(t.text[:-1])
+        assert all(row[0] == t.text[-1] for row in t.customdata)
+        assert [int(row[1]) for row in t.customdata] == [2022, 2023, 2024]
 
 
 def test_team_trajectory_single_season_falls_back():
@@ -645,17 +649,61 @@ def test_export_frame_team_and_player():
     # Board is sorted best-first.
     assert df["Composite Rank"].is_monotonic_decreasing
 
+    # A search must not shrink the export: the chart still plots everyone
+    # (non-matches dimmed), so the export carries a Matched flag instead.
     df, fname = _export_frame("player", SEASON, None, None, None, None, None,
                               None, "All Teams", False, "Batters",
                               "WAR", "wRC+", None, "Qualified", "Qualified",
                               "All Teams", "judge", False)
-    assert len(df) == 1 and df["Name"].iloc[0] == "Aaron Judge"
+    assert len(df) > 1 and "Matched" in df.columns
+    assert df.loc[df["Matched"], "Name"].str.contains("Judge").all()
+    assert int(df["Matched"].sum()) >= 1
     # Nothing to export -> (None, None), not an exception.
     df, fname = _export_frame("player", SEASON, None, None, None, None, None,
                               None, "All Teams", False, "Batters",
                               None, None, None, "Qualified", "Qualified",
                               "All Teams", "", False)
     assert df is None and fname is None
+
+
+def test_composite_rank_missing_data_is_nan_not_average():
+    """An entity with no data on any axis must come out NaN, not a fake
+    league-average 50 that seats it mid-leaderboard; an entity missing one
+    axis is scored on the axes it has."""
+    from charts import compute_composite_rank
+    x = pd.Series([1.0, 2.0, np.nan])
+    y = pd.Series([2.0, 1.0, np.nan])
+    comp = compute_composite_rank((x, True), (y, True))
+    assert np.isnan(comp.iloc[2])
+    y_part = pd.Series([2.0, np.nan, 1.0])
+    comp2 = compute_composite_rank((x, True), (y_part, True))
+    assert not np.isnan(comp2.iloc[1])
+
+
+def test_leaderboard_era_mode_agrees_with_chart():
+    """With era-adjusted axes on, the board must rank the same within-season
+    percentile frames the chart plots — over a span, aggregate-then-rank on
+    raw values can order teams differently."""
+    from callbacks import _leaderboard_rows, _player_leaderboard_rows
+    from charts import compute_composite_rank, rank_items
+    from data import load_stats_pct
+
+    rows, n = _leaderboard_rows([2022, 2024], "Batting", "Pitching", "wRC+",
+                                "ERA", "Batting", None, "All Teams", era=True)
+    assert len(rows) == 10 and n == 2
+    # Recompute #1 straight from the era percentile frames.
+    xd = load_stats_pct("team_batting_dir", 2022, 2024, ["wRC+"])
+    yd = load_stats_pct("team_pitching_dir", 2022, 2024, ["ERA"])
+    xs = pd.Series(xd["wRC+"].values, index=xd["Team"])
+    ys = pd.Series(yd["ERA"].values, index=yd["Team"]).reindex(xs.index)
+    comp = compute_composite_rank(*rank_items((xs, "wRC+", False),
+                                              (ys, "ERA", True)))
+    assert rows[0]["team"] == comp.idxmax()
+
+    prows, pn = _player_leaderboard_rows([2022, 2024], "Batters", "WAR",
+                                         "wRC+", None, "Qualified",
+                                         "Qualified", "All Teams", era=True)
+    assert len(prows) == 10 and pn == 2
 
 
 def test_render_player_era_adjusted_axis():

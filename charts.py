@@ -104,13 +104,16 @@ def compute_composite_rank(*items) -> pd.Series:
     """Composite 0–100 percentile across (series, higher_is_better) pairs.
 
     Each axis is ranked, and axes where lower is better (e.g. ERA) are
-    inverted, so a higher composite always means better.
+    inverted, so a higher composite always means better. An entity missing
+    one axis is scored on the axes it has; missing every axis yields NaN —
+    no data must not masquerade as a league-average 50 (leaderboards drop
+    NaN rather than seat a data hole mid-table).
     """
     ranks = []
     for series, higher in items:
         r = series.rank(pct=True, na_option="keep")
         ranks.append(r if higher else 1.0 - r)
-    return pd.concat(ranks, axis=1).mean(axis=1).fillna(0.5) * 100
+    return pd.concat(ranks, axis=1).mean(axis=1) * 100
 
 
 def rank_items(*axes):
@@ -523,11 +526,14 @@ def _render_team_traj(lo, hi, x_type, y_type, x_stat, y_stat, theme, league, era
             x=grp["_x"], y=grp["_y"], mode="lines+markers+text",
             text=[""] * (n - 1) + [str(team)], textposition="top center",
             textfont=dict(size=11, color=c["text"], family="Geist, sans-serif"),
-            customdata=grp["Season"],
+            # [Team, Season] per point: only the last point carries a text
+            # label, so clicks must identify the team via customdata to open
+            # the detail panel from any point on the path.
+            customdata=grp.assign(_t=str(team))[["_t", "Season"]].values,
             line=dict(color=color, width=1.5),
             marker=dict(size=np.linspace(5, 11, n), color=color, opacity=0.9,
                         line=dict(color=c["marker_line"], width=1)),
-            hovertemplate=(f"<b>{team}</b> %{{customdata}}<br>"
+            hovertemplate=(f"<b>{team}</b> %{{customdata[1]}}<br>"
                            f"{x_type} {x_stat}{sfx}: %{{x:.2f}}<br>"
                            f"{y_type} {y_stat}{sfx}: %{{y:.2f}}<extra></extra>"),
         ))
