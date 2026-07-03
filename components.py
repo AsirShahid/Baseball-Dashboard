@@ -220,10 +220,16 @@ def sidebar(init):
                            init["show_v"]),
                 toggle_row("tg-hmean", "Horizontal mean", "Dashed line at ȳ",
                            init["show_h"]),
+                toggle_row("tg-trend", "Trend line", "OLS fit with r²",
+                           init["show_trend"]),
                 toggle_row("tg-team-rank", "Composite rank color",
                            "Red → green percentile", init["color_rank"]),
                 toggle_row("tg-logos", "Team logos", "Otherwise colored dots",
                            init["logos"]),
+                toggle_row("tg-era", "Era-adjusted axes",
+                           "Within-season percentiles", init["era"]),
+                toggle_row("tg-traj", "Season trajectory",
+                           "Path per team — needs a season range", init["traj"]),
             ]),
         ]),
     ])
@@ -233,6 +239,12 @@ def sidebar(init):
             sb_label("PRESETS"),
             html.Div(id="player-presets-container",
                      children=[player_preset_chips(None, init["player_type"])]),
+        ]),
+        html.Div(className="sb-section", children=[
+            sb_label("FIND PLAYER"),
+            dcc.Input(id="player-find", type="text", debounce=True,
+                      value=init["find"], placeholder="Type a name — e.g. Ohtani",
+                      className="find-input", autoComplete="off"),
         ]),
         html.Div(className="sb-section", children=[
             sb_label("PLAYER FILTERS"),
@@ -250,14 +262,27 @@ def sidebar(init):
             dcc.Dropdown(id="team-filter", value=init["team"], clearable=False),
         ]),
         html.Div(className="sb-section", children=[
+            sb_label("LABELS"),
+            segmented("plabels",
+                      [("all", "All"), ("outliers", "Outliers"), ("none", "None")],
+                      init["p_labels"], small=True),
+        ]),
+        html.Div(className="sb-section", children=[
             sb_label("DISPLAY"),
             html.Div(className="toggle-stack", children=[
                 toggle_row("tg-player-vmean", "Vertical mean",
                            "Dashed line at x̄", init["p_show_v"]),
                 toggle_row("tg-player-hmean", "Horizontal mean",
                            "Dashed line at ȳ", init["p_show_h"]),
+                toggle_row("tg-player-trend", "Trend line", "OLS fit with r²",
+                           init["p_show_trend"]),
                 toggle_row("tg-player-rank", "Composite rank color",
                            "Red → green percentile", init["p_color_rank"]),
+                toggle_row("tg-player-era", "Era-adjusted axes",
+                           "Within-season percentiles", init["p_era"]),
+                toggle_row("tg-player-traj", "Season trajectory",
+                           "Top 10 or searched players — needs a range",
+                           init["p_traj"]),
             ]),
         ]),
     ])
@@ -290,6 +315,21 @@ def _share_chip():
     ])
 
 
+_DOWNLOAD = ('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" '
+             'viewBox="0 0 24 24" fill="none" stroke="#7d8590" stroke-width="2">'
+             '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>'
+             '<polyline points="7 10 12 15 17 10"/>'
+             '<line x1="12" y1="15" x2="12" y2="3"/></svg>')
+
+
+def _csv_chip():
+    return html.Button(className="share-chip", id="csv-export-btn", n_clicks=0,
+                       title="Download the plotted data as CSV", children=[
+        html.Img(src=svg_uri(_DOWNLOAD), width=12, height=12),
+        html.Span("CSV", className="share-copy"),
+    ])
+
+
 def main_area():
     return html.Main(className="main", children=[
         html.Header(className="topbar", children=[
@@ -297,7 +337,8 @@ def main_area():
                 html.Div(id="chart-eyebrow", className="title-eyebrow"),
                 html.H1(id="chart-title", className="chart-title"),
             ]),
-            html.Div(className="top-right", children=[_share_chip()]),
+            html.Div(className="top-right", children=[_csv_chip(), _share_chip()]),
+            dcc.Download(id="csv-download"),
         ]),
         html.Div(className="chart-card", children=[
             dcc.Loading(type="circle", color="#f5a524", children=[

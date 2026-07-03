@@ -106,17 +106,29 @@ def serve_layout():
     raw_ip = p.get("min_ip", "Qualified")
     min_ip = raw_ip if raw_ip == "Qualified" else safe_int(raw_ip, "Qualified")
 
+    p_labels = str(p.get("p_labels", "all")).lower()
+    if p_labels not in ("all", "outliers", "none"):
+        p_labels = "all"
+
     init = dict(
         view=view, season=season, season_end=season_end,
         x_type=x_type, y_type=y_type, z_type=z_type,
         x_stat=x_stat, y_stat=y_stat, z_stat=z_stat,
         show_v=show_v, show_h=show_h, color_rank=color_rank, logos=logos,
+        show_trend=p.get("trend", "false") == "true",
+        era=p.get("era", "false") == "true",
+        traj=p.get("traj", "false") == "true",
         player_type=player_type, p_x_stat=p_x_stat, p_y_stat=p_y_stat,
         p_z_stat=p_z_stat, min_pa=min_pa, min_ip=min_ip,
         team=p.get("team", "All Teams"),
         league=p.get("league", "All Teams"),
         p_color_rank=p.get("p_color_rank", "false") == "true",
         p_show_v=p_show_v, p_show_h=p_show_h,
+        p_show_trend=p.get("p_trend", "false") == "true",
+        p_era=p.get("p_era", "false") == "true",
+        p_traj=p.get("p_traj", "false") == "true",
+        find=p.get("find", ""),
+        p_labels=p_labels,
         preset=None,
     )
 
@@ -132,6 +144,7 @@ def serve_layout():
         seg_store("ytype", y_type),
         seg_store("ztype", z_type),
         seg_store("ptype", player_type),
+        seg_store("plabels", p_labels),
         dashboard_view(init),
         about_view(),
     ])
