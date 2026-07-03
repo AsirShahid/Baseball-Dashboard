@@ -36,7 +36,7 @@ with open(ROOT / "config.json") as f:
 
 # Resolve data directories relative to this file so the app reads the same
 # folders no matter what CWD it's launched from.
-for _k in ("team_batting_dir", "team_pitching_dir", "team_fielding_dir",
+for _k in ("team_batting_dir", "team_pitching_dir",
            "qualified_batting_dir", "qualified_pitching_dir",
            "all_batting_dir", "all_pitching_dir"):
     if _k in config:
@@ -57,18 +57,46 @@ EXCLUDED_COLS = {"Team", "Season", "Dollars", "Name", "IDfg", "Unnamed: 0",
                  "TeamName", "TeamNameAbb"}
 PRIORITY_COLS = ["WAR", "wRC+", "SIERA"]
 
-# League membership for the AL/NL player filter. Includes defunct/renamed
-# 20th-century franchise codes that appear in the FanGraphs data (BRO =
-# Brooklyn Dodgers, PHA = Philadelphia A's, …). 19th-century clubs predate the
-# AL and are left unfiltered. Known limitation: membership is era-dependent
-# for a few codes (MIL was AL 1970–97, HOU was NL through 2012, WAS is the AL
-# Senators in old seasons) — those use their modern league here.
+# League membership for the AL/NL filters. Includes defunct/renamed franchise
+# codes that appear in the FanGraphs data (BRO = Brooklyn Dodgers, PHA =
+# Philadelphia A's, CHI = the pre-1903 Cubs, …). Most 19th-century, Federal
+# League and Negro League clubs predate/sit outside the AL–NL structure and
+# are left unfiltered. Codes whose league changed over time (MIL, HOU, WAS,
+# BAL) are resolved year-aware via _LEAGUE_ERAS below; the sets carry their
+# most recent identity as the fallback when no season is in play.
 NL_TEAMS = {"ARI", "ATL", "CHC", "CIN", "COL", "LAD", "MIA", "MIL",
-            "NYM", "PHI", "PIT", "SDP", "SFG", "STL", "WAS",
-            "BRO", "BSN", "NYG", "MON", "FLA", "WSN"}
+            "NYM", "PHI", "PIT", "SDP", "SFG", "STL",
+            "BRO", "BSN", "NYG", "MON", "FLA", "WSN", "CHI", "LOU"}
 AL_TEAMS = {"BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR",
-            "MIN", "NYY", "OAK", "SEA", "TBR", "TEX", "TOR",
-            "ANA", "CAL", "KCA", "NYH", "PHA", "SLB", "TBD"}
+            "MIN", "NYY", "OAK", "ATH", "SEA", "TBR", "TEX", "TOR",
+            "ANA", "CAL", "KCA", "NYH", "PHA", "SLB", "TBD", "WAS"}
+
+# Franchises whose league changed while keeping the same FanGraphs code.
+# Entries are (first, last, league) with inclusive bounds; None = open-ended;
+# league None = neither AL nor NL that era (e.g. American Association years).
+# First matching entry wins; no match falls back to the sets above.
+_LEAGUE_ERAS = {
+    # 1901 AL Brewers → (St. Louis from 1902); 1970–97 AL Brewers; NL since.
+    "MIL": ((1901, 1901, "AL"), (1970, 1997, "AL"), (None, None, "NL")),
+    "HOU": ((2013, None, "AL"), (None, None, "NL")),
+    # Senators (AL 1901–71); the 1890s Washington club was NL.
+    "WAS": ((1901, 1971, "AL"), (None, 1899, "NL")),
+    # 1890s NL Orioles; the 1880s club was American Association (neither).
+    "BAL": ((1892, 1899, "NL"), (None, 1891, None), (1901, None, "AL")),
+}
+
+
+def team_league(team: str, year=None):
+    """'AL', 'NL' or None for a team code, year-aware where membership moved."""
+    if year is not None:
+        for lo, hi, lg in _LEAGUE_ERAS.get(team, ()):
+            if (lo is None or year >= lo) and (hi is None or year <= hi):
+                return lg
+    if team in AL_TEAMS:
+        return "AL"
+    if team in NL_TEAMS:
+        return "NL"
+    return None
 
 # FanGraphs marks a traded player's season row with this Team value. The data
 # doesn't say which teams, so league filters treat these players as possibly
@@ -85,19 +113,20 @@ def team_display(code, full: bool = False) -> str:
         return "—"
     return TEAM_FULL_NAME.get(code, code) if full else code
 
+# FanGraphs codes the Nationals WSN (all seasons) and the Athletics ATH from
+# 2025 (post-Oakland); OAK covers 1968–2024 and WAS is the old AL Senators.
 TEAM_LOGO_MAP = {
     "LAA": "angels",   "BAL": "orioles",  "BOS": "redsox",    "CHW": "whitesox",
     "CLE": "guardians","DET": "tigers",   "KCR": "royals",    "MIN": "twins",
     "NYY": "yankees",  "OAK": "athletics","SEA": "mariners",  "TBR": "rays",
     "TEX": "rangers",  "TOR": "bluejays", "ARI": "diamondbacks","ATL": "braves",
     "CHC": "cubs",     "CIN": "reds",     "COL": "rockies",   "MIA": "marlins",
-    "HOU": "astros",   "LAD": "dodgers",  "MIL": "brewers",   "WAS": "nationals",
+    "HOU": "astros",   "LAD": "dodgers",  "MIL": "brewers",   "WSN": "nationals",
     "NYM": "mets",     "PHI": "phillies", "PIT": "pirates",   "STL": "cardinals",
-    "SDP": "padres",   "SFG": "giants",
+    "SDP": "padres",   "SFG": "giants",   "ATH": "athletics",
 }
 
-TEAM_SEASONS   = list(range(config["current_year"], 1870, -1))
-PLAYER_SEASONS = list(range(config["current_year"], 1870, -1))
+SEASONS        = list(range(config["current_year"], 1870, -1))
 MIN_PA_LIST    = ["Qualified"] + list(range(0, 701, 10))
 MIN_IP_LIST    = ["Qualified"] + list(range(0, 301, 10))
 
@@ -109,7 +138,7 @@ TEAM_COLORS = {
     "MIN": "#002B5C", "NYM": "#FF5910", "NYY": "#003087", "OAK": "#003831",
     "PHI": "#E81828", "PIT": "#FDB827", "SDP": "#2F241D", "SEA": "#0C2C56",
     "SFG": "#FD5A1E", "STL": "#C41E3A", "TBR": "#092C5C", "TEX": "#003278",
-    "TOR": "#134A8E", "WAS": "#AB0003",
+    "TOR": "#134A8E", "WAS": "#AB0003", "WSN": "#AB0003", "ATH": "#003831",
 }
 
 # Secondary brand colors — used for the detail-panel header gradient.
@@ -121,7 +150,7 @@ TEAM_COLOR_ALT = {
     "MIN": "#D31145", "NYM": "#002D72", "NYY": "#E4002C", "OAK": "#EFB21E",
     "PHI": "#002D72", "PIT": "#FDB827", "SDP": "#FFC425", "SEA": "#005C5C",
     "SFG": "#27251F", "STL": "#0C2340", "TBR": "#8FBCE6", "TEX": "#C0111F",
-    "TOR": "#1D2D5C", "WAS": "#14225A",
+    "TOR": "#1D2D5C", "WAS": "#14225A", "WSN": "#14225A", "ATH": "#EFB21E",
 }
 
 TEAM_FULL_NAME = {
@@ -139,7 +168,8 @@ TEAM_FULL_NAME = {
     "SDP": "San Diego Padres",     "SEA": "Seattle Mariners",
     "SFG": "San Francisco Giants", "STL": "St. Louis Cardinals",
     "TBR": "Tampa Bay Rays",       "TEX": "Texas Rangers",
-    "TOR": "Toronto Blue Jays",    "WAS": "Washington Nationals",
+    "TOR": "Toronto Blue Jays",    "WSN": "Washington Nationals",
+    "WAS": "Washington Senators",  "ATH": "Athletics",
 }
 
 TEAM_DIVISION = {
@@ -150,7 +180,7 @@ TEAM_DIVISION = {
     "MIN": "AL Central","NYM": "NL East",  "NYY": "AL East",   "OAK": "AL West",
     "PHI": "NL East",   "PIT": "NL Central","SDP": "NL West",  "SEA": "AL West",
     "SFG": "NL West",   "STL": "NL Central","TBR": "AL East",  "TEX": "AL West",
-    "TOR": "AL East",   "WAS": "NL East",
+    "TOR": "AL East",   "WSN": "NL East",   "ATH": "AL West",
 }
 
 # Team-view filter options (the team analogue of the player AL/NL/team filter).
@@ -162,14 +192,17 @@ LEAGUE_FILTERS = ["All Teams", "AL", "NL",
                   "NL East", "NL Central", "NL West"]
 
 
-def team_in_league(team: str, league) -> bool:
-    """Whether a team code belongs to the selected league/division filter."""
+def team_in_league(team: str, league, year=None) -> bool:
+    """Whether a team code belongs to the selected league/division filter.
+
+    Pass the season (a range's representative year, or the path point's own
+    season) so era-dependent codes resolve correctly — Milwaukee was AL in
+    1980, Houston was NL in 2005. Divisions stay modern-only: they only exist
+    for the current 30 clubs."""
     if league in (None, "", "All Teams"):
         return True
-    if league == "AL":
-        return team in AL_TEAMS
-    if league == "NL":
-        return team in NL_TEAMS
+    if league in ("AL", "NL"):
+        return team_league(team, year) == league
     return TEAM_DIVISION.get(team) == league
 
 # ── Theme palette (drives Plotly figures so the chart matches the CSS theme) ──

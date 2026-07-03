@@ -133,7 +133,6 @@ def serve_layout():
         p_traj=p.get("p_traj", "false") == "true",
         find=p.get("find", ""),
         p_labels=p_labels,
-        preset=None,
     )
 
     def seg_store(group, value):

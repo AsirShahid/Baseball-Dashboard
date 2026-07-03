@@ -10,7 +10,7 @@ import pandas as pd
 from data import (
     load_stats, load_stats_pct, pct_within_season, stat_higher_better,
     season_bounds, season_label, team_in_league,
-    TEAM_COLORS, NL_TEAMS, AL_TEAMS, MULTI_TEAM, PALETTE, RANK_COLORSCALE,
+    TEAM_COLORS, MULTI_TEAM, PALETTE, RANK_COLORSCALE,
     logo_b64, logo_aspect,
 )
 
@@ -104,13 +104,16 @@ def compute_composite_rank(*items) -> pd.Series:
     """Composite 0–100 percentile across (series, higher_is_better) pairs.
 
     Each axis is ranked, and axes where lower is better (e.g. ERA) are
-    inverted, so a higher composite always means better.
+    inverted, so a higher composite always means better. An entity missing
+    one axis is scored on the axes it has; missing every axis yields NaN —
+    no data must not masquerade as a league-average 50 (leaderboards drop
+    NaN rather than seat a data hole mid-table).
     """
     ranks = []
     for series, higher in items:
         r = series.rank(pct=True, na_option="keep")
         ranks.append(r if higher else 1.0 - r)
-    return pd.concat(ranks, axis=1).mean(axis=1).fillna(0.5) * 100
+    return pd.concat(ranks, axis=1).mean(axis=1) * 100
 
 
 def rank_items(*axes):
@@ -287,9 +290,11 @@ def team_frame(lo, hi, x_type, y_type, x_stat, y_stat, z_type=None, z_stat=None,
 
     # League/division filter (team analogue of the player AL/NL/team filter).
     # Filter before means/ranks so a within-league view averages and ranks only
-    # the teams shown.
+    # the teams shown. A span row blends seasons, so membership is judged at
+    # the range's end year (the franchise's identity where the span lands).
     if league not in (None, "", "All Teams"):
-        merged = merged[merged["Team"].map(lambda t: team_in_league(str(t), league))]
+        merged = merged[merged["Team"].map(
+            lambda t: team_in_league(str(t), league, hi))]
         if merged.empty:
             return None, False, f"No {league} teams for {span}"
 
@@ -502,8 +507,11 @@ def _render_team_traj(lo, hi, x_type, y_type, x_stat, y_stat, theme, league, era
     if not frames:
         return _err(f"No data for {span}", theme)
     traj = pd.concat(frames, ignore_index=True)
+    # Judge league membership per point's own season, so a franchise that
+    # switched leagues mid-span (MIL '97→'98) tracks its actual league.
     if league not in (None, "", "All Teams"):
-        traj = traj[traj["Team"].map(lambda t: team_in_league(str(t), league))]
+        traj = traj[[team_in_league(str(t), league, int(s))
+                     for t, s in zip(traj["Team"], traj["Season"])]]
     traj = traj.dropna(subset=["_x", "_y"])
     if traj.empty:
         return _err(f"No data for {span}", theme)
@@ -518,11 +526,14 @@ def _render_team_traj(lo, hi, x_type, y_type, x_stat, y_stat, theme, league, era
             x=grp["_x"], y=grp["_y"], mode="lines+markers+text",
             text=[""] * (n - 1) + [str(team)], textposition="top center",
             textfont=dict(size=11, color=c["text"], family="Geist, sans-serif"),
-            customdata=grp["Season"],
+            # [Team, Season] per point: only the last point carries a text
+            # label, so clicks must identify the team via customdata to open
+            # the detail panel from any point on the path.
+            customdata=grp.assign(_t=str(team))[["_t", "Season"]].values,
             line=dict(color=color, width=1.5),
             marker=dict(size=np.linspace(5, 11, n), color=color, opacity=0.9,
                         line=dict(color=c["marker_line"], width=1)),
-            hovertemplate=(f"<b>{team}</b> %{{customdata}}<br>"
+            hovertemplate=(f"<b>{team}</b> %{{customdata[1]}}<br>"
                            f"{x_type} {x_stat}{sfx}: %{{x:.2f}}<br>"
                            f"{y_type} {y_stat}{sfx}: %{{y:.2f}}<extra></extra>"),
         ))
@@ -602,10 +613,11 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None):
     # filters keep them (possibly-either-league) rather than silently
     # dropping a dozen qualified players a season. A specific team filter
     # still excludes them; MULTI_TEAM itself is offered as a dropdown choice.
-    if   team == "NL":
-        df = df[df["Team"].isin(NL_TEAMS) | (df["Team"] == MULTI_TEAM)]
-    elif team == "AL":
-        df = df[df["Team"].isin(AL_TEAMS) | (df["Team"] == MULTI_TEAM)]
+    # League membership is year-aware (judged at the range's end year), so
+    # 2005 Astros hitters are NL and 1980 Brewers are AL.
+    if team in ("AL", "NL"):
+        df = df[df["Team"].map(
+            lambda t: str(t) == MULTI_TEAM or team_in_league(str(t), team, hi))]
     elif team not in (None, "All Teams"):
         df = df[df["Team"] == team]
     return df

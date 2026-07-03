@@ -21,7 +21,7 @@ An interactive web application for visualizing baseball statistics. Build custom
 - **Season filtering** — the slider only offers seasons where the chosen stat actually has data (e.g. Exit Velocity only appears from 2015 onward)
 - **CSV export** — download exactly what the chart is plotting (axes, filters, composite ranks) with one click
 - **Shareable URLs** — every control is encoded in the URL so you can copy and share a specific view
-- **Auto-fetch via pybaseball** — if a season's CSV is missing the app fetches it live on first access
+- **Auto-fetch** — if a season's CSV is missing the app fetches it live on first access
 
 ## Quick start
 
@@ -46,30 +46,67 @@ pip install -r requirements.txt
 python app.py
 ```
 
-## Updating data
+## Data
 
-Historical CSVs ship with the repo. To fetch a specific range of seasons:
+Season CSVs are **not** stored in git — they live on the machine that runs the
+dashboard (a `data-refresh` GitHub Action used to commit them monthly, but
+350 MB of CSVs made the repo balloon). The app fetches any missing season from
+FanGraphs on first access, and `launcher.sh` / the Docker entrypoint run the
+generator in `--watch` mode so the current season stays fresh. To backfill the
+full history in one go (recommended on a new install — on-demand fetches are
+slow the first time someone scrubs deep into the past):
 
 ```bash
 source .venv/bin/activate
 
-# Fetch 2025 and 2026 (skips seasons already on disk)
+# One-time full-history backfill (~900 polite requests, takes a while)
+python baseball_csv_generator.py --start 1871
+
+# Fetch a specific range (skips seasons already on disk)
 python baseball_csv_generator.py --start 2025 --end 2026
 
-# Re-download a specific range regardless of what's cached
+# Re-download a range regardless of what's cached
 python baseball_csv_generator.py --start 2020 --end 2026 --force
 
 # Fetch missing seasons then keep the current season refreshing every 4 h
 python baseball_csv_generator.py --start 2025 --watch
 ```
 
-`launcher.sh` automatically runs the generator in `--watch` mode in the background, so the current season stays up to date while the dashboard is running. The dashboard re-reads a CSV whenever the file changes on disk, so refreshed data shows up without a restart.
+The dashboard re-reads a CSV whenever the file changes on disk, so refreshed
+data shows up without a restart.
 
 ### Live split vs. recalculations
 
 The fetcher uses FanGraphs' **"Live Stats — Full Season"** split (`month=33`) for the in-progress season, so the current year includes the day's games in real time. Completed seasons use the standard full-season split (`month=0`), which is the only one FanGraphs serves for past years; a live-split request for a finished season automatically falls back to it.
 
-Completed seasons are nearly static, but FanGraphs periodically revises them (WAR, wOBA/wRC+ constants, park factors). The **`.github/workflows/data-refresh.yml`** workflow re-downloads everything with `--force` on the 1st of each month and commits any changes, so those recalculations don't get missed. It can also be triggered manually (Actions → "Data refresh" → Run workflow) with a custom season range. If you'd rather run the bulk refresh on your own server (a single, politer IP toward FanGraphs), the equivalent is a monthly cron of `python baseball_csv_generator.py --start 1871 --force`.
+Completed seasons are nearly static, but FanGraphs periodically revises them (WAR, wOBA/wRC+ constants, park factors). To pick those recalculations up, run a monthly cron on the server:
+
+```cron
+0 6 1 * *  cd /path/to/Baseball-Dashboard && .venv/bin/python baseball_csv_generator.py --start 1871 --force
+```
+
+(Under Docker: `docker compose exec baseball-dashboard python baseball_csv_generator.py --start 1871 --force`.)
+
+### Migrating an existing deployment
+
+If your checkout predates the CSVs leaving git, **pulling this change deletes
+the tracked CSVs from the working tree** (git removes files deleted upstream).
+Stash the data aside first, then restore it:
+
+```bash
+mkdir -p /tmp/bb-data && cp -a team_* qualified_* all_* /tmp/bb-data/
+git pull
+cp -a /tmp/bb-data/* .
+```
+
+The directories are gitignored afterwards, so the restored files stay put.
+
+### Tests
+
+`tests/fixtures/` carries a small frozen snapshot of the seasons the test
+suite exercises, so `pytest` (and CI) runs offline and deterministically —
+it's copied into the data directories on first run, never overwriting real
+data.
 
 ## Configuration
 

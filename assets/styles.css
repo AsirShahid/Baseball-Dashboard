@@ -507,6 +507,8 @@ button { font-family: inherit; }
   box-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 .tg-switch.on .tg-knob { transform: translateX(14px); }
+/* Rows whose switch is disabled (e.g. options trajectory mode ignores) */
+.tg:has(input:disabled) { opacity: 0.45; cursor: default; }
 
 /* Rank legend */
 .legend { display: flex; flex-direction: column; gap: 6px; }

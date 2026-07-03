@@ -8,3 +8,13 @@ __pycache__/
 # FanGraphs session cookie — secret, never commit
 fg_cookie.txt
 *_cookie.txt
+
+# Season data — lives on the server, fetched from FanGraphs, never in git.
+# (Frozen snapshots for the offline test suite are in tests/fixtures/.)
+/team_batting/
+/team_pitching/
+/team_fielding/
+/qualified_batting_stats/
+/qualified_pitching_stats/
+/all_batting_stats/
+/all_pitching_stats/

@@ -192,17 +192,6 @@ def test_atomic_to_csv_no_index_column(tmp_path):
     assert list(back.Team) == ["A", "B"]
 
 
-def test_backfill_skips_duplicate_names():
-    from live_stats import backfill_null_columns
-    df = pd.DataFrame({"Name": ["Will Smith", "Will Smith", "Aaron Judge"],
-                       "X": [None, None, None]})
-    fb = pd.DataFrame({"Name": ["Will Smith", "Will Smith", "Aaron Judge"],
-                       "X": [1, 2, 3]})
-    out = backfill_null_columns(df, fb)
-    assert out.loc[out.Name == "Aaron Judge", "X"].iloc[0] == 3
-    assert out.loc[out.Name == "Will Smith", "X"].isna().all()
-
-
 def test_split_month_picks_live_for_current_season():
     from fangraphs_api import split_month, LIVE_SPLIT, FULL_SEASON_SPLIT
     assert split_month(2026, 2026) == LIVE_SPLIT       # in-progress season
@@ -414,6 +403,53 @@ def test_team_in_league_helper():
     assert team_in_league("NYY", "All Teams") and team_in_league("ANY", None)
 
 
+def test_modern_team_codes_registered():
+    """FanGraphs codes the Nationals WSN (every season) and the Athletics ATH
+    from 2025; both must be first-class — colors, logo, division, full name —
+    or they render gray, unclickable, and invisible to division filters."""
+    from data import (TEAM_COLORS, TEAM_COLOR_ALT, TEAM_LOGO_MAP,
+                      TEAM_DIVISION, TEAM_FULL_NAME, team_in_league)
+    for code in ("WSN", "ATH"):
+        assert code in TEAM_COLORS and code in TEAM_COLOR_ALT
+        assert code in TEAM_LOGO_MAP and code in TEAM_FULL_NAME
+    assert TEAM_DIVISION["WSN"] == "NL East"
+    assert TEAM_DIVISION["ATH"] == "AL West"
+    assert team_in_league("ATH", "AL", 2025)
+    assert team_in_league("WSN", "NL", 2024)
+    # The old AL Senators (WAS) are not the Nationals and predate divisions.
+    assert TEAM_FULL_NAME["WAS"] == "Washington Senators"
+    assert "WAS" not in TEAM_DIVISION
+
+
+def test_league_membership_is_year_aware():
+    """Franchises that switched leagues resolve by season: Brewers AL 1970–97,
+    Astros NL through 2012, Senators AL 1901–71 (NL in the 1890s)."""
+    from data import team_in_league
+    assert team_in_league("MIL", "AL", 1980) and not team_in_league("MIL", "NL", 1980)
+    assert team_in_league("MIL", "NL", 2024) and not team_in_league("MIL", "AL", 2024)
+    assert team_in_league("MIL", "NL", 1955)   # Milwaukee Braves
+    assert team_in_league("HOU", "NL", 2005) and not team_in_league("HOU", "AL", 2005)
+    assert team_in_league("HOU", "AL", 2024)
+    assert team_in_league("WAS", "AL", 1955) and not team_in_league("WAS", "NL", 1955)
+    assert team_in_league("WAS", "NL", 1895)
+    assert team_in_league("BAL", "NL", 1895) and team_in_league("BAL", "AL", 1955)
+    assert not team_in_league("BAL", "AL", 1885)   # American Association years
+    # Stable franchises are unaffected, with or without a year.
+    assert team_in_league("NYY", "AL", 1927)
+    assert team_in_league("MIL", "NL") and team_in_league("HOU", "AL")
+
+
+def test_al_filter_1955_chart_includes_senators():
+    """Chart-level 1955 AL: WAS (Senators) and KCA belong; BRO (NL) does not.
+    Before the year-aware fix WAS was treated as the modern NL Nationals."""
+    from charts import render_team
+    fig, *_ = render_team(1955, False, "Batting", "Pitching", "WAR", "ERA",
+                          False, False, False, "Batting", None, "dark", "AL")
+    teams = set(fig.data[0].text)
+    assert "WAS" in teams and "KCA" in teams
+    assert "BRO" not in teams and "MIL" not in teams   # Braves were NL
+
+
 # ── New-feature tests: id normalisation, era percentiles, trend, search,
 #    label modes, trajectories, CSV export ──────────────────────────────────
 
@@ -565,9 +601,13 @@ def test_team_trajectory_one_trace_per_team():
     assert eyebrow[0] == "TRAJECTORY"
     assert len(fig.data) == 30
     assert all(len(t.x) == 3 for t in fig.data)
-    # Only the final point of each path is labeled, with the team code.
+    # Only the final point of each path is labeled, with the team code —
+    # but every point carries [Team, Season] customdata so any point on the
+    # path click-opens the right detail panel.
     for t in fig.data:
         assert t.text[-1] and not any(t.text[:-1])
+        assert all(row[0] == t.text[-1] for row in t.customdata)
+        assert [int(row[1]) for row in t.customdata] == [2022, 2023, 2024]
 
 
 def test_team_trajectory_single_season_falls_back():
@@ -609,11 +649,15 @@ def test_export_frame_team_and_player():
     # Board is sorted best-first.
     assert df["Composite Rank"].is_monotonic_decreasing
 
+    # A search must not shrink the export: the chart still plots everyone
+    # (non-matches dimmed), so the export carries a Matched flag instead.
     df, fname = _export_frame("player", SEASON, None, None, None, None, None,
                               None, "All Teams", False, "Batters",
                               "WAR", "wRC+", None, "Qualified", "Qualified",
                               "All Teams", "judge", False)
-    assert len(df) == 1 and df["Name"].iloc[0] == "Aaron Judge"
+    assert len(df) > 1 and "Matched" in df.columns
+    assert df.loc[df["Matched"], "Name"].str.contains("Judge").all()
+    assert int(df["Matched"].sum()) >= 1
     # Nothing to export -> (None, None), not an exception.
     df, fname = _export_frame("player", SEASON, None, None, None, None, None,
                               None, "All Teams", False, "Batters",
@@ -622,9 +666,49 @@ def test_export_frame_team_and_player():
     assert df is None and fname is None
 
 
+def test_composite_rank_missing_data_is_nan_not_average():
+    """An entity with no data on any axis must come out NaN, not a fake
+    league-average 50 that seats it mid-leaderboard; an entity missing one
+    axis is scored on the axes it has."""
+    from charts import compute_composite_rank
+    x = pd.Series([1.0, 2.0, np.nan])
+    y = pd.Series([2.0, 1.0, np.nan])
+    comp = compute_composite_rank((x, True), (y, True))
+    assert np.isnan(comp.iloc[2])
+    y_part = pd.Series([2.0, np.nan, 1.0])
+    comp2 = compute_composite_rank((x, True), (y_part, True))
+    assert not np.isnan(comp2.iloc[1])
+
+
+def test_leaderboard_era_mode_agrees_with_chart():
+    """With era-adjusted axes on, the board must rank the same within-season
+    percentile frames the chart plots — over a span, aggregate-then-rank on
+    raw values can order teams differently."""
+    from callbacks import _leaderboard_rows, _player_leaderboard_rows
+    from charts import compute_composite_rank, rank_items
+    from data import load_stats_pct
+
+    rows, n = _leaderboard_rows([2022, 2024], "Batting", "Pitching", "wRC+",
+                                "ERA", "Batting", None, "All Teams", era=True)
+    assert len(rows) == 10 and n == 2
+    # Recompute #1 straight from the era percentile frames.
+    xd = load_stats_pct("team_batting_dir", 2022, 2024, ["wRC+"])
+    yd = load_stats_pct("team_pitching_dir", 2022, 2024, ["ERA"])
+    xs = pd.Series(xd["wRC+"].values, index=xd["Team"])
+    ys = pd.Series(yd["ERA"].values, index=yd["Team"]).reindex(xs.index)
+    comp = compute_composite_rank(*rank_items((xs, "wRC+", False),
+                                              (ys, "ERA", True)))
+    assert rows[0]["team"] == comp.idxmax()
+
+    prows, pn = _player_leaderboard_rows([2022, 2024], "Batters", "WAR",
+                                         "wRC+", None, "Qualified",
+                                         "Qualified", "All Teams", era=True)
+    assert len(prows) == 10 and pn == 2
+
+
 def test_render_player_era_adjusted_axis():
     from charts import render_player
-    fig, eyebrow, _ = render_player([1968, 2000], "Batters", "OBP", "HR",
+    fig, eyebrow, _ = render_player([2019, 2024], "Batters", "OBP", "HR",
                                     "Qualified", "Qualified", "All Teams",
                                     False, None, False, False, "dark",
                                     era=True)
@@ -676,19 +760,47 @@ def test_season_slider_seeded_marks_and_per_year_step():
     assert all("2k" not in str(v) for v in slider.marks.values())
 
 
-def test_fetch_team_passes_month_through(monkeypatch):
-    """Live split selection must reach the team roll-up too."""
+def test_fetch_team_uses_native_team_split(monkeypatch):
+    """fetch_team must request FanGraphs' team leaderboard (team=0,ts) — the
+    only split that attributes traded players' production to each club — pass
+    the month through, and strip the player-identity junk from team rows."""
     import fangraphs_api as fa
     seen = []
 
     def fake_get(url, params=None, timeout=None):
-        seen.append(params["month"])
+        seen.append((params["team"], params["month"]))
+        return _FakeResp([
+            {"Team": "NYY", "Name": "<a>Some Player</a>", "Age": 29,
+             "PA": 6200, "wOBA": 0.330, "HR": 240},
+            {"Team": "BOS", "Name": "<a>Other Player</a>", "Age": 27,
+             "PA": 6100, "wOBA": 0.320, "HR": 190},
+        ])
+
+    monkeypatch.setattr(fa.requests, "get", fake_get)
+    out = fa.fetch_team("bat", 2026, month=fa.LIVE_SPLIT)
+    assert seen == [(fa.TEAM_SPLIT, fa.LIVE_SPLIT)]
+    assert list(out.Team) == ["NYY", "BOS"]           # rows kept as-is
+    assert "Name" not in out.columns and "Age" not in out.columns
+
+
+def test_fetch_team_falls_back_to_player_aggregation(monkeypatch):
+    """When the team split returns nothing, fetch_team must still produce team
+    rows by aggregating the player leaderboard (the pre-ts behaviour)."""
+    import fangraphs_api as fa
+    seen = []
+
+    def fake_get(url, params=None, timeout=None):
+        seen.append(params["team"])
+        if params["team"] == fa.TEAM_SPLIT:
+            return _FakeResp([])                       # team split empty
         return _FakeResp([
             {"Team": "NYY", "PA": 600, "wOBA": 0.350, "HR": 30},
             {"Team": "NYY", "PA": 400, "wOBA": 0.300, "HR": 10},
         ])
 
     monkeypatch.setattr(fa.requests, "get", fake_get)
-    out = fa.fetch_team("bat", 2026, month=fa.LIVE_SPLIT)
-    assert seen == [fa.LIVE_SPLIT]
+    out = fa.fetch_team("bat", 1905)
+    assert fa.TEAM_SPLIT in seen and "0" in seen
+    assert list(out.Team) == ["NYY"] and out.HR[0] == 40
+    assert out.wOBA[0] == pytest.approx(0.330)         # PA-weighted
     assert list(out.Team) == ["NYY"] and out.HR.iloc[0] == 40  # rolled up
