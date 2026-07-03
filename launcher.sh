@@ -33,8 +33,7 @@ trap cleanup INT TERM EXIT
 echo "Starting CSV data updater (watch mode)..."
 # --watch: fetches any missing seasons on startup, then refreshes the current
 # season every update_interval seconds (default 4 h, set in config.json).
-# This covers both team and player CSVs — live_stats.py is not needed here
-# (running both would double-fetch and race on the same files).
+# This covers both team and player CSVs.
 "$PYTHON" baseball_csv_generator.py --watch &
 pids+=($!)
 

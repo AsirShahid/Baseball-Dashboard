@@ -36,7 +36,7 @@ with open(ROOT / "config.json") as f:
 
 # Resolve data directories relative to this file so the app reads the same
 # folders no matter what CWD it's launched from.
-for _k in ("team_batting_dir", "team_pitching_dir", "team_fielding_dir",
+for _k in ("team_batting_dir", "team_pitching_dir",
            "qualified_batting_dir", "qualified_pitching_dir",
            "all_batting_dir", "all_pitching_dir"):
     if _k in config:
@@ -96,8 +96,7 @@ TEAM_LOGO_MAP = {
     "SDP": "padres",   "SFG": "giants",
 }
 
-TEAM_SEASONS   = list(range(config["current_year"], 1870, -1))
-PLAYER_SEASONS = list(range(config["current_year"], 1870, -1))
+SEASONS        = list(range(config["current_year"], 1870, -1))
 MIN_PA_LIST    = ["Qualified"] + list(range(0, 701, 10))
 MIN_IP_LIST    = ["Qualified"] + list(range(0, 301, 10))
 

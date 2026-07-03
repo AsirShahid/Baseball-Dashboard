@@ -9,7 +9,7 @@ from dash import Input, Output, State, MATCH, ALL, no_update, ctx, dcc
 from data import (
     config, load_csv, load_stats, season_bounds, season_label, process_columns,
     seasons_with_data, opts, stat_higher_better, team_in_league, decade_marks,
-    team_display, MULTI_TEAM, TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
+    team_display, MULTI_TEAM, SEASONS, TEAM_COLORS,
     TEAM_FULL_NAME, TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS, ramp_color,
 )
 from charts import (
@@ -523,7 +523,7 @@ def register_callbacks(app):
     )
     def update_season_slider(view, xs, ys, xt, yt, pxs, pys, ptype, cur):
         if view == "player":
-            seasons = PLAYER_SEASONS
+            seasons = SEASONS
             dk = ("qualified_batting_dir" if ptype == "Batters"
                   else "qualified_pitching_dir")
             valid = set(seasons)
@@ -533,7 +533,7 @@ def register_callbacks(app):
                     if av:
                         valid &= av
         else:
-            seasons = TEAM_SEASONS
+            seasons = SEASONS
             valid = set(seasons)
             for stat, typ in ((xs, xt), (ys, yt)):
                 if stat:
@@ -642,7 +642,7 @@ def register_callbacks(app):
     )
     def swap_player_presets(ptype):
         """Rebuild player preset chips when toggling Batters ↔ Pitchers."""
-        return [player_preset_chips(None, ptype)]
+        return [player_preset_chips(ptype)]
 
     @app.callback(
         Output("p-x-stat", "value", allow_duplicate=True),

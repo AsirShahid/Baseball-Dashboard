@@ -192,17 +192,6 @@ def test_atomic_to_csv_no_index_column(tmp_path):
     assert list(back.Team) == ["A", "B"]
 
 
-def test_backfill_skips_duplicate_names():
-    from live_stats import backfill_null_columns
-    df = pd.DataFrame({"Name": ["Will Smith", "Will Smith", "Aaron Judge"],
-                       "X": [None, None, None]})
-    fb = pd.DataFrame({"Name": ["Will Smith", "Will Smith", "Aaron Judge"],
-                       "X": [1, 2, 3]})
-    out = backfill_null_columns(df, fb)
-    assert out.loc[out.Name == "Aaron Judge", "X"].iloc[0] == 3
-    assert out.loc[out.Name == "Will Smith", "X"].isna().all()
-
-
 def test_split_month_picks_live_for_current_season():
     from fangraphs_api import split_month, LIVE_SPLIT, FULL_SEASON_SPLIT
     assert split_month(2026, 2026) == LIVE_SPLIT       # in-progress season

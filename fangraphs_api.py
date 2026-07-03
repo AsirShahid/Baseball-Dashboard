@@ -3,8 +3,8 @@
 
 Single source of truth for fetching leaderboards, cleaning the HTML markup the
 API embeds in Name/Team, aggregating player rows up to team level, and writing
-CSVs atomically. Used by data.py (live fetch on cache miss),
-baseball_csv_generator.py and live_stats.py.
+CSVs atomically. Used by data.py (live fetch on cache miss) and
+baseball_csv_generator.py.
 """
 
 import html

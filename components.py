@@ -150,19 +150,20 @@ def _year_scrubber(init_lo, init_hi):
     ])
 
 
-def preset_chips(active):
+def preset_chips():
+    # Active-chip styling is applied by the style_preset_chips callback.
     return html.Div(className="presets", children=[
-        html.Button(className="chip active" if p["id"] == active else "chip",
+        html.Button(className="chip",
                     id={"kind": "preset", "id": p["id"]}, n_clicks=0,
                     children=[html.Span(className="chip-dot"), p["name"]])
         for p in TEAM_PRESETS
     ])
 
 
-def player_preset_chips(active, player_type):
+def player_preset_chips(player_type):
     presets = PITCHER_PRESETS if player_type == "Pitchers" else BATTER_PRESETS
     return html.Div(className="presets", id="player-presets-wrap", children=[
-        html.Button(className="chip active" if p["id"] == active else "chip",
+        html.Button(className="chip",
                     id={"kind": "player-preset", "id": p["id"]}, n_clicks=0,
                     children=[html.Span(className="chip-dot"), p["name"]])
         for p in presets
@@ -210,7 +211,7 @@ def sidebar(init):
     team_extra = html.Div(id="team-extra", style=(_show if is_team else _hide), children=[
         html.Div(className="sb-section", children=[
             sb_label("PRESETS"),
-            preset_chips(init["preset"]),
+            preset_chips(),
         ]),
         html.Div(className="sb-section", children=[
             sb_label("TEAM FILTER"),
@@ -243,7 +244,7 @@ def sidebar(init):
         html.Div(className="sb-section", children=[
             sb_label("PRESETS"),
             html.Div(id="player-presets-container",
-                     children=[player_preset_chips(None, init["player_type"])]),
+                     children=[player_preset_chips(init["player_type"])]),
         ]),
         html.Div(className="sb-section", children=[
             sb_label("FIND PLAYER"),
