@@ -403,6 +403,53 @@ def test_team_in_league_helper():
     assert team_in_league("NYY", "All Teams") and team_in_league("ANY", None)
 
 
+def test_modern_team_codes_registered():
+    """FanGraphs codes the Nationals WSN (every season) and the Athletics ATH
+    from 2025; both must be first-class — colors, logo, division, full name —
+    or they render gray, unclickable, and invisible to division filters."""
+    from data import (TEAM_COLORS, TEAM_COLOR_ALT, TEAM_LOGO_MAP,
+                      TEAM_DIVISION, TEAM_FULL_NAME, team_in_league)
+    for code in ("WSN", "ATH"):
+        assert code in TEAM_COLORS and code in TEAM_COLOR_ALT
+        assert code in TEAM_LOGO_MAP and code in TEAM_FULL_NAME
+    assert TEAM_DIVISION["WSN"] == "NL East"
+    assert TEAM_DIVISION["ATH"] == "AL West"
+    assert team_in_league("ATH", "AL", 2025)
+    assert team_in_league("WSN", "NL", 2024)
+    # The old AL Senators (WAS) are not the Nationals and predate divisions.
+    assert TEAM_FULL_NAME["WAS"] == "Washington Senators"
+    assert "WAS" not in TEAM_DIVISION
+
+
+def test_league_membership_is_year_aware():
+    """Franchises that switched leagues resolve by season: Brewers AL 1970–97,
+    Astros NL through 2012, Senators AL 1901–71 (NL in the 1890s)."""
+    from data import team_in_league
+    assert team_in_league("MIL", "AL", 1980) and not team_in_league("MIL", "NL", 1980)
+    assert team_in_league("MIL", "NL", 2024) and not team_in_league("MIL", "AL", 2024)
+    assert team_in_league("MIL", "NL", 1955)   # Milwaukee Braves
+    assert team_in_league("HOU", "NL", 2005) and not team_in_league("HOU", "AL", 2005)
+    assert team_in_league("HOU", "AL", 2024)
+    assert team_in_league("WAS", "AL", 1955) and not team_in_league("WAS", "NL", 1955)
+    assert team_in_league("WAS", "NL", 1895)
+    assert team_in_league("BAL", "NL", 1895) and team_in_league("BAL", "AL", 1955)
+    assert not team_in_league("BAL", "AL", 1885)   # American Association years
+    # Stable franchises are unaffected, with or without a year.
+    assert team_in_league("NYY", "AL", 1927)
+    assert team_in_league("MIL", "NL") and team_in_league("HOU", "AL")
+
+
+def test_al_filter_1955_chart_includes_senators():
+    """Chart-level 1955 AL: WAS (Senators) and KCA belong; BRO (NL) does not.
+    Before the year-aware fix WAS was treated as the modern NL Nationals."""
+    from charts import render_team
+    fig, *_ = render_team(1955, False, "Batting", "Pitching", "WAR", "ERA",
+                          False, False, False, "Batting", None, "dark", "AL")
+    teams = set(fig.data[0].text)
+    assert "WAS" in teams and "KCA" in teams
+    assert "BRO" not in teams and "MIL" not in teams   # Braves were NL
+
+
 # ── New-feature tests: id normalisation, era percentiles, trend, search,
 #    label modes, trajectories, CSV export ──────────────────────────────────
 
@@ -665,19 +712,47 @@ def test_season_slider_seeded_marks_and_per_year_step():
     assert all("2k" not in str(v) for v in slider.marks.values())
 
 
-def test_fetch_team_passes_month_through(monkeypatch):
-    """Live split selection must reach the team roll-up too."""
+def test_fetch_team_uses_native_team_split(monkeypatch):
+    """fetch_team must request FanGraphs' team leaderboard (team=0,ts) — the
+    only split that attributes traded players' production to each club — pass
+    the month through, and strip the player-identity junk from team rows."""
     import fangraphs_api as fa
     seen = []
 
     def fake_get(url, params=None, timeout=None):
-        seen.append(params["month"])
+        seen.append((params["team"], params["month"]))
+        return _FakeResp([
+            {"Team": "NYY", "Name": "<a>Some Player</a>", "Age": 29,
+             "PA": 6200, "wOBA": 0.330, "HR": 240},
+            {"Team": "BOS", "Name": "<a>Other Player</a>", "Age": 27,
+             "PA": 6100, "wOBA": 0.320, "HR": 190},
+        ])
+
+    monkeypatch.setattr(fa.requests, "get", fake_get)
+    out = fa.fetch_team("bat", 2026, month=fa.LIVE_SPLIT)
+    assert seen == [(fa.TEAM_SPLIT, fa.LIVE_SPLIT)]
+    assert list(out.Team) == ["NYY", "BOS"]           # rows kept as-is
+    assert "Name" not in out.columns and "Age" not in out.columns
+
+
+def test_fetch_team_falls_back_to_player_aggregation(monkeypatch):
+    """When the team split returns nothing, fetch_team must still produce team
+    rows by aggregating the player leaderboard (the pre-ts behaviour)."""
+    import fangraphs_api as fa
+    seen = []
+
+    def fake_get(url, params=None, timeout=None):
+        seen.append(params["team"])
+        if params["team"] == fa.TEAM_SPLIT:
+            return _FakeResp([])                       # team split empty
         return _FakeResp([
             {"Team": "NYY", "PA": 600, "wOBA": 0.350, "HR": 30},
             {"Team": "NYY", "PA": 400, "wOBA": 0.300, "HR": 10},
         ])
 
     monkeypatch.setattr(fa.requests, "get", fake_get)
-    out = fa.fetch_team("bat", 2026, month=fa.LIVE_SPLIT)
-    assert seen == [fa.LIVE_SPLIT]
+    out = fa.fetch_team("bat", 1905)
+    assert fa.TEAM_SPLIT in seen and "0" in seen
+    assert list(out.Team) == ["NYY"] and out.HR[0] == 40
+    assert out.wOBA[0] == pytest.approx(0.330)         # PA-weighted
     assert list(out.Team) == ["NYY"] and out.HR.iloc[0] == 40  # rolled up

@@ -117,12 +117,13 @@ def split_month(year: int, current_year: int) -> int:
 
 
 def _request_leaderboard(stats, qual, year, month, timeout,
-                         startdate="", enddate="", stat_type=8) -> pd.DataFrame | None:
+                         startdate="", enddate="", stat_type=8,
+                         team="0") -> pd.DataFrame | None:
     params = dict(
         pos="all", stats=stats, lg="all", qual=qual,
         type=stat_type,   # 8 = Dashboard preset (500+ columns)
         season=year, month=month, season1=year,
-        ind=0, team=0, rost=0, age=0,
+        ind=0, team=team, rost=0, age=0,
         filter="", players=0, startdate=startdate, enddate=enddate,
         pageitems=PAGE_SIZE, pagenum=1,
     )
@@ -145,8 +146,8 @@ def _request_leaderboard(stats, qual, year, month, timeout,
 def fetch_leaderboard(stats: str, qual: str | int, year: int,
                       month: int = FULL_SEASON_SPLIT,
                       timeout: int = 30, startdate: str = "", enddate: str = "",
-                      stat_type: int = 8) -> pd.DataFrame | None:
-    """Fetch a player leaderboard from the FanGraphs JSON API.
+                      stat_type: int = 8, team: str = "0") -> pd.DataFrame | None:
+    """Fetch a leaderboard from the FanGraphs JSON API.
 
     stats     : "bat" or "pit"
     qual      : "y" for qualified, 0 for all players
@@ -154,6 +155,8 @@ def fetch_leaderboard(stats: str, qual: str | int, year: int,
                 1000 with startdate/enddate for a custom date range.
     startdate/enddate : "YYYY-MM-DD" bounds for the month=1000 custom-range split.
     stat_type : FanGraphs column preset (8 = Dashboard).
+    team      : "0" for the player leaderboard, TEAM_SPLIT ("0,ts") for one
+                row per team.
 
     The live split is empty outside the in-progress season, so a live request
     that returns nothing falls back to the full-season split. That fallback is
@@ -161,21 +164,45 @@ def fetch_leaderboard(stats: str, qual: str | int, year: int,
     silently collapse into a whole-season pull.
     """
     df = _request_leaderboard(stats, qual, year, month, timeout,
-                              startdate, enddate, stat_type)
+                              startdate, enddate, stat_type, team)
     if df is None and month == LIVE_SPLIT:
         logging.info("Live split empty for %s (stats=%s); falling back to full-season",
                      year, stats)
         df = _request_leaderboard(stats, qual, year, FULL_SEASON_SPLIT, timeout,
-                                  startdate, enddate, stat_type)
+                                  startdate, enddate, stat_type, team)
     if df is None:
         logging.warning("FanGraphs API returned no data (stats=%s qual=%s year=%s)",
                         stats, qual, year)
     return df
 
 
+# FanGraphs "team" query param value that returns one row per team, with
+# FanGraphs' own team aggregation — traded players' production is attributed
+# to each club they played for, which a roll-up of the player leaderboard
+# cannot do (their rows carry only the '- - -' sentinel).
+TEAM_SPLIT = "0,ts"
+
+# Player-identity fields that leak into team-mode rows (FanGraphs fills Name
+# with an arbitrary player link); meaningless at team level, so drop them.
+_TEAM_DROP_COLS = ["Name", "PlayerName", "PlayerNameRoute", "playerid",
+                   "position", "positionDB", "Bats", "Throws", "Age", "AgeR",
+                   "playerTeamId"]
+
+
 def fetch_team(stats: str, year: int, month: int = FULL_SEASON_SPLIT,
                timeout: int = 30) -> pd.DataFrame | None:
-    """Fetch team-level stats: player leaderboard rolled up via aggregate_team."""
+    """Fetch team-level stats via FanGraphs' native team leaderboard.
+
+    Falls back to rolling up the player leaderboard with aggregate_team when
+    the team split returns nothing — that path drops traded players (their
+    rows don't say which teams they played for), so it undercounts, but stale
+    team data beats no team data."""
+    df = fetch_leaderboard(stats, qual=0, year=year, month=month,
+                           timeout=timeout, team=TEAM_SPLIT)
+    if df is not None and "Team" in df.columns:
+        return df.drop(columns=[c for c in _TEAM_DROP_COLS if c in df.columns])
+    logging.warning("FanGraphs team split empty for %s (stats=%s); "
+                    "falling back to player-row aggregation", year, stats)
     df = fetch_leaderboard(stats, qual=0, year=year, month=month, timeout=timeout)
     if df is None or "Team" not in df.columns:
         return None
