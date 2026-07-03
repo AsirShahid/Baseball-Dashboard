@@ -613,7 +613,7 @@ def test_export_frame_team_and_player():
 
 def test_render_player_era_adjusted_axis():
     from charts import render_player
-    fig, eyebrow, _ = render_player([1968, 2000], "Batters", "OBP", "HR",
+    fig, eyebrow, _ = render_player([2019, 2024], "Batters", "OBP", "HR",
                                     "Qualified", "Qualified", "All Teams",
                                     False, None, False, False, "dark",
                                     era=True)
