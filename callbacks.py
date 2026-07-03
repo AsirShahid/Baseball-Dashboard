@@ -191,9 +191,10 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs, league="All Teams"):
         # pitching) align by team, not by row position.
         s = pd.Series(df[stat].values, index=df["Team"].astype(str))
         # Restrict to the league/division so the board ranks within the same
-        # set of teams the chart shows.
+        # set of teams the chart shows (year-aware, judged at the range end
+        # like team_frame).
         if league not in (None, "", "All Teams"):
-            s = s[[team_in_league(t, league) for t in s.index]]
+            s = s[[team_in_league(t, league, hi) for t in s.index]]
         # An all-NaN axis carries no signal; drop it so it neither produces a
         # meaningless all-50 ranking (x/y) nor inflates the axis count (z) —
         # mirroring render_team, which won't plot or count an empty axis.

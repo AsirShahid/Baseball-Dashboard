@@ -488,7 +488,10 @@ def detail_body(team, year, composite, sparks, groups):
                                  "fontSize": 18}),
         ]),
         html.Div(className="dt-name-block", children=[
-            html.Div(f"{TEAM_DIVISION.get(team,'')} · {year} SEASON",
+            # Pre-division clubs (the old Senators, 19th-c. teams) have no
+            # division — don't render a dangling separator for them.
+            html.Div(" · ".join(p for p in (TEAM_DIVISION.get(team, ""),
+                                            f"{year} SEASON") if p),
                      className="dt-eyebrow"),
             html.H2(TEAM_FULL_NAME.get(team, team), className="dt-name"),
             html.Div(className="dt-sub", children=[

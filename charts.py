@@ -10,7 +10,7 @@ import pandas as pd
 from data import (
     load_stats, load_stats_pct, pct_within_season, stat_higher_better,
     season_bounds, season_label, team_in_league,
-    TEAM_COLORS, NL_TEAMS, AL_TEAMS, MULTI_TEAM, PALETTE, RANK_COLORSCALE,
+    TEAM_COLORS, MULTI_TEAM, PALETTE, RANK_COLORSCALE,
     logo_b64, logo_aspect,
 )
 
@@ -287,9 +287,11 @@ def team_frame(lo, hi, x_type, y_type, x_stat, y_stat, z_type=None, z_stat=None,
 
     # League/division filter (team analogue of the player AL/NL/team filter).
     # Filter before means/ranks so a within-league view averages and ranks only
-    # the teams shown.
+    # the teams shown. A span row blends seasons, so membership is judged at
+    # the range's end year (the franchise's identity where the span lands).
     if league not in (None, "", "All Teams"):
-        merged = merged[merged["Team"].map(lambda t: team_in_league(str(t), league))]
+        merged = merged[merged["Team"].map(
+            lambda t: team_in_league(str(t), league, hi))]
         if merged.empty:
             return None, False, f"No {league} teams for {span}"
 
@@ -502,8 +504,11 @@ def _render_team_traj(lo, hi, x_type, y_type, x_stat, y_stat, theme, league, era
     if not frames:
         return _err(f"No data for {span}", theme)
     traj = pd.concat(frames, ignore_index=True)
+    # Judge league membership per point's own season, so a franchise that
+    # switched leagues mid-span (MIL '97→'98) tracks its actual league.
     if league not in (None, "", "All Teams"):
-        traj = traj[traj["Team"].map(lambda t: team_in_league(str(t), league))]
+        traj = traj[[team_in_league(str(t), league, int(s))
+                     for t, s in zip(traj["Team"], traj["Season"])]]
     traj = traj.dropna(subset=["_x", "_y"])
     if traj.empty:
         return _err(f"No data for {span}", theme)
@@ -602,10 +607,11 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None):
     # filters keep them (possibly-either-league) rather than silently
     # dropping a dozen qualified players a season. A specific team filter
     # still excludes them; MULTI_TEAM itself is offered as a dropdown choice.
-    if   team == "NL":
-        df = df[df["Team"].isin(NL_TEAMS) | (df["Team"] == MULTI_TEAM)]
-    elif team == "AL":
-        df = df[df["Team"].isin(AL_TEAMS) | (df["Team"] == MULTI_TEAM)]
+    # League membership is year-aware (judged at the range's end year), so
+    # 2005 Astros hitters are NL and 1980 Brewers are AL.
+    if team in ("AL", "NL"):
+        df = df[df["Team"].map(
+            lambda t: str(t) == MULTI_TEAM or team_in_league(str(t), team, hi))]
     elif team not in (None, "All Teams"):
         df = df[df["Team"] == team]
     return df
