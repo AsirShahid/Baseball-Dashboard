@@ -8,8 +8,8 @@ from dash import Input, Output, State, MATCH, ALL, no_update, ctx, dcc
 
 from data import (
     config, load_csv, load_stats, season_bounds, season_label, process_columns,
-    seasons_with_data, opts, stat_higher_better, team_in_league,
-    TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
+    seasons_with_data, opts, stat_higher_better, team_in_league, decade_marks,
+    team_display, MULTI_TEAM, TEAM_SEASONS, PLAYER_SEASONS, TEAM_COLORS,
     TEAM_FULL_NAME, TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS, ramp_color,
 )
 from charts import (
@@ -251,7 +251,7 @@ def _player_leaderboard_rows(season, ptype, pxs, pys, pzs, min_pa, min_ip, team)
         tm = str(row.get("Team", "")).strip()
         pct = int(round(float(comp.loc[idx])))
         ref = str(int(row["IDfg"])) if "IDfg" in df.columns else str(row.get("Name", ""))
-        out.append({"rank": i + 1, "team": tm, "ref": ref,
+        out.append({"rank": i + 1, "team": team_display(tm), "ref": ref,
                     "name": str(row.get("Name", "—")),
                     "pct": pct, "color": TEAM_COLORS.get(tm, "#7d8590"),
                     "ramp": ramp_color(pct / 100)})
@@ -318,17 +318,6 @@ def _export_frame(view, season, xt, yt, xs, ys, zt, zs, league, era,
     fname = (f"teams_{_fname_part(span)}_{_fname_part(ys)}"
              f"_vs_{_fname_part(xs)}{'_era-pctl' if era else ''}.csv")
     return out, fname
-
-
-def _decade_marks(mn, mx):
-    span = max(1, mx - mn)
-    step = 10 if span <= 35 else (20 if span <= 90 else 30)
-    marks = {mn: {"label": str(mn)}, mx: {"label": str(mx)}}
-    start = ((mn // step) + 1) * step
-    for y in range(start, mx, step):
-        if (y - mn) > step * 0.5 and (mx - y) > step * 0.5:
-            marks[y] = "’" + f"{y % 100:02d}"
-    return marks
 
 
 # ── registration ──────────────────────────────────────────────────────────────
@@ -512,8 +501,11 @@ def register_callbacks(app):
                 {"label": "AL", "value": "AL"}, {"label": "NL", "value": "NL"}]
         if df.empty or "Team" not in df.columns:
             return base, "All Teams"
-        teams = sorted(t for t in df["Team"].unique() if t not in ("- - -", ""))
+        teams = sorted(t for t in df["Team"].unique() if t not in (MULTI_TEAM, ""))
         options = base + opts(teams)
+        if (df["Team"] == MULTI_TEAM).any():
+            options.append({"label": "Multiple teams (traded)",
+                            "value": MULTI_TEAM})
         valid = {o["value"] for o in options}
         return options, (current if current in valid else "All Teams")
 
@@ -561,7 +553,7 @@ def register_callbacks(app):
         hi = max(mn, min(mx, hi))
         if hi < lo:
             lo, hi = hi, lo
-        return mn, mx, _decade_marks(mn, mx), [lo, hi]
+        return mn, mx, decade_marks(mn, mx), [lo, hi]
 
     @app.callback(
         Output("season-slider", "value", allow_duplicate=True),

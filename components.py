@@ -7,7 +7,8 @@ from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 from data import (
-    config, opts, season_label, MIN_PA_LIST, MIN_IP_LIST, LEAGUE_FILTERS,
+    config, opts, season_label, decade_marks, team_display,
+    MIN_PA_LIST, MIN_IP_LIST, LEAGUE_FILTERS,
     TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS,
     TEAM_COLORS, TEAM_COLOR_ALT, TEAM_FULL_NAME, TEAM_DIVISION, logo_b64,
 )
@@ -131,9 +132,13 @@ def _year_scrubber(init_lo, init_hi):
                       className="yr-val"),
         ]),
         # Two handles: drag to pick a single season (handles together) or a
-        # multi-season span. allowCross=False keeps from ≤ to.
-        dcc.RangeSlider(id="season-slider", min=first, max=last, step=None,
-                        value=[init_lo, init_hi], marks={}, allowCross=False,
+        # multi-season span. allowCross=False keeps from ≤ to. step=1 lets a
+        # drag land on any year (step=None would snap to the decade marks
+        # only), and seeding real marks stops the first paint from showing
+        # Dash's auto-abbreviated '2k' labels before the callback fills in.
+        dcc.RangeSlider(id="season-slider", min=first, max=last, step=1,
+                        value=[init_lo, init_hi],
+                        marks=decade_marks(first, last), allowCross=False,
                         className="season-slider"),
         html.Div(className="yr-step", children=[
             dcc.Input(id="season-from", type="number", value=init_lo,
@@ -565,7 +570,7 @@ def player_detail_body(name, team, span, composite, sparks, groups):
                             "fontSize": 18}),
         ]),
         html.Div(className="dt-name-block", children=[
-            html.Div(f"{TEAM_FULL_NAME.get(team, team or '—')} · {span}",
+            html.Div(f"{team_display(team, full=True)} · {span}",
                      className="dt-eyebrow"),
             html.H2(str(name), className="dt-name"),
             html.Div(className="dt-sub", children=[

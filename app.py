@@ -25,6 +25,10 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
     title="baseball-dashboard",
     update_title=None,
+    # Without this, phones render the ~980px desktop layout zoomed out and
+    # the responsive CSS below 760px never applies.
+    meta_tags=[{"name": "viewport",
+                "content": "width=device-width, initial-scale=1"}],
 )
 server = app.server
 
