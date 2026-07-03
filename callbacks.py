@@ -4,7 +4,7 @@
 from urllib.parse import urlencode
 
 import pandas as pd
-from dash import Input, Output, State, MATCH, ALL, no_update, ctx
+from dash import Input, Output, State, MATCH, ALL, no_update, ctx, dcc
 
 from data import (
     config, load_csv, load_stats, season_bounds, season_label, process_columns,
@@ -13,7 +13,7 @@ from data import (
     TEAM_FULL_NAME, TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS, ramp_color,
 )
 from charts import (
-    render_team, render_player, player_frame,
+    render_team, render_player, player_frame, team_frame,
     compute_composite_rank, rank_items,
 )
 from components import (
@@ -256,6 +256,68 @@ def _player_leaderboard_rows(season, ptype, pxs, pys, pzs, min_pa, min_ip, team)
                     "pct": pct, "color": TEAM_COLORS.get(tm, "#7d8590"),
                     "ramp": ramp_color(pct / 100)})
     return out, len(items)
+
+
+def _fname_part(s) -> str:
+    """Make a stat/span safe for a filename (K/9 → K-9, 2019–2024 → 2019-2024)."""
+    return (str(s).replace("/", "-").replace("–", "-").replace("%", "pct")
+            .replace("+", "plus").replace(" ", "_"))
+
+
+def _export_frame(view, season, xt, yt, xs, ys, zt, zs, league, era,
+                  ptype, pxs, pys, pzs, mpa, mip, tf, find, p_era):
+    """(DataFrame, filename) of exactly what the current chart plots — same
+    frame builders, same filters — plus the composite rank column. Returns
+    (None, None) when there is nothing to export."""
+    lo, hi = season_bounds(season)
+    if lo is None:
+        return None, None
+    span = season_label(lo, hi)
+
+    if view == "player":
+        if not pxs or not pys:
+            return None, None
+        stats = [s for s in (pxs, pys, pzs) if s]
+        df = player_frame(lo, hi, ptype, mpa, mip, tf,
+                          pct_stats=stats if p_era else None)
+        if df.empty or pxs not in df.columns or pys not in df.columns:
+            return None, None
+        find = (find or "").strip()
+        if find:
+            df = df[df["Name"].astype(str).str.contains(find, case=False,
+                                                        regex=False)]
+            if df.empty:
+                return None, None
+        is_pitch = (ptype == "Pitchers")
+        keep = [c for c in ("Name", "Team", "IDfg", "PA", "IP") if c in df.columns]
+        out = df[keep + [s for s in stats if s in df.columns]].copy()
+        items = rank_items(
+            (df[pxs], pxs, is_pitch), (df[pys], pys, is_pitch),
+            (df[pzs] if (pzs and pzs in df.columns) else None, pzs, is_pitch))
+        out["Composite Rank"] = compute_composite_rank(*items).round(1).values
+        out = out.sort_values("Composite Rank", ascending=False)
+        fname = (f"players_{_fname_part(span)}_{_fname_part(pys)}"
+                 f"_vs_{_fname_part(pxs)}{'_era-pctl' if p_era else ''}.csv")
+        return out, fname
+
+    if not xs or not ys:
+        return None, None
+    merged, is_3d, err = team_frame(lo, hi, xt, yt, xs, ys, zt, zs,
+                                    league or "All Teams", era)
+    if err or merged is None:
+        return None, None
+    items = rank_items(
+        (merged["_x"], xs, xt == "Pitching"), (merged["_y"], ys, yt == "Pitching"),
+        (merged["_z"] if is_3d else None, zs, zt == "Pitching"))
+    out = merged.rename(columns={
+        "_x": f"{xs} ({xt})", "_y": f"{ys} ({yt})",
+        **({"_z": f"{zs} ({zt})"} if is_3d else {}),
+    })
+    out["Composite Rank"] = compute_composite_rank(*items).round(1).values
+    out = out.sort_values("Composite Rank", ascending=False)
+    fname = (f"teams_{_fname_part(span)}_{_fname_part(ys)}"
+             f"_vs_{_fname_part(xs)}{'_era-pctl' if era else ''}.csv")
+    return out, fname
 
 
 def _decade_marks(mn, mx):
@@ -633,17 +695,24 @@ def register_callbacks(app):
         Input("x-stat", "value"), Input("y-stat", "value"), Input("z-stat", "value"),
         Input("tg-vmean", "value"), Input("tg-hmean", "value"),
         Input("tg-team-rank", "value"), Input("tg-logos", "value"),
+        Input("tg-trend", "value"), Input("tg-era", "value"),
+        Input("tg-traj", "value"),
         Input({"kind": "seg-store", "group": "ptype"}, "data"),
         Input("p-x-stat", "value"), Input("p-y-stat", "value"),
         Input("p-z-stat", "value"),
         Input("min-pa", "value"), Input("min-ip", "value"),
         Input("team-filter", "value"), Input("tg-player-rank", "value"),
         Input("tg-player-vmean", "value"), Input("tg-player-hmean", "value"),
+        Input("tg-player-trend", "value"), Input("tg-player-era", "value"),
+        Input("tg-player-traj", "value"), Input("player-find", "value"),
+        Input({"kind": "seg-store", "group": "plabels"}, "data"),
         Input("team-league", "value"),
         prevent_initial_call=True,
     )
     def sync_url(view, season, xt, yt, zt, xs, ys, zs, vm, hm, tr, lg,
-                 ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm, league):
+                 trend, era, traj,
+                 ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm,
+                 ptrend, pera, ptraj, find, plabels, league):
         lo, hi = season_bounds(season)
         season_q = "" if lo is None else lo
         season_end_q = "" if lo is None else hi
@@ -655,7 +724,12 @@ def register_callbacks(app):
                           team=tf or "All Teams",
                           p_color_rank=str(bool(pr)).lower(),
                           p_show_v=str(bool(pvm)).lower(),
-                          p_show_h=str(bool(phm)).lower())
+                          p_show_h=str(bool(phm)).lower(),
+                          p_trend=str(bool(ptrend)).lower(),
+                          p_era=str(bool(pera)).lower(),
+                          p_traj=str(bool(ptraj)).lower(),
+                          find=(find or "").strip(),
+                          p_labels=plabels or "all")
         else:
             params = dict(view="team", season=season_q, season_end=season_end_q,
                           x_type=xt or "Batting", y_type=yt or "Pitching",
@@ -665,6 +739,9 @@ def register_callbacks(app):
                           show_h=str(bool(hm)).lower(),
                           color_rank=str(bool(tr)).lower(),
                           logos=str(bool(lg)).lower(),
+                          trend=str(bool(trend)).lower(),
+                          era=str(bool(era)).lower(),
+                          traj=str(bool(traj)).lower(),
                           league=league or "All Teams")
         return "?" + urlencode(params)
 
@@ -705,24 +782,35 @@ def register_callbacks(app):
         Input("x-stat", "value"), Input("y-stat", "value"), Input("z-stat", "value"),
         Input("tg-vmean", "value"), Input("tg-hmean", "value"),
         Input("tg-team-rank", "value"), Input("tg-logos", "value"),
+        Input("tg-trend", "value"), Input("tg-era", "value"),
+        Input("tg-traj", "value"),
         Input({"kind": "seg-store", "group": "ptype"}, "data"),
         Input("p-x-stat", "value"), Input("p-y-stat", "value"),
         Input("p-z-stat", "value"),
         Input("min-pa", "value"), Input("min-ip", "value"),
         Input("team-filter", "value"), Input("tg-player-rank", "value"),
         Input("tg-player-vmean", "value"), Input("tg-player-hmean", "value"),
+        Input("tg-player-trend", "value"), Input("tg-player-era", "value"),
+        Input("tg-player-traj", "value"), Input("player-find", "value"),
+        Input({"kind": "seg-store", "group": "plabels"}, "data"),
         Input("team-league", "value"),
         Input("theme-store", "data"),
     )
     def render(view, season, xt, yt, zt, xs, ys, zs, vm, hm, tr, lg,
-               ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm, league, theme):
+               trend, era, traj,
+               ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm,
+               ptrend, pera, ptraj, find, plabels, league, theme):
         theme = theme or "dark"
         if view == "player":
             return render_player(season, ptype, pxs, pys, mpa, mip, tf,
-                                  bool(pr), pzs, bool(pvm), bool(phm), theme)
+                                 bool(pr), pzs, bool(pvm), bool(phm), theme,
+                                 show_trend=bool(ptrend), era=bool(pera),
+                                 traj=bool(ptraj), find=find or "",
+                                 label_mode=plabels or "all")
         return render_team(season, bool(lg), xt, yt, xs, ys,
-                            bool(vm), bool(hm), bool(tr), zt, zs, theme,
-                            league or "All Teams")
+                           bool(vm), bool(hm), bool(tr), zt, zs, theme,
+                           league or "All Teams", show_trend=bool(trend),
+                           era=bool(era), traj=bool(traj))
 
     @app.callback(
         Output("leaderboard", "children"), Output("leaderboard", "style"),
@@ -749,6 +837,38 @@ def register_callbacks(app):
         if not rows:
             return [], {"display": "none"}
         return leaderboard_cards(rows, n), {}
+
+    # ---- CSV export of the current view ----
+    @app.callback(
+        Output("csv-download", "data"),
+        Input("csv-export-btn", "n_clicks"),
+        State({"kind": "seg-store", "group": "view"}, "data"),
+        State("season-slider", "value"),
+        State({"kind": "seg-store", "group": "xtype"}, "data"),
+        State({"kind": "seg-store", "group": "ytype"}, "data"),
+        State({"kind": "seg-store", "group": "ztype"}, "data"),
+        State("x-stat", "value"), State("y-stat", "value"),
+        State("z-stat", "value"),
+        State("team-league", "value"), State("tg-era", "value"),
+        State({"kind": "seg-store", "group": "ptype"}, "data"),
+        State("p-x-stat", "value"), State("p-y-stat", "value"),
+        State("p-z-stat", "value"),
+        State("min-pa", "value"), State("min-ip", "value"),
+        State("team-filter", "value"), State("player-find", "value"),
+        State("tg-player-era", "value"),
+        prevent_initial_call=True,
+    )
+    def export_csv(n, view, season, xt, yt, zt, xs, ys, zs, league, era,
+                   ptype, pxs, pys, pzs, mpa, mip, tf, find, pera):
+        if not n:
+            return no_update
+        df, fname = _export_frame(view, season, xt, yt, xs, ys, zt, zs,
+                                  league, bool(era), ptype or "Batters",
+                                  pxs, pys, pzs, mpa, mip, tf or "All Teams",
+                                  find, bool(pera))
+        if df is None:
+            return no_update
+        return dcc.send_data_frame(df.to_csv, fname, index=False)
 
     # ---- detail panel (teams and players) ----
     @app.callback(

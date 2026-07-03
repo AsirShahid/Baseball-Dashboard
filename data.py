@@ -48,7 +48,13 @@ for _k in ("team_batting_dir", "team_pitching_dir", "team_fielding_dir",
 config["current_year"] = max(int(config.get("current_year", 0)),
                              datetime.today().year)
 
-EXCLUDED_COLS = {"Team", "Season", "Dollars", "Name", "IDfg", "Unnamed: 0"}
+# Identity/meta columns that must never appear as plottable stats. The
+# 2026-07 FanGraphs-API refresh added the id and name-routing columns.
+EXCLUDED_COLS = {"Team", "Season", "Dollars", "Name", "IDfg", "Unnamed: 0",
+                 "playerid", "xMLBAMID", "teamid", "playerTeamId",
+                 "SeasonMin", "SeasonMax", "Bats", "Throws", "AgeR",
+                 "PlayerName", "PlayerNameRoute", "position", "positionDB",
+                 "TeamName", "TeamNameAbb"}
 PRIORITY_COLS = ["WAR", "wRC+", "SIERA"]
 
 # League membership for the AL/NL player filter. Includes defunct/renamed
@@ -313,6 +319,18 @@ _CSV_CACHE: dict[str, tuple[float, pd.DataFrame]] = {}
 _CSV_CACHE_MAX = 512
 
 
+def _normalize_ids(df: pd.DataFrame) -> pd.DataFrame:
+    """Give the player id column its canonical name.
+
+    pybaseball frames call it IDfg; CSVs written straight from the FanGraphs
+    API (the 2026-07 refresh onward) call it playerid. Everything downstream —
+    span aggregation, click-to-detail, leaderboard refs — keys on IDfg, so
+    normalise at the single load point."""
+    if "playerid" in df.columns and "IDfg" not in df.columns:
+        return df.rename(columns={"playerid": "IDfg"})
+    return df
+
+
 def load_csv(path: str, fetch: bool = True) -> pd.DataFrame:
     """Load CSV; auto-fetches the season live if the file doesn't exist
     (unless fetch=False)."""
@@ -323,7 +341,7 @@ def load_csv(path: str, fetch: bool = True) -> pd.DataFrame:
             cached = _CSV_CACHE.get(path)
             if cached and cached[0] == mtime:
                 return cached[1].copy()
-            df = strip_html(pd.read_csv(path))
+            df = _normalize_ids(strip_html(pd.read_csv(path)))
             if not df.empty:
                 if len(_CSV_CACHE) >= _CSV_CACHE_MAX:
                     _CSV_CACHE.pop(next(iter(_CSV_CACHE)))
@@ -331,7 +349,7 @@ def load_csv(path: str, fetch: bool = True) -> pd.DataFrame:
             return df.copy()
         if not fetch:
             return pd.DataFrame()
-        return strip_html(_live_fetch(path))
+        return _normalize_ids(strip_html(_live_fetch(path)))
     except Exception as exc:
         logging.warning("load_csv failed for %s: %s", path, exc)
         return pd.DataFrame()
@@ -366,7 +384,8 @@ def _weight_col_for(dir_key: str) -> str:
 
 
 def _aggregate_span(df: pd.DataFrame, group_key: str, weight_col: str,
-                    display_cols: list) -> pd.DataFrame:
+                    display_cols: list, rate_cols: frozenset = frozenset()
+                    ) -> pd.DataFrame:
     """Roll multiple season rows per entity into one row spanning the range.
 
     Counting columns (COUNTING_STATS, plus the weight column) are summed; every
@@ -374,35 +393,62 @@ def _aggregate_span(df: pd.DataFrame, group_key: str, weight_col: str,
     (PA for batters, IP for pitchers) so a span's wRC+/ERA stay meaningful
     instead of being naively summed. Mirrors fangraphs_api.aggregate_team, but
     keyed on any identity column (Team for teams, IDfg for players) and carrying
-    display columns (Name/Team) from each entity's largest-weight season."""
+    display columns (Name/Team) from each entity's largest-weight season.
+    Columns in `rate_cols` are always weight-averaged, even when their name is
+    a counting stat — used for percentile-converted columns, where summing
+    would be meaningless.
+
+    Fully vectorised: the player CSVs run to ~300 columns and a span of a few
+    seasons has hundreds of entities, so a per-group Python loop takes tens of
+    seconds where this takes tens of milliseconds."""
     numeric_cols = [c for c in df.select_dtypes(include="number").columns
                     if c != group_key]
     has_weight = weight_col in df.columns
-    rows = []
-    for key, grp in df.groupby(group_key):
-        row = {group_key: key}
-        weights = (pd.to_numeric(grp[weight_col], errors="coerce").fillna(0)
-                   if has_weight else None)
-        total_w = float(weights.sum()) if has_weight else 0.0
-        for c in numeric_cols:
-            vals = pd.to_numeric(grp[c], errors="coerce")
-            if c == weight_col or c in COUNTING_STATS:
-                row[c] = vals.sum(skipna=True)
-            elif has_weight and total_w > 0:
-                mask = vals.notna()
-                w, v = weights[mask], vals[mask]
-                wsum = float(w.sum())
-                row[c] = (v * w).sum() / wsum if wsum > 0 else vals.mean()
-            else:
-                row[c] = vals.mean()
-        if display_cols:
-            rep = (grp.iloc[int(weights.to_numpy().argmax())]
-                   if weights is not None and len(grp) else grp.iloc[-1])
-            for d in display_cols:
-                if d in grp.columns:
-                    row[d] = rep[d]
-        rows.append(row)
-    return pd.DataFrame(rows)
+    g = df[group_key]
+    count_cols = [c for c in numeric_cols
+                  if c not in rate_cols and (c == weight_col or c in COUNTING_STATS)]
+    avg_cols = [c for c in numeric_cols if c not in count_cols]
+
+    parts = []
+    if count_cols:
+        parts.append(df[count_cols].groupby(g).sum())
+    if avg_cols:
+        vals = df[avg_cols]
+        plain_mean = vals.groupby(g).mean()
+        if has_weight:
+            w = pd.to_numeric(df[weight_col], errors="coerce").fillna(0)
+            # Per-column weighted mean over the rows where that column has a
+            # value; groups whose weights are all 0 (or whose values are all
+            # NaN) fall back to the plain mean.
+            num = vals.mul(w, axis=0).groupby(g).sum(min_count=1)
+            den = vals.notna().mul(w, axis=0).groupby(g).sum()
+            parts.append((num / den).where(den > 0, plain_mean))
+        else:
+            parts.append(plain_mean)
+
+    if display_cols and len(df):
+        # Representative row per entity: its largest-weight season (or the
+        # last row when there is no weight column).
+        if has_weight:
+            w = pd.to_numeric(df[weight_col], errors="coerce").fillna(0)
+            rep_idx = w.groupby(g).idxmax()
+        else:
+            rep_idx = df.index.to_series().groupby(g).last()
+        present = [d for d in display_cols if d in df.columns]
+        if present:
+            disp = df.loc[rep_idx.values, present]
+            disp.index = rep_idx.index
+            parts.append(disp)
+
+    if not parts:
+        return pd.DataFrame({group_key: sorted(g.unique())})
+    out = pd.concat(parts, axis=1)
+    order = ([c for c in numeric_cols if c in out.columns]
+             + [d for d in display_cols if d in out.columns])
+    out = out[order].reset_index()
+    # groupby names the index after the grouping series; make sure the id
+    # column carries the expected name even if the input series was unnamed.
+    return out.rename(columns={out.columns[0]: group_key})
 
 
 def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team") -> pd.DataFrame:
@@ -430,6 +476,56 @@ def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team") -> pd.DataFra
         return frames[-1]
     display = ["Name", "Team"] if group_key != "Team" else []
     return _aggregate_span(combined, group_key, _weight_col_for(dir_key), display)
+
+
+def pct_within_season(df: pd.DataFrame, stats) -> pd.DataFrame:
+    """Replace each stat column with its percentile rank (0–100) within `df`.
+
+    The percentile keeps the raw stat's direction (a high ERA ranks high), so
+    downstream direction handling — axis reversal, composite ranks — applies
+    unchanged. Returns a copy; non-numeric and missing values stay NaN."""
+    df = df.copy()
+    for s in stats:
+        if s in df.columns:
+            df[s] = pd.to_numeric(df[s], errors="coerce").rank(pct=True) * 100
+    return df
+
+
+def load_stats_pct(dir_key: str, lo, hi, stats, group_key: str = "Team",
+                   season_prep=None) -> pd.DataFrame:
+    """Era-adjusted variant of load_stats: percentiles instead of raw values.
+
+    Each stat in `stats` is converted to its percentile rank within each
+    season's pool (so a 1968 OBP is measured against 1968, not pooled with
+    2000), then the seasons roll up per entity as a PA/IP-weighted average of
+    those percentiles. `season_prep` runs on each season's frame before
+    ranking (derived columns, per-season qualification filters) so the
+    percentile pool matches the filters in play. Only the identity, weight,
+    display and stat columns survive — this frame is for plotting, not as a
+    general stat table."""
+    lo, hi = season_bounds(lo if hi is None else [lo, hi])
+    if lo is None:
+        return pd.DataFrame()
+    stats = [s for s in stats if s]
+    weight_col = _weight_col_for(dir_key)
+    display = ["Name", "Team"] if group_key != "Team" else []
+    keep = [group_key, weight_col] + display + stats
+    frames = []
+    for y in range(lo, hi + 1):
+        df = load_csv(f"{config[dir_key]}/{y}.csv")
+        if df.empty:
+            continue
+        if season_prep is not None:
+            df = season_prep(df)
+        if df.empty or group_key not in df.columns:
+            continue
+        df = pct_within_season(df, stats)
+        frames.append(df[[c for c in keep if c in df.columns]])
+    if not frames:
+        return pd.DataFrame()
+    combined = pd.concat(frames, ignore_index=True)
+    return _aggregate_span(combined, group_key, weight_col, display,
+                           rate_cols=frozenset(stats))
 
 
 # Per-file cache of which columns contain any data, so seasons_with_data

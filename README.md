@@ -7,13 +7,19 @@ An interactive web application for visualizing baseball statistics. Build custom
 ## Features
 
 - **Team and player views** — scatter any two (or three) stats against each other
+- **Find player** — type a name to spotlight matching players: they get a bigger, labeled marker while everyone else dims
 - **Composite leaderboards** — a top-10 board for both teams *and* players, ranked by average percentile across the selected axes
 - **Multi-season ranges** — drag the two-handled season slider to span several years (e.g. 2019–2026); counting stats (WAR, HR) are summed and rate stats (wRC+, ERA) are PA/IP-weighted, so the chart and leaderboard show one cumulative point per team/player
+- **Season trajectories** — flip a multi-season range from one aggregate point into a path through stat space, one point per season: team rebuilds and player aging curves at a glance (players show your search matches, or the span's top 10)
+- **Era-adjusted axes** — replace raw values with each season's percentile (PA/IP-weighted across the span), so a 1968 OBP is measured against 1968 pitching, not pooled with the steroid era
+- **Trend line** — toggle an OLS fit with its r², to see how strongly the two stats actually relate
+- **Label modes** — label all players, only the outliers (the ~12 most extreme points), or none
 - **3D scatter plots** — add a Z-axis stat to switch to an interactive 3D chart
 - **Composite rank coloring** — color-code markers by average percentile rank across all selected axes (red → yellow → green)
 - **Mean reference lines / planes** — toggle average lines in 2D or semi-transparent planes in 3D
 - **Team logos or colored markers** — display teams as logos or team-colored dots
 - **Season filtering** — the slider only offers seasons where the chosen stat actually has data (e.g. Exit Velocity only appears from 2015 onward)
+- **CSV export** — download exactly what the chart is plotting (axes, filters, composite ranks) with one click
 - **Shareable URLs** — every control is encoded in the URL so you can copy and share a specific view
 - **Auto-fetch via pybaseball** — if a season's CSV is missing the app fetches it live on first access
 

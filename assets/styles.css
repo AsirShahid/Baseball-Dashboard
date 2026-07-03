@@ -437,6 +437,16 @@ button { font-family: inherit; }
 .yr-step input:focus { border-color: color-mix(in oklab, var(--accent) 55%, var(--border)); }
 .yr-arrow { color: var(--text-3); font-family: 'Geist Mono', monospace; font-size: 13px; }
 
+/* Find-player search box */
+.find-input {
+  width: 100%; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 10px; color: var(--text);
+  font-family: 'Geist', sans-serif; font-size: 13px;
+  outline: none;
+}
+.find-input::placeholder { color: var(--text-3); }
+.find-input:focus { border-color: color-mix(in oklab, var(--accent) 55%, var(--border)); }
+
 /* Presets */
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
