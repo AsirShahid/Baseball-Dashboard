@@ -633,6 +633,49 @@ def test_render_player_era_adjusted_axis():
     assert "(era pctl)" in fig.layout.xaxis.title.text
 
 
+# ── Traded players, seeded slider marks ──────────────────────────────────────
+
+def test_traded_players_kept_in_league_filters():
+    """FanGraphs marks traded players' seasons '- - -'. The AL/NL filters must
+    keep them (league unknown ≠ not in this league); a concrete team filter
+    still excludes them; the sentinel itself works as a team filter."""
+    from charts import player_frame
+    from data import MULTI_TEAM
+    al = player_frame(SEASON, SEASON, "Batters", "Qualified", "Qualified", "AL")
+    nl = player_frame(SEASON, SEASON, "Batters", "Qualified", "Qualified", "NL")
+    assert (al["Team"] == MULTI_TEAM).any()
+    assert (nl["Team"] == MULTI_TEAM).any()
+    only = player_frame(SEASON, SEASON, "Batters", "Qualified", "Qualified",
+                        MULTI_TEAM)
+    assert len(only) and (only["Team"] == MULTI_TEAM).all()
+    nyy = player_frame(SEASON, SEASON, "Batters", "Qualified", "Qualified",
+                       "NYY")
+    assert len(nyy) and not (nyy["Team"] == MULTI_TEAM).any()
+
+
+def test_team_display_handles_traded():
+    from data import team_display, MULTI_TEAM
+    assert team_display(MULTI_TEAM) == "2TM"
+    assert team_display(MULTI_TEAM, full=True) == "Multiple teams"
+    assert team_display("LAD") == "LAD"
+    assert team_display("LAD", full=True) == "Los Angeles Dodgers"
+    assert team_display("") == "—"
+
+
+def test_season_slider_seeded_marks_and_per_year_step():
+    """The layout must ship real year marks (no flash of Dash's auto '2k'
+    labels before the callback runs) and a step of 1 so dragging can land on
+    any year, not just the decade marks."""
+    from components import _year_scrubber
+    from data import config
+    slider = _year_scrubber(2024, 2024).children[1]
+    assert slider.step == 1
+    assert slider.marks
+    first = config["start_year"]
+    assert str(first) in str(slider.marks[first])
+    assert all("2k" not in str(v) for v in slider.marks.values())
+
+
 def test_fetch_team_passes_month_through(monkeypatch):
     """Live split selection must reach the team roll-up too."""
     import fangraphs_api as fa

@@ -429,7 +429,11 @@ button { font-family: inherit; }
 }
 .yr-step button:hover { color: var(--text); border-color: var(--border-2); }
 .yr-step input {
-  flex: 1; background: var(--surface-2); border: 1px solid var(--border);
+  /* min-width: 0 lets the inputs shrink below their ~180px intrinsic size —
+     without it the pair overflows the sidebar (and forced the whole page
+     wide on phones). */
+  flex: 1 1 0; min-width: 0; width: 100%;
+  background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 6px; padding: 6px 10px; color: var(--text); text-align: center;
   font-family: 'Geist Mono', monospace; font-size: 13px;
   outline: none;
@@ -802,11 +806,37 @@ button { font-family: inherit; }
   text-align: center;
 }
 
-/* small screens — fall back to single column */
+/* Mobile-browser URL bars make 100vh overshoot; prefer the dynamic unit. */
+@supports (height: 100dvh) {
+  .db { height: calc(100dvh - 52px); }
+}
+
+/* small screens — narrower sidebar */
 @media (max-width: 1100px) {
   .db { grid-template-columns: 280px 1fr; }
 }
+
+/* phones — stack chart first, controls below. The chart card needs an
+   explicit height here: .chart-wrap is absolutely positioned, so once the
+   grid stops being viewport-height the card would otherwise collapse to
+   nothing (the graph was invisible on phones). */
 @media (max-width: 760px) {
-  .db { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; }
-  .sidebar { border-right: 0; border-bottom: 1px solid var(--border); }
+  .db {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    height: auto;
+  }
+  .main { grid-row: 1; overflow: visible; }
+  .sidebar {
+    grid-row: 2;
+    border-right: 0; border-top: 1px solid var(--border);
+    overflow-y: visible;
+  }
+  .topbar { flex-wrap: wrap; gap: 10px; padding: 14px 14px 12px; }
+  .chart-title { font-size: 20px; }
+  .chart-title .vs { font-size: 17px; }
+  .share-url { display: none; }     /* keep the COPY pill, drop the long URL */
+  .chart-card { flex: none; height: 62vh; min-height: 320px; margin: 12px; }
+  .leaderboard { margin: 0 12px 14px; }
+  .detail-panel { width: 100vw; border-left: 0; }
 }

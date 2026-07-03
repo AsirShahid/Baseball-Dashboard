@@ -70,6 +70,21 @@ AL_TEAMS = {"BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR",
             "MIN", "NYY", "OAK", "SEA", "TBR", "TEX", "TOR",
             "ANA", "CAL", "KCA", "NYH", "PHA", "SLB", "TBD"}
 
+# FanGraphs marks a traded player's season row with this Team value. The data
+# doesn't say which teams, so league filters treat these players as possibly
+# either league rather than silently dropping them.
+MULTI_TEAM = "- - -"
+
+
+def team_display(code, full: bool = False) -> str:
+    """Human label for a team code, handling the traded-player sentinel."""
+    code = str(code or "").strip()
+    if code == MULTI_TEAM:
+        return "Multiple teams" if full else "2TM"
+    if not code:
+        return "—"
+    return TEAM_FULL_NAME.get(code, code) if full else code
+
 TEAM_LOGO_MAP = {
     "LAA": "angels",   "BAL": "orioles",  "BOS": "redsox",    "CHW": "whitesox",
     "CLE": "guardians","DET": "tigers",   "KCR": "royals",    "MIN": "twins",
@@ -376,6 +391,22 @@ def season_bounds(value) -> tuple:
 def season_label(lo, hi) -> str:
     """'2024' for a single season, '2019–2026' for a range."""
     return str(lo) if lo == hi else f"{lo}–{hi}"
+
+
+def decade_marks(mn: int, mx: int) -> dict:
+    """Slider mark labels: endpoints in full, decades between as ’90-style.
+
+    Used both to seed the layout's slider (so the first paint shows real
+    years, not Dash's auto-abbreviated '2k' marks) and by the data-aware
+    slider callback."""
+    span = max(1, mx - mn)
+    step = 10 if span <= 35 else (20 if span <= 90 else 30)
+    marks = {mn: {"label": str(mn)}, mx: {"label": str(mx)}}
+    start = ((mn // step) + 1) * step
+    for y in range(start, mx, step):
+        if (y - mn) > step * 0.5 and (mx - y) > step * 0.5:
+            marks[y] = "’" + f"{y % 100:02d}"
+    return marks
 
 
 def _weight_col_for(dir_key: str) -> str:

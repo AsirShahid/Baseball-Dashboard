@@ -10,7 +10,7 @@ import pandas as pd
 from data import (
     load_stats, load_stats_pct, pct_within_season, stat_higher_better,
     season_bounds, season_label, team_in_league,
-    TEAM_COLORS, NL_TEAMS, AL_TEAMS, PALETTE, RANK_COLORSCALE,
+    TEAM_COLORS, NL_TEAMS, AL_TEAMS, MULTI_TEAM, PALETTE, RANK_COLORSCALE,
     logo_b64, logo_aspect,
 )
 
@@ -597,9 +597,17 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None):
             except (TypeError, ValueError):
                 pass
 
-    if   team == "NL":                    df = df[df["Team"].isin(NL_TEAMS)]
-    elif team == "AL":                    df = df[df["Team"].isin(AL_TEAMS)]
-    elif team not in (None, "All Teams"): df = df[df["Team"] == team]
+    # Traded players carry the MULTI_TEAM sentinel instead of a team code.
+    # The data doesn't say which league(s) they played in, so the AL/NL
+    # filters keep them (possibly-either-league) rather than silently
+    # dropping a dozen qualified players a season. A specific team filter
+    # still excludes them; MULTI_TEAM itself is offered as a dropdown choice.
+    if   team == "NL":
+        df = df[df["Team"].isin(NL_TEAMS) | (df["Team"] == MULTI_TEAM)]
+    elif team == "AL":
+        df = df[df["Team"].isin(AL_TEAMS) | (df["Team"] == MULTI_TEAM)]
+    elif team not in (None, "All Teams"):
+        df = df[df["Team"] == team]
     return df
 
 
