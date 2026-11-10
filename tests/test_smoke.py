@@ -160,11 +160,11 @@ def test_seasons_with_data_is_cached():
     assert (t2 - t1) < (t1 - t0)  # warm call faster than cold
 
 
-def test_fmt_val_negative_decimal():
-    from callbacks import _fmt_val
-    assert _fmt_val(0.123) == ".123"
-    assert _fmt_val(-0.123) == "-.123"
-    assert _fmt_val(float("nan")) == "—"
+def test_fmt_stat_negative_decimal():
+    from data import fmt_stat
+    assert fmt_stat("wOBA", 0.123) == ".123"
+    assert fmt_stat("wOBA", -0.123) == "-.123"
+    assert fmt_stat("wOBA", float("nan")) == "—"
 
 
 def test_aggregate_team_weighted_average():
@@ -1010,3 +1010,80 @@ def test_player_trajectory_with_career_threshold(career_data):
                                     traj=True)
     assert eyebrow[0] == "TRAJECTORY"
     assert {t.name for t in fig.data} == {"B1", "B2"}
+# ── Display precision ────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("stat,val,want", [
+    ("WAR", 11.331730310881184, "11.3"),
+    ("wRC+", 219.7835722854021, "220"),
+    ("AVG", 0.2630362542364565, ".263"),
+    ("OPS", 1.0592, "1.059"),
+    ("K%", 0.242897727, "24.3%"),
+    ("HR/FB", 0.2142, "21.4%"),
+    ("ERA", 2.380863175718908, "2.38"),
+    ("SIERA", 4.091316543596715, "4.09"),
+    ("PA", 6073.0, "6,073"),
+    ("IP", 177.2, "177.2"),
+    ("ERA-", 87.4, "87"),
+    ("K%+", 112.6, "113"),
+    ("WAR/650 PAs", 7.456, "7.5"),
+    ("WPA", 6.17204475402832, "6.17"),
+    ("EV", 96.23058925128535, "96.2"),
+])
+def test_fmt_stat_precision(stat, val, want):
+    from data import fmt_stat
+    assert fmt_stat(stat, val) == want
+
+
+def test_fmt_stat_era_and_missing():
+    from data import fmt_stat
+    assert fmt_stat("K%", 73.6, era=True) == "74"   # percentile, not a percent
+    assert fmt_stat("WAR", float("nan")) == "—"
+    assert fmt_stat("WAR", None) == "—"
+
+
+def test_player_hover_is_formatted():
+    """Plotly Express hover must carry per-stat formats, never a bare %{x}."""
+    from charts import render_player
+    fig, *_ = render_player([2019, 2021], "Batters", "WAR", "wRC+", "Qualified",
+                            "Qualified", "All Teams", False, None)
+    ht = fig.data[0].hovertemplate
+    assert "%{x:.1f}" in ht and "%{y:,.0f}" in ht
+    assert "%{x}" not in ht and "%{y}" not in ht
+
+
+def test_team_hover_and_mean_labels_formatted():
+    from charts import render_team
+    fig, *_ = render_team([2019, 2021], False, "Batting", "Batting", "AVG", "K%",
+                          True, True, False, "Batting", None)
+    ht = fig.data[0].hovertemplate
+    assert "%{x:.3f}" in ht and "%{y:.1%}" in ht
+    labels = [a.text for a in fig.layout.annotations]
+    assert any(t.startswith("avg .2") for t in labels)       # AVG .2xx
+    assert any(t.startswith("avg ") and t.endswith("%") for t in labels)
+    assert fig.layout.yaxis.tickformat == ".0%"
+
+
+def test_export_rounded_to_display_precision():
+    from callbacks import _export_frame
+    out, _ = _export_frame("player", [2019, 2021], "Batting", "Pitching", None,
+                           None, "Batting", None, "All Teams", False, "Batters",
+                           "WAR", "wRC+", None, "Qualified", "Qualified",
+                           "All Teams", "", False)
+    assert (out["WAR"].dropna() == out["WAR"].dropna().round(1)).all()
+    assert (out["wRC+"].dropna() == out["wRC+"].dropna().round(0)).all()
+    out_t, _ = _export_frame("team", 2024, "Batting", "Batting", "AVG", "K%",
+                             "Batting", None, "All Teams", False, "Batters",
+                             None, None, None, "Qualified", "Qualified",
+                             "All Teams", "", False)
+    k = out_t["K% (Batting)"]
+    assert (k == k.round(3)).all() and k.between(0, 1).all()   # fraction, 1-dp %
+
+
+@pytest.mark.parametrize("n,want", [(1, "st"), (2, "nd"), (3, "rd"), (4, "th"),
+                                    (11, "th"), (12, "th"), (13, "th"),
+                                    (21, "st"), (73, "rd"), (91, "st"),
+                                    (92, "nd"), (100, "th")])
+def test_ordinal_suffix(n, want):
+    from components import ordinal_suffix
+    assert ordinal_suffix(n) == want
+

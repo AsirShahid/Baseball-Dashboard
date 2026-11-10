@@ -8,7 +8,7 @@ from dash import Input, Output, State, MATCH, ALL, no_update, ctx, dcc
 
 from data import (
     config, load_csv, load_stats, load_stats_pct, season_bounds, season_label,
-    season_tag,
+    season_tag, fmt_stat, round_stats,
     process_columns,
     seasons_with_data, opts, stat_higher_better, team_in_league, decade_marks,
     team_display, MULTI_TEAM, SEASONS, TEAM_COLORS,
@@ -56,21 +56,6 @@ PLAYER_SPARKS = {
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _fmt_val(v) -> str:
-    try:
-        v = float(v)
-    except (TypeError, ValueError):
-        return "—"
-    if v != v:
-        return "—"
-    if abs(v) < 1:
-        s = f"{v:.3f}"
-        return s.replace("0.", ".", 1) if s.startswith(("0.", "-0.")) else s
-    if abs(v) < 10:
-        return f"{v:.2f}"
-    return f"{v:.0f}"
-
-
 def _pct(series, value, higher_better) -> int:
     s = series.dropna()
     if s.empty or value is None or (isinstance(value, float) and value != value):
@@ -114,7 +99,7 @@ def _spark(stat, dir_key, team, season):
             years.append(y)
             values.append(float(v))
     return {"label": stat, "values": values, "years": years,
-            "last": _fmt_val(values[-1]) if values else "—"}
+            "last": fmt_stat(stat, values[-1]) if values else "—"}
 
 
 def _player_spark(idfg, stat, dir_key, hi):
@@ -133,7 +118,7 @@ def _player_spark(idfg, stat, dir_key, hi):
             years.append(y)
             values.append(float(v))
     return {"label": stat, "values": values, "years": years,
-            "last": _fmt_val(values[-1]) if values else "—"}
+            "last": fmt_stat(stat, values[-1]) if values else "—"}
 
 
 def _player_detail(idfg, lo, hi, ptype, mpa, mip, tf):
@@ -166,7 +151,7 @@ def _player_detail(idfg, lo, hi, ptype, mpa, mip, tf):
             hib = stat_higher_better(stat, is_pitch)
             pct = _pct(pool[stat], v, hib)
             all_pcts.append(pct)
-            tiles.append({"label": stat, "value": _fmt_val(v), "pct": pct,
+            tiles.append({"label": stat, "value": fmt_stat(stat, v), "pct": pct,
                           "ramp": ramp_color(pct / 100)})
         if tiles:
             groups.append({"name": gname, "tiles": tiles})
@@ -323,6 +308,10 @@ def _export_frame(view, season, xt, yt, xs, ys, zt, zs, league, era,
         id_cols = ("Name", "Team", "IDfg") + (("Season",) if per_season else ())
         keep = [c for c in id_cols + ("PA", "IP") if c in df.columns]
         out = df[keep + [s for s in stats if s in df.columns]].copy()
+        # Display precision (WAR 1 dp, wRC+ whole…) instead of raw CSV floats.
+        out = round_stats(out, [c for c in ("PA", "IP") if c in out.columns])
+        out = round_stats(out, [s for s in stats if s in out.columns],
+                          era=p_era)
         items = rank_items(
             (df[pxs], pxs, is_pitch), (df[pys], pys, is_pitch),
             (df[pzs] if (pzs and pzs in df.columns) else None, pzs, is_pitch))
@@ -348,7 +337,13 @@ def _export_frame(view, season, xt, yt, xs, ys, zt, zs, league, era,
     items = rank_items(
         (merged["_x"], xs, xt == "Pitching"), (merged["_y"], ys, yt == "Pitching"),
         (merged["_z"] if is_3d else None, zs, zt == "Pitching"))
-    out = merged.rename(columns={
+    out = merged.copy()
+    # Display precision per stat before the generic _x/_y names are replaced.
+    for col, st in (("_x", xs), ("_y", ys), ("_z", zs)):
+        if col in out.columns:
+            out[col] = round_stats(out[[col]].rename(columns={col: st}),
+                                   [st], era=era)[st].values
+    out = out.rename(columns={
         "_x": f"{xs} ({xt})", "_y": f"{ys} ({yt})",
         **({"_z": f"{zs} ({zt})"} if is_3d else {}),
     })
@@ -1097,7 +1092,7 @@ def register_callbacks(app):
                 pct = _pct(df[stat], v, hib)
                 all_pcts.append(pct)
                 tiles.append({"label": stat, "type": gtype,
-                              "value": _fmt_val(v), "pct": pct,
+                              "value": fmt_stat(stat, v), "pct": pct,
                               "ramp": ramp_color(pct / 100)})
             if tiles:
                 groups.append({"name": gname, "tiles": tiles})

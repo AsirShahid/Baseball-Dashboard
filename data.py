@@ -280,6 +280,91 @@ def stat_higher_better(stat: str, is_pitching: bool) -> bool:
         return False
     return True
 
+
+# ── Display precision ────────────────────────────────────────────────────────
+# FanGraphs CSVs store every stat at full float precision (wRC+ 219.7835722…)
+# and percentages as fractions (K% 0.2429), and range roll-ups produce long
+# weighted means. Everything shown to the user is formatted per stat, following
+# FanGraphs' own leaderboard conventions: WAR 1 decimal, wRC+ whole, AVG/OBP
+# 3 decimals, ERA/FIP 2 decimals, K%/BB% as a 1-decimal percent.
+
+_DEC3 = frozenset({
+    "AVG", "OBP", "SLG", "OPS", "ISO", "BABIP", "wOBA", "xwOBA", "xBA", "xSLG",
+    "xAVG", "xOBP", "xOPS", "xISO", "wLeague",
+})
+_DEC1 = frozenset({
+    "WAR", "WAR/650 PAs", "WAROld", "RAR", "Off", "Def", "BsR", "Batting",
+    "Fielding", "Positional", "Replacement", "Offense", "Defense",
+    "BaseRunning", "Base Running", "wRAA", "UBR", "wSB", "wGDP", "Spd", "EV",
+    "LA", "maxEV", "Dollars", "IP", "CFraming", "FRM", "Age",
+})
+_DEC0 = (COUNTING_STATS - _DEC1 - {"WPA", "RE24", "REW", "Clutch"}) | frozenset({
+    "wRC", "Season", "Pulls", "Barrels", "Events",
+})
+
+
+def stat_precision(stat: str, era: bool = False) -> tuple:
+    """(kind, decimals) for displaying `stat`. kind is "pct" for stats stored
+    as fractions and shown as percents (K% 0.2429 → 24.3%), "num" otherwise.
+    era=True means the value is a within-season percentile (0–100) rather
+    than the raw stat, shown as a whole number."""
+    s = str(stat or "")
+    if era:
+        return "num", 0
+    if s.endswith(("+", "-")) and s not in ("+WPA", "-WPA"):
+        return "num", 0                     # index stats: wRC+, ERA-, K%+, Stuff+
+    if "%" in s or s == "HR/FB":
+        return "pct", 1
+    if s in _DEC3:
+        return "num", 3
+    if s in _DEC1:
+        return "num", 1
+    if s in _DEC0:
+        return "num", 0
+    return "num", 2                         # ERA, FIP, WHIP, K/9, WPA, pitch values
+
+
+def stat_d3(stat: str, era: bool = False) -> str:
+    """d3-format spec (for Plotly hovertemplates/hover_data) for `stat`."""
+    kind, n = stat_precision(stat, era)
+    if kind == "pct":
+        return f".{n}%"
+    return ",.0f" if n == 0 else f".{n}f"
+
+
+def fmt_stat(stat: str, v, era: bool = False) -> str:
+    """Format one value of `stat` for display: '.263', '24.3%', '6.4', '144'.
+    Missing/non-numeric values render as an em dash."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if v != v:
+        return "—"
+    kind, n = stat_precision(stat, era)
+    if kind == "pct":
+        return f"{v * 100:.{n}f}%"
+    if n == 0:
+        return f"{v:,.0f}"
+    out = f"{v:.{n}f}"
+    if n == 3 and abs(v) < 1:               # baseball style: .263, not 0.263
+        out = out.replace("0.", ".", 1)
+    return out
+
+
+def round_stats(df: pd.DataFrame, cols, era: bool = False) -> pd.DataFrame:
+    """Round stat columns to their display precision for the CSV export.
+    Percent stats keep their fraction scale (as FanGraphs exports them), at
+    the precision of a 1-decimal percent."""
+    df = df.copy()
+    for c in cols:
+        if c not in df.columns:
+            continue
+        kind, n = stat_precision(c, era)
+        vals = pd.to_numeric(df[c], errors="coerce")
+        df[c] = vals.round(n + 2 if kind == "pct" else n)
+    return df
+
 # Quick-start chart presets. Each axis is (type, real-FanGraphs-column).
 TEAM_PRESETS = [
     {"id": "balance",      "name": "Offense vs Pitching",

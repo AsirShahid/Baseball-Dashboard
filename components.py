@@ -41,6 +41,14 @@ _LINK = ('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" '
 
 # ── Small shared builders ─────────────────────────────────────────────────────
 
+def ordinal_suffix(n) -> str:
+    """English ordinal suffix for a percentile: 1st, 2nd, 3rd, 11th, 91st."""
+    n = abs(int(n))
+    if 11 <= n % 100 <= 13:
+        return "th"
+    return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+
+
 def sb_label(text):
     return html.Div(text, className="sb-label")
 
@@ -446,7 +454,8 @@ def leaderboard_cards(rows, axis_count):
                 html.Span(r["name"], className="lb-name"),
                 html.Span(className="lb-pct", style={"color": r["ramp"]}, children=[
                     str(r["pct"]),
-                    html.Span("th", style={"opacity": 0.5, "fontSize": "0.7em"}),
+                    html.Span(ordinal_suffix(r["pct"]),
+                              style={"opacity": 0.5, "fontSize": "0.7em"}),
                 ]),
             ])
             for r in rows
@@ -508,8 +517,8 @@ def detail_body(team, year, composite, sparks, groups):
             html.Div(className="dt-sub", children=[
                 "Overall ",
                 html.Span([str(composite),
-                           html.Span("th", style={"opacity": 0.55,
-                                                  "fontSize": "0.7em"})],
+                           html.Span(ordinal_suffix(composite),
+                                     style={"opacity": 0.55, "fontSize": "0.7em"})],
                           className="dt-rank-badge"),
             ]),
         ]),
@@ -547,7 +556,8 @@ def detail_body(team, year, composite, sparks, groups):
                     html.Div(className="dt-stat-head", children=[
                         html.Span(t["label"], className="dt-stat-label"),
                         html.Span([str(t["pct"]),
-                                   html.Span("th", style={"opacity": 0.5})],
+                                   html.Span(ordinal_suffix(t["pct"]),
+                                             style={"opacity": 0.5})],
                                   className="dt-stat-pct",
                                   style={"color": t["ramp"]}),
                     ]),
@@ -591,8 +601,8 @@ def player_detail_body(name, team, span, composite, sparks, groups):
             html.Div(className="dt-sub", children=[
                 "Overall ",
                 html.Span([str(composite),
-                           html.Span("th", style={"opacity": 0.55,
-                                                  "fontSize": "0.7em"})],
+                           html.Span(ordinal_suffix(composite),
+                                     style={"opacity": 0.55, "fontSize": "0.7em"})],
                           className="dt-rank-badge"),
             ]),
         ]),
@@ -629,7 +639,8 @@ def player_detail_body(name, team, span, composite, sparks, groups):
                     html.Div(className="dt-stat-head", children=[
                         html.Span(t["label"], className="dt-stat-label"),
                         html.Span([str(t["pct"]),
-                                   html.Span("th", style={"opacity": 0.5})],
+                                   html.Span(ordinal_suffix(t["pct"]),
+                                             style={"opacity": 0.5})],
                                   className="dt-stat-pct",
                                   style={"color": t["ramp"]}),
                     ]),

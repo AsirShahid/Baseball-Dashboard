@@ -10,6 +10,7 @@ import pandas as pd
 from data import (
     load_stats, load_stats_pct, pct_within_season, stat_higher_better,
     season_bounds, season_label, season_tag, team_in_league,
+    stat_d3, fmt_stat, stat_precision,
     TEAM_COLORS, MULTI_TEAM, PALETTE, RANK_COLORSCALE, SEASON_THRESHOLD_CAP,
     logo_b64, logo_aspect,
 )
@@ -33,6 +34,13 @@ def _axis_dir(stat, is_pitching):
 
 
 # ── Theme-aware layout helpers ────────────────────────────────────────────────
+
+def _tickfmt(stat, era=False) -> dict:
+    """Axis tick format: percent stats (stored as fractions) tick as 18%, 20%
+    rather than 0.18, 0.2. Other stats keep Plotly's automatic ticks."""
+    kind, _ = stat_precision(stat, era)
+    return {"tickformat": ".0%"} if kind == "pct" else {}
+
 
 def base_layout(theme: str = "dark") -> dict:
     c = PALETTE[theme]
@@ -335,6 +343,7 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
                                  theme, league, era)
 
     split = bool(split) and hi > lo
+    fx, fy = stat_d3(x_stat, era), stat_d3(y_stat, era)
     merged, is_3d, err = team_frame(lo, hi, x_type, y_type, x_stat, y_stat,
                                     z_type, z_stat, league, era, split=split)
     if err:
@@ -391,9 +400,10 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
             text=labels, textposition="top center",
             textfont=dict(size=10, color=c["text"]), marker=marker,
             customdata=cdata,
-            hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:.2f}}<br>"
-                           f"{y_type} {y_stat}: %{{y:.2f}}<br>"
-                           f"{z_type} {z_stat}: %{{z:.2f}}" + hover_rank + "<extra></extra>"),
+            hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:{fx}}}<br>"
+                           f"{y_type} {y_stat}: %{{y:{fy}}}<br>"
+                           f"{z_type} {z_stat}: %{{z:{stat_d3(z_stat, era)}}}"
+                           + hover_rank + "<extra></extra>"),
         ))
         add_mean_planes_3d(fig, x_vals, y_vals, z_vals, show_v, show_h)
         sfx = " (era pctl)" if era else ""
@@ -401,6 +411,8 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         layout["scene"]["xaxis"]["title"] = f"{x_type}: {x_stat}{sfx}"
         layout["scene"]["yaxis"]["title"] = f"{y_type}: {y_stat}{sfx}"
         layout["scene"]["zaxis"]["title"] = f"{z_type}: {z_stat}{sfx}"
+        for ax, st in (("xaxis", x_stat), ("yaxis", y_stat), ("zaxis", z_stat)):
+            layout["scene"][ax].update(_tickfmt(st, era))
         # Reverse axes for lower-is-better stats so up-right-forward = good
         x_dir = _axis_dir(x_stat, x_type == "Pitching")
         y_dir = _axis_dir(y_stat, y_type == "Pitching")
@@ -418,8 +430,8 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
             x=x_vals, y=y_vals, mode="markers",
             marker=dict(size=18, opacity=0),   # invisible but clickable hit target
             text=labels, customdata=cdata,
-            hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:.2f}}<br>"
-                           f"{y_type} {y_stat}: %{{y:.2f}}<extra></extra>"),
+            hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:{fx}}}<br>"
+                           f"{y_type} {y_stat}: %{{y:{fy}}}<extra></extra>"),
         ))
         x_min, x_max = float(x_vals.min()), float(x_vals.max())
         y_min, y_max = float(y_vals.min()), float(y_vals.max())
@@ -474,19 +486,21 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
             text=labels, textposition="top center",
             textfont=dict(size=11, color=c["text"], family="Geist, sans-serif"),
             marker=marker, customdata=cdata,
-            hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:.2f}}<br>"
-                           f"{y_type} {y_stat}: %{{y:.2f}}" + hover_rank + "<extra></extra>"),
+            hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:{fx}}}<br>"
+                           f"{y_type} {y_stat}: %{{y:{fy}}}" + hover_rank + "<extra></extra>"),
         ))
 
     if show_h:
         mean_y = float(y_vals.mean())
         fig.add_hline(y=mean_y, line_dash="dot", line_color=MEAN_LINE, line_width=1.5,
-                      annotation_text=f"avg {mean_y:.2f}", annotation_position="top right",
+                      annotation_text=f"avg {fmt_stat(y_stat, mean_y, era)}",
+                      annotation_position="top right",
                       annotation_font=dict(color=c["muted"], size=11))
     if show_v:
         mean_x = float(x_vals.mean())
         fig.add_vline(x=mean_x, line_dash="dot", line_color=MEAN_LINE, line_width=1.5,
-                      annotation_text=f"avg {mean_x:.2f}", annotation_position="top right",
+                      annotation_text=f"avg {fmt_stat(x_stat, mean_x, era)}",
+                      annotation_position="top right",
                       annotation_font=dict(color=c["muted"], size=11))
 
     if not is_3d:
@@ -496,6 +510,8 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         fig.update_layout(**base_layout(theme),
                           xaxis_title=f"{x_type}: {x_stat}{sfx}",
                           yaxis_title=f"{y_type}: {y_stat}{sfx}", showlegend=False)
+        fig.update_xaxes(**_tickfmt(x_stat, era))
+        fig.update_yaxes(**_tickfmt(y_stat, era))
         # Reverse axes for lower-is-better stats so up-right = good.
         # (Logo mode already encodes direction in its flipped padded range.)
         if not (show_logos and not use_color_rank):
@@ -569,12 +585,15 @@ def _render_team_traj(lo, hi, x_type, y_type, x_stat, y_stat, theme, league, era
             marker=dict(size=np.linspace(5, 11, n), color=color, opacity=0.9,
                         line=dict(color=c["marker_line"], width=1)),
             hovertemplate=(f"<b>{team}</b> %{{customdata[1]}}<br>"
-                           f"{x_type} {x_stat}{sfx}: %{{x:.2f}}<br>"
-                           f"{y_type} {y_stat}{sfx}: %{{y:.2f}}<extra></extra>"),
+                           f"{x_type} {x_stat}{sfx}: %{{x:{stat_d3(x_stat, era)}}}<br>"
+                           f"{y_type} {y_stat}{sfx}: %{{y:{stat_d3(y_stat, era)}}}"
+                           f"<extra></extra>"),
         ))
     fig.update_layout(**base_layout(theme),
                       xaxis_title=f"{x_type}: {x_stat}{sfx}",
                       yaxis_title=f"{y_type}: {y_stat}{sfx}", showlegend=False)
+    fig.update_xaxes(**_tickfmt(x_stat, era))
+    fig.update_yaxes(**_tickfmt(y_stat, era))
     x_dir = _axis_dir(x_stat, x_type == "Pitching")
     y_dir = _axis_dir(y_stat, y_type == "Pitching")
     if x_dir:
@@ -764,11 +783,13 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
     else:
         color_col, c_map, c_scale, c_range = None, None, None, None
 
-    h_data = {x_stat: True, y_stat: True, "Team": True, "Label": False}
+    # Per-stat hover precision (raw CSV floats otherwise show as 89.94528…).
+    h_data = {x_stat: ":" + stat_d3(x_stat, era), y_stat: ":" + stat_d3(y_stat, era),
+              "Team": True, "Label": False}
     if split:
         h_data["Season"] = True
     if use_color_rank:
-        h_data["Composite Rank"] = True
+        h_data["Composite Rank"] = ":.1f"
 
     # IDfg rides along as customdata[0] (Plotly Express prepends custom_data
     # ahead of hover_data and rewrites the hovertemplate indices to match) so a
@@ -781,7 +802,7 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
     tmpl = "plotly_dark" if theme == "dark" else "plotly_white"
 
     if is_3d:
-        h_data[z_stat] = True
+        h_data[z_stat] = ":" + stat_d3(z_stat, era)
         fig = px.scatter_3d(df, x=x_stat, y=y_stat, z=z_stat, text="Label",
                             hover_name="Name", hover_data=h_data, custom_data=cdata,
                             color=color_col,
@@ -798,6 +819,8 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
         layout["scene"]["xaxis"]["title"] = x_stat + sfx
         layout["scene"]["yaxis"]["title"] = y_stat + sfx
         layout["scene"]["zaxis"]["title"] = z_stat + sfx
+        for ax, st in (("xaxis", x_stat), ("yaxis", y_stat), ("zaxis", z_stat)):
+            layout["scene"][ax].update(_tickfmt(st, era))
         # Reverse axes for lower-is-better stats
         is_pitch = (player_type == "Pitchers")
         for ax, stat in [("xaxis", x_stat), ("yaxis", y_stat), ("zaxis", z_stat)]:
@@ -828,6 +851,8 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
                                       itemsizing="constant"))
         if use_color_rank:
             fig.update_layout(coloraxis_colorbar=colorbar_cfg("Composite<br>Rank", theme))
+        fig.update_xaxes(**_tickfmt(x_stat, era))
+        fig.update_yaxes(**_tickfmt(y_stat, era))
         # Reverse axes for lower-is-better stats so up-right = good
         is_pitch = (player_type == "Pitchers")
         x_dir = _axis_dir(x_stat, is_pitch)
@@ -887,14 +912,14 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
             mean_y = float(y_vals.mean())
             fig.add_hline(y=mean_y, line_dash="dot", line_color=MEAN_LINE,
                           line_width=1.5,
-                          annotation_text=f"avg {mean_y:.2f}",
+                          annotation_text=f"avg {fmt_stat(y_stat, mean_y, era)}",
                           annotation_position="top right",
                           annotation_font=dict(color=c["muted"], size=11))
         if show_v and not x_vals.empty:
             mean_x = float(x_vals.mean())
             fig.add_vline(x=mean_x, line_dash="dot", line_color=MEAN_LINE,
                           line_width=1.5,
-                          annotation_text=f"avg {mean_x:.2f}",
+                          annotation_text=f"avg {fmt_stat(x_stat, mean_x, era)}",
                           annotation_position="top right",
                           annotation_font=dict(color=c["muted"], size=11))
 
@@ -985,8 +1010,9 @@ def _render_player_traj(lo, hi, player_type, x_stat, y_stat, min_pa, min_ip,
             marker=dict(size=np.linspace(5, 11, n), color=color, opacity=0.9,
                         line=dict(color=c["marker_line"], width=0.8)),
             hovertemplate=(f"<b>{name}</b> %{{customdata[1]}}<br>"
-                           f"{x_stat}{sfx}: %{{x:.2f}}<br>"
-                           f"{y_stat}{sfx}: %{{y:.2f}}<extra></extra>"),
+                           f"{x_stat}{sfx}: %{{x:{stat_d3(x_stat, era)}}}<br>"
+                           f"{y_stat}{sfx}: %{{y:{stat_d3(y_stat, era)}}}"
+                           f"<extra></extra>"),
         ))
     fig.update_layout(**base_layout(theme), xaxis_title=x_stat + sfx,
                       yaxis_title=y_stat + sfx,
@@ -995,6 +1021,8 @@ def _render_player_traj(lo, hi, player_type, x_stat, y_stat, min_pa, min_ip,
                                   borderwidth=1,
                                   font=dict(color=c["text"], size=11),
                                   itemsizing="constant"))
+    fig.update_xaxes(**_tickfmt(x_stat, era))
+    fig.update_yaxes(**_tickfmt(y_stat, era))
     is_pitch = (player_type == "Pitchers")
     x_dir = _axis_dir(x_stat, is_pitch)
     y_dir = _axis_dir(y_stat, is_pitch)
