@@ -6,6 +6,7 @@ import functools
 import io
 import json
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,7 @@ except ImportError:
 
 from fangraphs_api import (
     strip_html, fetch_team, atomic_to_csv, split_month, COUNTING_STATS,
+    recompute_rate_stats, true_innings_frame, innings_to_ip, ip_is_notation,
 )
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -42,11 +44,24 @@ for _k in ("team_batting_dir", "team_pitching_dir",
     if _k in config:
         config[_k] = str(ROOT / config[_k])
 
-# Drive the current season from today's date so the season lists and the live/
-# full-season split never go stale at a year boundary. config["current_year"]
-# acts only as a forward pin (e.g. to pre-load next season early).
-config["current_year"] = max(int(config.get("current_year", 0)),
-                             datetime.today().year)
+# The current season is derived from today's date so the season lists and the
+# live/full-season split never go stale at a year boundary, even for a process
+# that keeps running across New Year. config["current_year"] is only a forward
+# pin (bump it to pre-load next season early); the live value comes from
+# current_year() below, recomputed per call rather than frozen at import.
+_CURRENT_YEAR_PIN = int(config.get("current_year", 0))
+
+
+def current_year() -> int:
+    """Latest season the app should offer: the config pin or this calendar
+    year, whichever is greater. Recomputed each call so a long-lived process
+    picks up the New-Year rollover without a restart."""
+    return max(_CURRENT_YEAR_PIN, datetime.today().year)
+
+
+def season_list() -> list:
+    """Descending season list from the current year back to 1871."""
+    return list(range(current_year(), 1870, -1))
 
 # Identity/meta columns that must never appear as plottable stats. The
 # 2026-07 FanGraphs-API refresh added the id and name-routing columns.
@@ -126,7 +141,9 @@ TEAM_LOGO_MAP = {
     "SDP": "padres",   "SFG": "giants",   "ATH": "athletics",
 }
 
-SEASONS        = list(range(config["current_year"], 1870, -1))
+# Import-time snapshot used only to seed the first layout paint; callbacks that
+# must survive a New-Year rollover call season_list() for a fresh list.
+SEASONS        = season_list()
 # Minimum-PA / minimum-IP ladder, copied from FanGraphs' leaderboard filter so
 # the same steps work for a single season and for a whole career: fine steps
 # up to 250, 50s to 1,000, then 500s to 10,000. Both stats use the same rungs.
@@ -321,9 +338,12 @@ _DEC1 = frozenset({
     "WAR", "WAR/650 PAs", "WAROld", "RAR", "Off", "Def", "BsR", "Batting",
     "Fielding", "Positional", "Replacement", "Offense", "Defense",
     "BaseRunning", "Base Running", "wRAA", "UBR", "wSB", "wGDP", "Spd", "EV",
-    "LA", "maxEV", "Dollars", "IP", "CFraming", "FRM", "Age",
+    "LA", "maxEV", "Dollars", "IP", "CFraming", "FRM", "Age", "wBsR", "GDPRuns",
 })
-_DEC0 = (COUNTING_STATS - _DEC1 - {"WPA", "RE24", "REW", "Clutch"}) | frozenset({
+# COUNTING_STATS (summed over a span) also lists run values and WPA parts;
+# those keep decimals, so only true event counts default to whole numbers.
+_DEC0 = (COUNTING_STATS - _DEC1
+         - {"WPA", "-WPA", "+WPA", "RE24", "REW", "Clutch", "Pos"}) | frozenset({
     "wRC", "Season", "Pulls", "Barrels", "Events",
 })
 
@@ -449,38 +469,61 @@ _PLAYER_DIRS = {
 }
 
 
+# Single-flight gate: only one live fetch runs at a time per process. A request
+# that arrives while a fetch is already in flight returns empty immediately
+# instead of blocking a gunicorn worker, so a burst of cache-miss requests (a
+# shared link seeding an uncached season, an attacker scrubbing into the past)
+# cannot pile up and exhaust the worker pool. The --watch generator and later
+# requests backfill whatever a skipped fetch missed.
+_FETCH_GATE = threading.Lock()
+# Cap on how long a request-path fetch may hold a worker; well under the
+# gunicorn timeout so a slow FanGraphs can't tie a worker up for minutes.
+_LIVE_FETCH_TIMEOUT = 8
+
+
 def _live_fetch(path: str) -> pd.DataFrame:
-    """Fetch a season's data and cache it as CSV."""
+    """Fetch a season's data and cache it as CSV.
+
+    Guarded by a process-wide single-flight lock and a short network timeout so
+    it cannot be used to exhaust the gunicorn worker pool: when another fetch
+    already holds the gate this returns an empty frame rather than blocking."""
     p = Path(path)
     parent = p.parent.name
     try:
         year = int(p.stem)
     except ValueError:
         return pd.DataFrame()
-
-    if parent in _TEAM_DIRS:
-        df = fetch_team(_TEAM_DIRS[parent], year,
-                        month=split_month(year, config["current_year"]))
-        if df is not None:
-            atomic_to_csv(df, path)
-            logging.info("FanGraphs team API: cached %s", path)
-            return df
+    if parent not in _TEAM_DIRS and (not _PYBASEBALL or parent not in _PLAYER_DIRS):
         return pd.DataFrame()
 
-    if not _PYBASEBALL or parent not in _PLAYER_DIRS:
+    if not _FETCH_GATE.acquire(blocking=False):
+        logging.info("live-fetch gate busy; skipping %s (backfilled later)", path)
         return pd.DataFrame()
-    func_name, kwargs = _PLAYER_DIRS[parent]
     try:
-        pyb.cache.disable()
-        func = getattr(pyb, func_name)
-        logging.info("pybaseball: fetching %s(%d, %s)", func_name, year, kwargs)
-        df = func(year, **kwargs)
-        atomic_to_csv(df, path)
-        logging.info("pybaseball: cached %s", path)
-        return df
-    except Exception as exc:
-        logging.error("pybaseball fetch failed for %s: %s", path, exc)
-        return pd.DataFrame()
+        if parent in _TEAM_DIRS:
+            df = fetch_team(_TEAM_DIRS[parent], year,
+                            month=split_month(year, current_year()),
+                            timeout=_LIVE_FETCH_TIMEOUT)
+            if df is not None:
+                atomic_to_csv(df, path)
+                logging.info("FanGraphs team API: cached %s", path)
+                return df
+            return pd.DataFrame()
+
+        func_name, kwargs = _PLAYER_DIRS[parent]
+        try:
+            pyb.cache.disable()
+            func = getattr(pyb, func_name)
+            logging.info("pybaseball: fetching %s(%d, %s)", func_name, year, kwargs)
+            df = func(year, **kwargs)
+            atomic_to_csv(df, path)
+            logging.info("pybaseball: cached %s", path)
+            return df
+        except Exception as exc:
+            logging.error("pybaseball fetch failed for %s: %s", path, exc)
+            return pd.DataFrame()
+    finally:
+        _FETCH_GATE.release()
 
 
 # ── Data helpers ──────────────────────────────────────────────────────────────
@@ -733,7 +776,9 @@ def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team",
         return pd.DataFrame()
     hi = lo if hi is None else int(hi)
     if split:
-        return _season_rows((y, load_csv(f"{config[dir_key]}/{y}.csv"))
+        # Per-season rows over a range: no live fetch either (see below).
+        return _season_rows((y, load_csv(f"{config[dir_key]}/{y}.csv",
+                                         fetch=(hi <= lo)))
                             for y in range(lo, max(lo, hi) + 1))
     if hi <= lo:
         return load_csv(f"{config[dir_key]}/{lo}.csv")
@@ -741,19 +786,31 @@ def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team",
     hit = _SPAN_CACHE.get(key)
     if hit is not None:
         return hit[0].copy()
+    # A multi-season range never triggers a live fetch: looping fetch over a
+    # wide uncached span (e.g. 1871–2026) would block a worker for the whole
+    # range. Missing seasons are left to the single-season view and the --watch
+    # backfill; the range shows whatever is already cached.
     frames = [df for y in range(lo, hi + 1)
-              if not (df := load_csv(f"{config[dir_key]}/{y}.csv")).empty]
+              if not (df := load_csv(f"{config[dir_key]}/{y}.csv", fetch=False)).empty]
     if not frames:
         return pd.DataFrame()
     if len(frames) == 1:
         return frames[0]
+    # IP in baseball notation (177.2 = 177⅔) is summed, weighted and turned
+    # into ERA/WHIP/K/9 as true innings; the total goes back to notation below.
+    # Checked per season file, so an odd non-notation file passes through.
+    notation = [("IP" in f.columns and ip_is_notation(f["IP"])) for f in frames]
+    frames = [true_innings_frame(f) if n else f for f, n in zip(frames, notation)]
     combined = pd.concat(frames, ignore_index=True)
     if group_key not in combined.columns:
         return frames[-1]
     display = PLAYER_DISPLAY_COLS if group_key != "Team" else []
     out = _aggregate_span(combined, group_key, _weight_col_for(dir_key), display)
-    # Re-key after loading: a missing season may have just been fetched.
-    key = _span_key(dir_key, lo, hi, group_key)
+    # Rebuild ratio stats from the summed counting parts (AVG = ΣH/ΣAB, etc.)
+    # instead of leaving the PA/IP-weighted average _aggregate_span produced.
+    out = recompute_rate_stats(out, is_pitching="pitching" in dir_key)
+    if "IP" in out.columns and all(notation):
+        out["IP"] = innings_to_ip(out["IP"]).values
     _span_cache_put(key, out)
     return out.copy()
 
@@ -790,25 +847,40 @@ def load_stats_pct(dir_key: str, lo, hi, stats, group_key: str = "Team",
     stats = [s for s in stats if s]
     weight_col = _weight_col_for(dir_key)
     display = PLAYER_DISPLAY_COLS if group_key != "Team" else []
-    keep = [group_key, weight_col] + display + stats
+    # Weight the span by a PRIVATE copy of the raw weight column. If the user
+    # era-adjusts PA/IP itself, weight_col also appears in `stats`, and
+    # pct_within_season would overwrite it with percentiles (weighting by
+    # rank, not innings). A private name also prevents a duplicate weight
+    # column in `keep`, which raised a TypeError in _aggregate_span (the
+    # era-axis-on-PA/IP render crash).
+    WT = "__weight__"
+    keep = list(dict.fromkeys([group_key, WT, weight_col] + display + stats))
+    single = (lo == hi)
     frames = []
     for y in range(lo, hi + 1):
-        df = load_csv(f"{config[dir_key]}/{y}.csv")
+        # Range loads never live-fetch (see load_stats); a single-season
+        # era view still may.
+        df = load_csv(f"{config[dir_key]}/{y}.csv", fetch=single)
         if df.empty:
             continue
         if season_prep is not None:
             df = season_prep(df)
         if df.empty or group_key not in df.columns:
             continue
+        df = df.copy()
+        df[WT] = (pd.to_numeric(true_innings_frame(df[[weight_col]])[weight_col],
+                                errors="coerce")
+                  if weight_col in df.columns else 0.0)
         df = pct_within_season(df, stats)
         frames.append((y, df[[c for c in keep if c in df.columns]]))
     if not frames:
         return pd.DataFrame()
     if split:
-        return _season_rows(frames)
+        return _season_rows(frames).drop(columns=[WT], errors="ignore")
     combined = pd.concat([f for _, f in frames], ignore_index=True)
-    return _aggregate_span(combined, group_key, weight_col, display,
-                           rate_cols=frozenset(stats))
+    out = _aggregate_span(combined, group_key, WT, display,
+                          rate_cols=frozenset(stats))
+    return out.drop(columns=[WT], errors="ignore")
 
 
 # Per-file cache of which columns contain any data, so seasons_with_data

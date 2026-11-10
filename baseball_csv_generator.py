@@ -97,6 +97,9 @@ def fetch_years(start, end, config, skip_existing=True):
 if __name__ == "__main__":
     config      = load_config()
     this_year   = datetime.datetime.now().year
+    # Never let the split logic think the in-progress season trails the
+    # calendar: pin forward to at least this calendar year.
+    config["current_year"] = max(int(config.get("current_year", 0)), this_year)
 
     parser = argparse.ArgumentParser(description="Fetch baseball stats via pybaseball")
     parser.add_argument(
@@ -131,8 +134,14 @@ if __name__ == "__main__":
 
     if args.watch:
         interval = config.get("update_interval", 14400)
+        pin = int(config.get("current_year", 0))
         logging.info("Watch mode: refreshing current season every %ds", interval)
         while True:
             sleep(interval)
-            logging.info("── refresh %d ──", this_year)
-            fetch_years(this_year, this_year, config, skip_existing=False)
+            # Recompute the year every iteration so a process running across New
+            # Year starts refreshing (and live-splitting) the new season instead
+            # of rewriting last year's now-static files forever.
+            yr = max(pin, datetime.datetime.now().year)
+            config["current_year"] = yr
+            logging.info("── refresh %d ──", yr)
+            fetch_years(yr, yr, config, skip_existing=False)

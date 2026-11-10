@@ -285,6 +285,85 @@ def test_load_stats_range_aggregates_players_by_idfg():
     assert {"Name", "Team", "PA", "WAR"} <= set(span.columns)
 
 
+def test_load_stats_range_sums_newly_added_counters():
+    """Run-value and batted-ball counters (wRAA, GB) must SUM over a span, not
+    get PA-weighted. Regression guard for the COUNTING_STATS omission that read
+    them at roughly 1/N of their true total."""
+    from data import load_stats
+    span = load_stats("team_batting_dir", 2022, 2024)
+    seasons = [pd.read_csv(f"team_batting/{y}.csv") for y in (2022, 2023, 2024)]
+    checked = 0
+    for stat in ("wRAA", "GB", "RAR"):
+        if stat not in span.columns or any(stat not in d.columns for d in seasons):
+            continue
+        want = sum(float(d.loc[d.Team == "LAD", stat].iloc[0]) for d in seasons)
+        got = float(span.loc[span.Team == "LAD", stat].iloc[0])
+        assert got == pytest.approx(want), stat
+        checked += 1
+    assert checked, "no newly-added counter present in fixtures to verify"
+
+
+def test_load_stats_range_recomputes_rate_from_summed_parts():
+    """A span's AVG must equal sum(H)/sum(AB), not a PA-weighted average of the
+    per-season AVGs (I05/I19)."""
+    from data import load_stats
+    span = load_stats("team_batting_dir", 2022, 2024)
+    seasons = [pd.read_csv(f"team_batting/{y}.csv") for y in (2022, 2023, 2024)]
+    h = sum(float(d.loc[d.Team == "LAD", "H"].iloc[0]) for d in seasons)
+    ab = sum(float(d.loc[d.Team == "LAD", "AB"].iloc[0]) for d in seasons)
+    got = float(span.loc[span.Team == "LAD", "AVG"].iloc[0])
+    assert got == pytest.approx(h / ab, rel=1e-6)
+
+
+def test_load_stats_pitching_range_recomputes_era():
+    """Pitching ERA over a span must equal 9*sum(ER)/sum(IP)."""
+    from data import load_stats
+    span = load_stats("team_pitching_dir", 2022, 2024)
+    seasons = [pd.read_csv(f"team_pitching/{y}.csv") for y in (2022, 2023, 2024)]
+    er = sum(float(d.loc[d.Team == "LAD", "ER"].iloc[0]) for d in seasons)
+    ip = sum(float(d.loc[d.Team == "LAD", "IP"].iloc[0]) for d in seasons)
+    got = float(span.loc[span.Team == "LAD", "ERA"].iloc[0])
+    assert got == pytest.approx(9 * er / ip, rel=1e-6)
+
+
+def test_aggregate_team_recomputes_avg_from_sums():
+    """aggregate_team must rebuild AVG from summed H/AB, not PA-weight it: a
+    high-walk, low-AB hitter otherwise drags the team AVG away from sum(H)/sum(AB)."""
+    from fangraphs_api import aggregate_team
+    toy = pd.DataFrame({
+        "Team": ["A", "A"],
+        "PA":  [700, 100],
+        "AB":  [600, 50],           # player 2 walks a lot: PA >> AB
+        "H":   [180, 25],
+        "AVG": [0.300, 0.500],
+    })
+    agg = aggregate_team(toy, "bat")
+    assert agg.H[0] == 205 and agg.AB[0] == 650
+    assert agg.AVG[0] == pytest.approx(205 / 650)   # 0.315, not 0.325 (PA-weighted)
+
+
+def test_load_stats_pct_weight_column_as_stat_does_not_crash():
+    """Era-adjusting the weight column itself (PA for batters) must not raise —
+    regression for the duplicate weight column that hit a TypeError in
+    _aggregate_span (I01)."""
+    from data import load_stats_pct
+    out = load_stats_pct("team_batting_dir", 2022, 2024, ["PA"])
+    assert not out.empty and "PA" in out.columns
+    assert "__weight__" not in out.columns          # private weight col dropped
+    vals = pd.to_numeric(out["PA"], errors="coerce").dropna()
+    assert len(vals) and vals.between(0, 100).all()  # percentile-scaled, finite
+
+
+def test_current_year_is_dynamic():
+    """current_year() tracks the calendar rather than an import-time constant (I09)."""
+    import datetime as _dt
+    import data
+    assert data.current_year() >= _dt.date.today().year
+    assert data.current_year() >= data._CURRENT_YEAR_PIN
+    assert data.season_list()[0] == data.current_year()
+    assert data.season_list()[-1] == 1871
+
+
 def test_render_team_range_one_point_per_team():
     from charts import render_team
     fig, eyebrow, _ = render_team([2022, 2024], False, "Batting", "Pitching",
@@ -1211,4 +1290,27 @@ def test_span_cache_respects_byte_budget(monkeypatch):
     data._SPAN_CACHE.clear()
     df = load_stats("qualified_batting_dir", 2019, 2021, group_key="IDfg")
     assert not df.empty and len(data._SPAN_CACHE) == 0
+
+
+# ── IP notation ───────────────────────────────────────────────────────────────
+
+def test_ip_notation_roundtrip():
+    from fangraphs_api import ip_to_innings, innings_to_ip, ip_is_notation
+    ip = pd.Series([177.2, 192.0, 186.1, 0.1])
+    inn = ip_to_innings(ip)
+    assert inn.tolist() == pytest.approx([177 + 2 / 3, 192.0, 186 + 1 / 3, 1 / 3])
+    assert innings_to_ip(inn).tolist() == pytest.approx(ip.tolist())
+    assert innings_to_ip(pd.Series([177 + 2 / 3 + 1 / 3])).tolist() == [178.0]
+    assert ip_is_notation(ip) and not ip_is_notation(pd.Series([1363.6, 1105.7]))
+
+
+def test_aggregate_team_sums_true_innings():
+    """Two pitchers at 10.2 and 5.2 IP pitched 16.1 innings (16⅓), not 15.4,
+    and ERA is rebuilt on true innings."""
+    from fangraphs_api import aggregate_team
+    toy = pd.DataFrame({"Team": ["A", "A"], "IP": [10.2, 5.2], "ER": [4, 2],
+                        "ERA": [3.38, 3.18]})
+    agg = aggregate_team(toy, "pit")
+    assert agg.IP[0] == pytest.approx(16.1)
+    assert agg.ERA[0] == pytest.approx(9 * 6 / (16 + 1 / 3))
 

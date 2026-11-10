@@ -13,7 +13,7 @@ import dash
 from dash import dcc, html
 import flask
 
-from data import safe_int, snap_threshold, config
+from data import safe_int, snap_threshold, config, current_year
 from components import dashboard_view, about_view
 from callbacks import register_callbacks
 
@@ -79,7 +79,7 @@ def serve_layout():
     view = "player" if str(p.get("view", "team")).lower().startswith("player") \
         else "team"
     season = safe_int(p.get("season") or p.get("p_season"),
-                      config["current_year"])
+                      current_year())
     # season_end seeds the upper handle of the range slider; absent → single
     # season (end == start), preserving the old single-year share links.
     season_end = safe_int(p.get("season_end"), season)

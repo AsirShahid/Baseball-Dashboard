@@ -7,7 +7,7 @@ from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 from data import (
-    config, opts, season_label, decade_marks, team_display,
+    config, current_year, opts, season_label, decade_marks, team_display,
     MIN_PA_LIST, MIN_IP_LIST, LEAGUE_FILTERS,
     TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS,
     TEAM_COLORS, TEAM_COLOR_ALT, TEAM_FULL_NAME, TEAM_DIVISION, logo_b64,
@@ -125,7 +125,7 @@ def top_nav():
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 def _year_scrubber(init_lo, init_hi, init_split="combined"):
-    first, last = config["start_year"], config["current_year"]
+    first, last = config["start_year"], current_year()
     # A stale/hand-edited URL (?season=2099) must not seed the slider out of
     # range; the data-aware callback clamps later, but clamp up front so the
     # widget never renders an invalid value.

@@ -2,6 +2,7 @@ services:
   baseball-dashboard:
     build: .
     container_name: baseball-dashboard
+    mem_limit: 1536m
     restart: unless-stopped
     environment:
       - HOST=0.0.0.0

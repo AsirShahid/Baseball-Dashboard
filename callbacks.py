@@ -9,11 +9,12 @@ import pandas as pd
 from dash import Input, Output, State, MATCH, ALL, no_update, ctx, dcc
 
 from data import (
-    config, load_csv, load_stats, load_stats_pct, season_bounds, season_label,
+    config, current_year, season_list,
+    load_csv, load_stats, load_stats_pct, season_bounds, season_label,
     season_tag, fmt_stat, round_stats,
     process_columns,
     seasons_with_data, opts, stat_higher_better, team_in_league, decade_marks,
-    team_display, MULTI_TEAM, SEASONS, TEAM_COLORS,
+    team_display, MULTI_TEAM, TEAM_COLORS,
     TEAM_FULL_NAME, TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS, ramp_color,
 )
 from charts import (
@@ -585,7 +586,7 @@ def register_callbacks(app):
         # Column set comes from one season (the range's upper year); columns are
         # stable across the span, so listing options off the latest is enough.
         _, hi = season_bounds(season)
-        df = load_csv(f"{config[key]}/{hi or config['current_year']}.csv")
+        df = load_csv(f"{config[key]}/{hi or current_year()}.csv")
         if df.empty:
             return [], (None if allow_none else no_update)
         cols = process_columns(df.columns)
@@ -634,7 +635,7 @@ def register_callbacks(app):
         key = ("qualified_batting_dir" if ptype == "Batters"
                else "qualified_pitching_dir")
         _, hi = season_bounds(season)
-        df = load_csv(f"{config[key]}/{hi or config['current_year']}.csv")
+        df = load_csv(f"{config[key]}/{hi or current_year()}.csv")
         if df.empty:
             return [], no_update, [], no_update, [], None
         if ptype == "Batters" and "WAR" in df.columns and "PA" in df.columns:
@@ -662,7 +663,7 @@ def register_callbacks(app):
         key = ("qualified_batting_dir" if ptype == "Batters"
                else "qualified_pitching_dir")
         _, hi = season_bounds(season)
-        df = load_csv(f"{config[key]}/{hi or config['current_year']}.csv")
+        df = load_csv(f"{config[key]}/{hi or current_year()}.csv")
         base = [{"label": "All Teams", "value": "All Teams"},
                 {"label": "AL", "value": "AL"}, {"label": "NL", "value": "NL"}]
         if df.empty or "Team" not in df.columns:
@@ -689,7 +690,7 @@ def register_callbacks(app):
     )
     def update_season_slider(view, xs, ys, xt, yt, pxs, pys, ptype, cur):
         if view == "player":
-            seasons = SEASONS
+            seasons = season_list()
             dk = ("qualified_batting_dir" if ptype == "Batters"
                   else "qualified_pitching_dir")
             valid = set(seasons)
@@ -699,7 +700,7 @@ def register_callbacks(app):
                     if av:
                         valid &= av
         else:
-            seasons = SEASONS
+            seasons = season_list()
             valid = set(seasons)
             for stat, typ in ((xs, xt), (ys, yt)):
                 if stat:
@@ -1068,7 +1069,10 @@ def register_callbacks(app):
         nothing = (no_update, no_update, no_update)
         trig = ctx.triggered_id
         if trig == "detail-close":
-            return {"display": "none"}, no_update, no_update
+            # Clear the store (not no_update) so a closed panel renders nothing
+            # and render_detail — which now also listens to the season and
+            # filters — stops rebuilding a hidden panel on every slider move.
+            return {"display": "none"}, None, no_update
 
         def opened(store, label=None):
             # The overlay opens with a loading placeholder in the same
@@ -1180,17 +1184,21 @@ def register_callbacks(app):
     @app.callback(
         Output("detail-body", "children"),
         Input("detail-store", "data"),
-        State("season-slider", "value"),
-        State({"kind": "seg-store", "group": "ptype"}, "data"),
-        State("min-pa", "value"), State("min-ip", "value"),
-        State("team-filter", "value"),
+        # Season/filters are Inputs, not State, so an open panel refreshes when
+        # the context changes underneath it (drag the season slider while a team
+        # is open) instead of showing stale numbers. When the panel is closed
+        # open_detail clears detail-store to None, so this no-ops (see below).
+        Input("season-slider", "value"),
+        Input({"kind": "seg-store", "group": "ptype"}, "data"),
+        Input("min-pa", "value"), Input("min-ip", "value"),
+        Input("team-filter", "value"),
     )
     def render_detail(store, season, ptype, mpa, mip, tf):
         if not store:
             return None
         lo, hi = season_bounds(season)
         if lo is None:
-            lo = hi = config["current_year"]
+            lo = hi = current_year()
         if isinstance(store, dict) and store.get("season"):
             # A per-season point/card: show that one season.
             lo = hi = int(store["season"])
