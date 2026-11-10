@@ -9,7 +9,7 @@ import pandas as pd
 
 from data import (
     load_stats, load_stats_pct, pct_within_season, stat_higher_better,
-    season_bounds, season_label, team_in_league,
+    season_bounds, season_label, season_tag, team_in_league,
     TEAM_COLORS, MULTI_TEAM, PALETTE, RANK_COLORSCALE,
     logo_b64, logo_aspect,
 )
@@ -211,10 +211,13 @@ def add_mean_planes_3d(fig, x_vals, y_vals, z_vals, show_x_plane, show_y_plane):
 
 # ── Topbar title builders ─────────────────────────────────────────────────────
 
-def _eyebrow(view: str, label, is_3d: bool, traj: bool = False, era: bool = False):
+def _eyebrow(view: str, label, is_3d: bool, traj: bool = False, era: bool = False,
+            split: bool = False):
     dot = html.Span("·", className="dot")
     mode = "TRAJECTORY" if traj else ("3D SCATTER" if is_3d else "2D SCATTER")
     out = [mode, dot, ("PLAYERS" if view == "player" else "TEAMS"), dot, str(label)]
+    if split and not traj:
+        out += [dot, "PER SEASON"]
     if era:
         out += [dot, "ERA-ADJUSTED"]
     return out
@@ -236,22 +239,26 @@ def _err(msg: str, theme: str):
 # ── Team render ───────────────────────────────────────────────────────────────
 
 def team_frame(lo, hi, x_type, y_type, x_stat, y_stat, z_type=None, z_stat=None,
-               league="All Teams", era=False):
+               league="All Teams", era=False, split=False):
     """One-row-per-team frame behind the team scatter (and the CSV export):
     columns Team, _x, _y and — when a usable Z axis exists — _z.
 
     Returns (df, is_3d, err); err is an error message when df is unusable.
     With era=True each axis is the team's within-season percentile (0–100),
-    PA/IP-weight-averaged across the span, instead of the raw stat."""
+    PA/IP-weight-averaged across the span, instead of the raw stat.
+    With split=True (per-season range view) there is one row per team-season
+    instead, keyed on (Team, Season), with a Season column."""
     span = season_label(lo, hi)
+    split = bool(split) and hi > lo
+    keys = ["Team", "Season"] if split else ["Team"]
     xkey = "team_batting_dir" if x_type == "Batting" else "team_pitching_dir"
     ykey = "team_batting_dir" if y_type == "Batting" else "team_pitching_dir"
     if era:
-        x_df = load_stats_pct(xkey, lo, hi, [x_stat])
-        y_df = load_stats_pct(ykey, lo, hi, [y_stat])
+        x_df = load_stats_pct(xkey, lo, hi, [x_stat], split=split)
+        y_df = load_stats_pct(ykey, lo, hi, [y_stat], split=split)
     else:
-        x_df = load_stats(xkey, lo, hi)
-        y_df = load_stats(ykey, lo, hi)
+        x_df = load_stats(xkey, lo, hi, split=split)
+        y_df = load_stats(ykey, lo, hi, split=split)
 
     if x_df.empty or y_df.empty:
         return None, False, f"No data for {span}"
@@ -264,22 +271,22 @@ def team_frame(lo, hi, x_type, y_type, x_stat, y_stat, z_type=None, z_stat=None,
     # pitching, possibly stored in different row orders) pair up by team
     # rather than by row position.
     merged = pd.merge(
-        x_df[["Team", x_stat]].rename(columns={x_stat: "_x"}),
-        y_df[["Team", y_stat]].rename(columns={y_stat: "_y"}),
-        on="Team",
+        x_df[keys + [x_stat]].rename(columns={x_stat: "_x"}),
+        y_df[keys + [y_stat]].rename(columns={y_stat: "_y"}),
+        on=keys,
     )
 
     # 3D: load Z data
     is_3d = False
     if z_stat:
         zkey = "team_batting_dir" if z_type == "Batting" else "team_pitching_dir"
-        z_df = (load_stats_pct(zkey, lo, hi, [z_stat]) if era
-                else load_stats(zkey, lo, hi))
+        z_df = (load_stats_pct(zkey, lo, hi, [z_stat], split=split) if era
+                else load_stats(zkey, lo, hi, split=split))
         if (not z_df.empty and "Team" in z_df.columns
                 and z_stat in z_df.columns):
             merged_z = pd.merge(
-                merged, z_df[["Team", z_stat]].rename(columns={z_stat: "_z"}),
-                on="Team",
+                merged, z_df[keys + [z_stat]].rename(columns={z_stat: "_z"}),
+                on=keys,
             )
             # Need at least two real Z values for a meaningful third axis;
             # a single point collapses the scatter and the mean plane to a
@@ -291,10 +298,15 @@ def team_frame(lo, hi, x_type, y_type, x_stat, y_stat, z_type=None, z_stat=None,
     # League/division filter (team analogue of the player AL/NL/team filter).
     # Filter before means/ranks so a within-league view averages and ranks only
     # the teams shown. A span row blends seasons, so membership is judged at
-    # the range's end year (the franchise's identity where the span lands).
+    # the range's end year (the franchise's identity where the span lands);
+    # a per-season row is judged in its own season (MIL '97 AL, '98 NL).
     if league not in (None, "", "All Teams"):
-        merged = merged[merged["Team"].map(
-            lambda t: team_in_league(str(t), league, hi))]
+        if split:
+            merged = merged[[team_in_league(str(t), league, int(y))
+                             for t, y in zip(merged["Team"], merged["Season"])]]
+        else:
+            merged = merged[merged["Team"].map(
+                lambda t: team_in_league(str(t), league, hi))]
         if merged.empty:
             return None, False, f"No {league} teams for {span}"
 
@@ -305,7 +317,8 @@ def team_frame(lo, hi, x_type, y_type, x_stat, y_stat, z_type=None, z_stat=None,
 
 def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
                 show_v, show_h, use_color_rank, z_type, z_stat, theme="dark",
-                league="All Teams", show_trend=False, era=False, traj=False):
+                league="All Teams", show_trend=False, era=False, traj=False,
+                split=False):
     c = PALETTE[theme]
     if not x_stat or not y_stat:
         return _err("Select stats to view", theme)
@@ -321,14 +334,20 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         return _render_team_traj(lo, hi, x_type, y_type, x_stat, y_stat,
                                  theme, league, era)
 
+    split = bool(split) and hi > lo
     merged, is_3d, err = team_frame(lo, hi, x_type, y_type, x_stat, y_stat,
-                                    z_type, z_stat, league, era)
+                                    z_type, z_stat, league, era, split=split)
     if err:
         return _err(err, theme)
+    merged = merged.reset_index(drop=True)
     x_vals = merged["_x"]
     y_vals = merged["_y"]
     z_vals = merged["_z"] if is_3d else None
     teams  = merged["Team"]
+    # Point labels: the team code, plus the season in the per-season view
+    # ("LAD ’22"). Colors and logos still key on the bare team code.
+    labels = ([f"{t} {season_tag(y, lo, hi)}"
+               for t, y in zip(teams, merged["Season"])] if split else teams)
 
     if x_vals.isna().all() or y_vals.isna().all():
         return _err(f"{x_stat} or {y_stat} has no data for {span}", theme)
@@ -339,6 +358,19 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
                            (y_vals, y_stat, y_type == "Pitching"),
                            (z_vals, z_stat, z_type == "Pitching"))
         rank_score = compute_composite_rank(*items).round(1)
+
+    # Per-season points carry [Team, Season, rank] so a click opens that
+    # team-season's detail panel (the label text isn't a bare team code).
+    # Aggregate points keep the old shape (customdata = rank or None).
+    if split:
+        cdata = np.column_stack([
+            teams.astype(str).values, merged["Season"].astype(int).values,
+            (rank_score.values if rank_score is not None
+             else np.full(len(merged), np.nan))]).tolist()
+        rank_ref = "customdata[2]"
+    else:
+        cdata = rank_score if use_color_rank else None
+        rank_ref = "customdata"
 
     fig = go.Figure()
 
@@ -352,12 +384,13 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
             marker = dict(size=8,
                           color=[TEAM_COLORS.get(str(t), c["accent"]) for t in teams],
                           opacity=0.95, line=dict(color=c["marker_line"], width=1))
-        hover_rank = "<br>Composite rank: %{customdata:.1f}" if use_color_rank else ""
+        hover_rank = (f"<br>Composite rank: %{{{rank_ref}:.1f}}"
+                      if use_color_rank else "")
         fig.add_trace(go.Scatter3d(
             x=x_vals, y=y_vals, z=z_vals, mode="markers+text",
-            text=teams, textposition="top center",
+            text=labels, textposition="top center",
             textfont=dict(size=10, color=c["text"]), marker=marker,
-            customdata=rank_score if use_color_rank else None,
+            customdata=cdata,
             hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:.2f}}<br>"
                            f"{y_type} {y_stat}: %{{y:.2f}}<br>"
                            f"{z_type} {z_stat}: %{{z:.2f}}" + hover_rank + "<extra></extra>"),
@@ -384,7 +417,7 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         fig.add_trace(go.Scatter(
             x=x_vals, y=y_vals, mode="markers",
             marker=dict(size=18, opacity=0),   # invisible but clickable hit target
-            text=teams,
+            text=labels, customdata=cdata,
             hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:.2f}}<br>"
                            f"{y_type} {y_stat}: %{{y:.2f}}<extra></extra>"),
         ))
@@ -434,12 +467,13 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
             marker = dict(size=14,
                           color=[TEAM_COLORS.get(str(t), c["accent"]) for t in teams],
                           opacity=0.95, line=dict(color=c["marker_line"], width=1.5))
-        hover_rank = "<br>Composite rank: %{customdata:.1f}" if use_color_rank else ""
+        hover_rank = (f"<br>Composite rank: %{{{rank_ref}:.1f}}"
+                      if use_color_rank else "")
         fig.add_trace(go.Scatter(
             x=x_vals, y=y_vals, mode="markers+text",
-            text=teams, textposition="top center",
+            text=labels, textposition="top center",
             textfont=dict(size=11, color=c["text"], family="Geist, sans-serif"),
-            marker=marker, customdata=rank_score if use_color_rank else None,
+            marker=marker, customdata=cdata,
             hovertemplate=(f"<b>%{{text}}</b><br>{x_type} {x_stat}: %{{x:.2f}}<br>"
                            f"{y_type} {y_stat}: %{{y:.2f}}" + hover_rank + "<extra></extra>"),
         ))
@@ -472,7 +506,7 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
             if y_dir:
                 fig.update_yaxes(autorange=y_dir)
 
-    eyebrow = _eyebrow("team", span, is_3d, era=era)
+    eyebrow = _eyebrow("team", span, is_3d, era=era, split=split)
     title = _title(f"{y_stat}", f"{x_stat}", z_stat if is_3d else None)
     return fig, eyebrow, title
 
@@ -564,7 +598,8 @@ def _add_war_rate(df, is_batter):
     return df
 
 
-def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None):
+def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None,
+                 split=False):
     """Filtered player frame for a season or range — the single source of truth
     shared by the scatter and the leaderboard so they never rank different rows.
 
@@ -575,7 +610,12 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None):
     With pct_stats set (era-adjusted mode) the named stat columns come back as
     within-season percentiles (0–100) weight-averaged across the span; derived
     columns and the min PA/IP threshold then apply per season, before ranking,
-    so each season's percentile pool matches the filters in play."""
+    so each season's percentile pool matches the filters in play.
+
+    With split=True (per-season range view) each player-season is its own row,
+    tagged with Season: the min PA/IP threshold and league membership then
+    apply to that one season, not the span total."""
+    split = bool(split) and hi is not None and lo is not None and hi > lo
     is_batter    = (player_type == "Batters")
     min_val, col = (min_pa, "PA") if is_batter else (min_ip, "IP")
     use_qualified = (min_val == "Qualified")
@@ -595,11 +635,11 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None):
 
         stats = list(dict.fromkeys(s for s in pct_stats if s))
         df = load_stats_pct(key, lo, hi, stats, group_key="IDfg",
-                            season_prep=_prep)
+                            season_prep=_prep, split=split)
         if df.empty:
             return df
     else:
-        df = load_stats(key, lo, hi, group_key="IDfg")
+        df = load_stats(key, lo, hi, group_key="IDfg", split=split)
         if df.empty:
             return df
         df = _add_war_rate(df, is_batter)
@@ -615,10 +655,15 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None):
     # dropping a dozen qualified players a season. A specific team filter
     # still excludes them; MULTI_TEAM itself is offered as a dropdown choice.
     # League membership is year-aware (judged at the range's end year), so
-    # 2005 Astros hitters are NL and 1980 Brewers are AL.
+    # 2005 Astros hitters are NL and 1980 Brewers are AL. A per-season row
+    # is judged in its own season.
     if team in ("AL", "NL"):
-        df = df[df["Team"].map(
-            lambda t: str(t) == MULTI_TEAM or team_in_league(str(t), team, hi))]
+        if split:
+            df = df[[str(t) == MULTI_TEAM or team_in_league(str(t), team, int(y))
+                     for t, y in zip(df["Team"], df["Season"])]]
+        else:
+            df = df[df["Team"].map(
+                lambda t: str(t) == MULTI_TEAM or team_in_league(str(t), team, hi))]
     elif team not in (None, "All Teams"):
         df = df[df["Team"] == team]
     return df
@@ -627,7 +672,7 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None):
 def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
                   use_color_rank, z_stat, show_v=True, show_h=True, theme="dark",
                   show_trend=False, era=False, traj=False, find="",
-                  label_mode="all"):
+                  label_mode="all", split=False):
     c = PALETTE[theme]
     if not x_stat or not y_stat:
         return _err("Select stats to view", theme)
@@ -643,8 +688,10 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
         return _render_player_traj(lo, hi, player_type, x_stat, y_stat,
                                    min_pa, min_ip, team, theme, era, find)
 
+    split = bool(split) and hi > lo
     df = player_frame(lo, hi, player_type, min_pa, min_ip, team,
-                      pct_stats=[x_stat, y_stat, z_stat] if era else None)
+                      pct_stats=[x_stat, y_stat, z_stat] if era else None,
+                      split=split)
     if df.empty:
         return _err(f"No data for {span}", theme)
     if x_stat not in df.columns or y_stat not in df.columns:
@@ -652,8 +699,14 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
     if df[x_stat].isna().all() or df[y_stat].isna().all():
         return _err(f"{x_stat} or {y_stat} has no data for {span}", theme)
 
-    df = df.copy()
+    df = df.copy().reset_index(drop=True)
     df["Label"]  = df["Name"].apply(_short_name)
+    # _row identifies a plotted point (a player-season in the per-season view,
+    # where one IDfg appears once per season) for label selection.
+    df["_row"] = np.arange(len(df))
+    if split:
+        df["Label"] = [f"{lbl} {season_tag(y, lo, hi)}"
+                       for lbl, y in zip(df["Label"], df["Season"])]
     use_team_clr = team in (None, "All Teams", "AL", "NL")
     # Need at least two real Z values for a meaningful third axis; a single
     # point collapses the scatter and the mean plane to a line, so stay 2D.
@@ -675,6 +728,8 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
         color_col, c_map, c_scale, c_range = None, None, None, None
 
     h_data = {x_stat: True, y_stat: True, "Team": True, "Label": False}
+    if split:
+        h_data["Season"] = True
     if use_color_rank:
         h_data["Composite Rank"] = True
 
@@ -682,7 +737,9 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
     # ahead of hover_data and rewrites the hovertemplate indices to match) so a
     # point click can identify the exact player for the detail panel — robust to
     # duplicate names. Unused by the hovertemplate itself.
-    cdata = ["IDfg"] if "IDfg" in df.columns else None
+    # [IDfg, _row] (+ Season per-season, so a click opens that season).
+    cdata = (["IDfg", "_row"] + (["Season"] if split else [])
+             if "IDfg" in df.columns else None)
 
     tmpl = "plotly_dark" if theme == "dark" else "plotly_white"
 
@@ -756,7 +813,7 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
         label_ids = set()
     elif label_mode == "outliers" and "IDfg" in df.columns:
         idx = outlier_index(df, [x_stat, y_stat, z_stat if is_3d else None])
-        label_ids = {int(i) for i in df.loc[sorted(idx), "IDfg"].dropna()}
+        label_ids = {int(i) for i in df.loc[sorted(idx), "_row"]}
     if "IDfg" in df.columns and (matched_ids or label_ids is not None):
         base_size, hi_size = (5, 9) if is_3d else (10, 16)
         for tr in fig.data:
@@ -764,10 +821,11 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
             if cd is None or not len(cd):
                 continue
             ids = [int(r[0]) for r in cd]
+            rows = [int(r[1]) for r in cd]
             # A matched player is always labeled, whatever the label mode.
             tr.text = [t if (i in matched_ids or label_ids is None
-                             or i in label_ids) else ""
-                       for t, i in zip(tr.text, ids)]
+                             or r in label_ids) else ""
+                       for t, i, r in zip(tr.text, ids, rows)]
             if matched_ids:
                 tr.marker.size = [hi_size if i in matched_ids else base_size
                                   for i in ids]
@@ -803,7 +861,7 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
                           annotation_position="top right",
                           annotation_font=dict(color=c["muted"], size=11))
 
-    eyebrow = _eyebrow("player", span, is_3d, era=era)
+    eyebrow = _eyebrow("player", span, is_3d, era=era, split=split)
     title = _title(f"{y_stat}", f"{x_stat}", z_stat if is_3d else None)
     return fig, eyebrow, title
 

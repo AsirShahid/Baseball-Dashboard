@@ -110,12 +110,16 @@ def serve_layout():
     raw_ip = p.get("min_ip", "Qualified")
     min_ip = raw_ip if raw_ip == "Qualified" else safe_int(raw_ip, "Qualified")
 
+    # Range view: "season" = one point per team/player-season; anything else
+    # (or absent, as in older share links) = the cumulative combined view.
+    split = "season" if str(p.get("split", "")).lower() == "season" else "combined"
+
     p_labels = str(p.get("p_labels", "all")).lower()
     if p_labels not in ("all", "outliers", "none"):
         p_labels = "all"
 
     init = dict(
-        view=view, season=season, season_end=season_end,
+        view=view, season=season, season_end=season_end, split=split,
         x_type=x_type, y_type=y_type, z_type=z_type,
         x_stat=x_stat, y_stat=y_stat, z_stat=z_stat,
         show_v=show_v, show_h=show_h, color_rank=color_rank, logos=logos,
@@ -148,6 +152,7 @@ def serve_layout():
         seg_store("ztype", z_type),
         seg_store("ptype", player_type),
         seg_store("plabels", p_labels),
+        seg_store("split", split),
         dashboard_view(init),
         about_view(),
     ])

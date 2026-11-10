@@ -90,7 +90,7 @@ def test_leaderboard_rows():
     assert all(0 <= r["pct"] <= 100 for r in rows)
 
 
-def _fake_team_load_stats(dir_key, lo, hi=None, group_key="Team"):
+def _fake_team_load_stats(dir_key, lo, hi=None, group_key="Team", split=False):
     """Synthetic team frame with an all-NaN column, for the degenerate-axis
     tests — the shipped CSVs no longer have a naturally all-NaN stat."""
     n = 12
@@ -804,3 +804,124 @@ def test_fetch_team_falls_back_to_player_aggregation(monkeypatch):
     assert list(out.Team) == ["NYY"] and out.HR[0] == 40
     assert out.wOBA[0] == pytest.approx(0.330)         # PA-weighted
     assert list(out.Team) == ["NYY"] and out.HR.iloc[0] == 40  # rolled up
+
+
+# ── Per-season range view (split) ─────────────────────────────────────────────
+
+def test_team_frame_split_keeps_each_season():
+    """Per-season mode: one row per team-season, values straight from that
+    season's CSV, not the span roll-up."""
+    from charts import team_frame
+    df, _is3d, err = team_frame(2019, 2021, "Batting", "Pitching", "wRC+", "ERA",
+                                split=True)
+    assert err is None
+    assert set(df["Season"]) == {2019, 2020, 2021}
+    assert not df.duplicated(["Team", "Season"]).any()
+    b = pd.read_csv("team_batting/2020.csv")
+    p = pd.read_csv("team_pitching/2020.csv")
+    row = df[(df.Team == "LAD") & (df.Season == 2020)].iloc[0]
+    assert row["_x"] == pytest.approx(b[b.Team == "LAD"]["wRC+"].iloc[0])
+    assert row["_y"] == pytest.approx(p[p.Team == "LAD"]["ERA"].iloc[0])
+    combined, *_ = team_frame(2019, 2021, "Batting", "Pitching", "wRC+", "ERA")
+    assert len(df) == 3 * len(combined)
+
+
+def test_team_frame_split_single_season_matches_combined():
+    from charts import team_frame
+    a, *_ = team_frame(2024, 2024, "Batting", "Pitching", "wRC+", "ERA", split=True)
+    b, *_ = team_frame(2024, 2024, "Batting", "Pitching", "wRC+", "ERA")
+    assert "Season" not in a.columns
+    pd.testing.assert_frame_equal(a.reset_index(drop=True), b.reset_index(drop=True))
+
+
+def test_team_frame_split_era_pctl_in_range():
+    from charts import team_frame
+    df, *_ = team_frame(2019, 2021, "Batting", "Pitching", "wRC+", "ERA",
+                        era=True, split=True)
+    assert df["_x"].between(0, 100).all() and df["_y"].between(0, 100).all()
+    assert set(df["Season"]) == {2019, 2020, 2021}
+
+
+def test_render_team_split_labels_and_click_data():
+    from charts import render_team
+    for logos, rank in ((False, False), (False, True), (True, False)):
+        fig, eyebrow, _ = render_team([2019, 2021], logos, "Batting", "Pitching",
+                                      "wRC+", "ERA", True, True, rank,
+                                      "Batting", None, split=True)
+        tr = fig.data[0]
+        assert "LAD ’20" in list(tr.text)
+        i = list(tr.text).index("LAD ’20")
+        assert tr.customdata[i][0] == "LAD" and int(tr.customdata[i][1]) == 2020
+        assert "PER SEASON" in eyebrow
+
+
+def test_render_team_split_ignored_with_trajectory():
+    from charts import render_team
+    _fig, eyebrow, _ = render_team([2019, 2021], False, "Batting", "Pitching",
+                                   "wRC+", "ERA", True, True, False, "Batting",
+                                   None, traj=True, split=True)
+    assert "TRAJECTORY" in eyebrow and "PER SEASON" not in eyebrow
+
+
+def test_leaderboard_split_ranks_team_seasons():
+    from callbacks import _leaderboard_rows
+    rows, n = _leaderboard_rows([2019, 2024], "Batting", "Pitching", "wRC+",
+                                "ERA", "Batting", None, split="season")
+    assert len(rows) == 10 and n == 2
+    for r in rows:
+        code, _, yr = r["ref"].partition("|")
+        assert 2019 <= int(yr) <= 2024
+        assert r["team"] == code and r["name"].startswith(yr + " ")
+    # Combined mode still ranks bare team codes.
+    rows_c, _ = _leaderboard_rows([2019, 2024], "Batting", "Pitching", "wRC+",
+                                  "ERA", "Batting", None, split="combined")
+    assert all("|" not in r["ref"] for r in rows_c)
+
+
+def test_player_frame_split_and_render():
+    from charts import player_frame, render_player, OUTLIER_LABELS
+    df = player_frame(2019, 2021, "Batters", "Qualified", "Qualified",
+                      "All Teams", split=True)
+    assert set(df["Season"]) == {2019, 2020, 2021}
+    assert df["IDfg"].duplicated().any()          # same player, many seasons
+    assert not df.duplicated(["IDfg", "Season"]).any()
+    fig, eyebrow, _ = render_player([2019, 2021], "Batters", "WAR", "wRC+",
+                                    "Qualified", "Qualified", "All Teams",
+                                    False, None, split=True,
+                                    label_mode="outliers")
+    labels = [t for tr in fig.data for t in tr.text if t]
+    assert len(labels) == OUTLIER_LABELS       # per player-season, not per player
+    assert all("’" in t for t in labels)
+    assert "PER SEASON" in eyebrow
+    cd = fig.data[0].customdata[0]
+    assert len(cd) >= 3 and 2019 <= int(cd[2]) <= 2021   # [IDfg, _row, Season, …]
+
+
+def test_player_leaderboard_split_refs():
+    from callbacks import _player_leaderboard_rows
+    rows, _ = _player_leaderboard_rows([2019, 2021], "Batters", "WAR", "wRC+",
+                                       None, "Qualified", "Qualified",
+                                       "All Teams", split="season")
+    assert rows
+    for r in rows:
+        idfg, _, yr = r["ref"].partition("|")
+        assert int(idfg) and 2019 <= int(yr) <= 2021
+        assert r["name"].startswith(yr + " ")
+
+
+def test_export_split_has_season_rows():
+    from callbacks import _export_frame
+    out, fname = _export_frame("team", [2019, 2021], "Batting", "Pitching",
+                               "wRC+", "ERA", "Batting", None, "All Teams",
+                               False, "Batters", None, None, None, "Qualified",
+                               "Qualified", "All Teams", "", False,
+                               split="season")
+    assert "Season" in out.columns and "_per-season" in fname
+    assert set(out["Season"]) == {2019, 2020, 2021}
+    out_p, fname_p = _export_frame("player", [2019, 2021], "Batting", "Pitching",
+                                   None, None, "Batting", None, "All Teams",
+                                   False, "Batters", "WAR", "wRC+", None,
+                                   "Qualified", "Qualified", "All Teams", "",
+                                   False, split="season")
+    assert "Season" in out_p.columns and "_per-season" in fname_p
+

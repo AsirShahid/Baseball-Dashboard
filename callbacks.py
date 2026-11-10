@@ -8,6 +8,7 @@ from dash import Input, Output, State, MATCH, ALL, no_update, ctx, dcc
 
 from data import (
     config, load_csv, load_stats, load_stats_pct, season_bounds, season_label,
+    season_tag,
     process_columns,
     seasons_with_data, opts, stat_higher_better, team_in_league, decade_marks,
     team_display, MULTI_TEAM, SEASONS, TEAM_COLORS,
@@ -176,11 +177,18 @@ def _player_detail(idfg, lo, hi, ptype, mpa, mip, tf):
                               composite, sparks, groups)
 
 
+def _split_on(split, lo, hi) -> bool:
+    """Per-season range view is in effect: the toggle is on *and* the slider
+    spans more than one season (a single season is the same either way)."""
+    return split == "season" and lo is not None and hi is not None and hi > lo
+
+
 def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs, league="All Teams",
-                      era=False):
+                      era=False, split=None):
     lo, hi = season_bounds(season)
     if lo is None:
         return [], 0
+    per_season = _split_on(split, lo, hi)
 
     def _load(typ, stat):
         if not stat:
@@ -188,18 +196,26 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs, league="All Teams",
         key = "team_batting_dir" if typ == "Batting" else "team_pitching_dir"
         # Era-adjusted mode ranks the same within-season percentiles the chart
         # plots, so the board and the chart agree over multi-season spans.
-        df = (load_stats_pct(key, lo, hi, [stat]) if era
-              else load_stats(key, lo, hi))
+        df = (load_stats_pct(key, lo, hi, [stat], split=per_season) if era
+              else load_stats(key, lo, hi, split=per_season))
         if df.empty or stat not in df.columns or "Team" not in df.columns:
             return None
-        # Index by team so axes loaded from different CSVs (batting vs
-        # pitching) align by team, not by row position.
-        s = pd.Series(df[stat].values, index=df["Team"].astype(str))
+        # Index by team (by "TEAM|season" per-season) so axes loaded from
+        # different CSVs (batting vs pitching) align by entity, not by row
+        # position.
+        idx = df["Team"].astype(str)
+        if per_season:
+            idx = idx + "|" + df["Season"].astype(int).astype(str)
+        s = pd.Series(df[stat].values, index=idx)
         # Restrict to the league/division so the board ranks within the same
-        # set of teams the chart shows (year-aware, judged at the range end
-        # like team_frame).
+        # set of teams the chart shows (year-aware: judged at the range end
+        # like team_frame, or in the row's own season per-season).
         if league not in (None, "", "All Teams"):
-            s = s[[team_in_league(t, league, hi) for t in s.index]]
+            if per_season:
+                s = s[[team_in_league(k.split("|")[0], league,
+                                      int(k.split("|")[1])) for k in s.index]]
+            else:
+                s = s[[team_in_league(t, league, hi) for t in s.index]]
         # An all-NaN axis carries no signal; drop it so it neither produces a
         # meaningless all-50 ranking (x/y) nor inflates the axis count (z) —
         # mirroring render_team, which won't plot or count an empty axis.
@@ -223,15 +239,17 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs, league="All Teams",
     out = []
     for i, r in enumerate(rows[:10]):
         pct = int(round(r["score"]))
-        out.append({"rank": i + 1, "team": r["team"], "ref": r["team"],
-                    "name": TEAM_FULL_NAME.get(r["team"], r["team"]),
-                    "pct": pct, "color": TEAM_COLORS.get(r["team"], "#7d8590"),
+        code, _, yr = r["team"].partition("|")
+        name = TEAM_FULL_NAME.get(code, code)
+        out.append({"rank": i + 1, "team": code, "ref": r["team"],
+                    "name": f"{yr} {name}" if yr else name,
+                    "pct": pct, "color": TEAM_COLORS.get(code, "#7d8590"),
                     "ramp": ramp_color(pct / 100)})
     return out, len(items)
 
 
 def _player_leaderboard_rows(season, ptype, pxs, pys, pzs, min_pa, min_ip,
-                             team, era=False):
+                             team, era=False, split=None):
     """Top-10 players by composite rank across the selected axes — the player
     analogue of _leaderboard_rows. Ranks the exact frame the scatter plots
     (player_frame, era percentiles included), so a multi-season range yields
@@ -239,8 +257,10 @@ def _player_leaderboard_rows(season, ptype, pxs, pys, pzs, min_pa, min_ip,
     lo, hi = season_bounds(season)
     if lo is None or not pxs or not pys:
         return [], 0
+    per_season = _split_on(split, lo, hi)
     df = player_frame(lo, hi, ptype, min_pa, min_ip, team,
-                      pct_stats=[pxs, pys, pzs] if era else None)
+                      pct_stats=[pxs, pys, pzs] if era else None,
+                      split=per_season)
     if df.empty or pxs not in df.columns or pys not in df.columns:
         return [], 0
     if df[pxs].isna().all() or df[pys].isna().all():
@@ -260,8 +280,13 @@ def _player_leaderboard_rows(season, ptype, pxs, pys, pzs, min_pa, min_ip,
         tm = str(row.get("Team", "")).strip()
         pct = int(round(float(comp.loc[idx])))
         ref = str(int(row["IDfg"])) if "IDfg" in df.columns else str(row.get("Name", ""))
+        name = str(row.get("Name", "—"))
+        if per_season:
+            # "IDfg|season" so a click opens that player-season's panel.
+            ref = f"{ref}|{int(row['Season'])}"
+            name = f"{int(row['Season'])} {name}"
         out.append({"rank": i + 1, "team": team_display(tm), "ref": ref,
-                    "name": str(row.get("Name", "—")),
+                    "name": name,
                     "pct": pct, "color": TEAM_COLORS.get(tm, "#7d8590"),
                     "ramp": ramp_color(pct / 100)})
     return out, len(items)
@@ -274,25 +299,29 @@ def _fname_part(s) -> str:
 
 
 def _export_frame(view, season, xt, yt, xs, ys, zt, zs, league, era,
-                  ptype, pxs, pys, pzs, mpa, mip, tf, find, p_era):
+                  ptype, pxs, pys, pzs, mpa, mip, tf, find, p_era, split=None):
     """(DataFrame, filename) of exactly what the current chart plots — same
     frame builders, same filters — plus the composite rank column. Returns
-    (None, None) when there is nothing to export."""
+    (None, None) when there is nothing to export. Per-season mode exports one
+    row per team/player-season with a Season column."""
     lo, hi = season_bounds(season)
     if lo is None:
         return None, None
     span = season_label(lo, hi)
+    per_season = _split_on(split, lo, hi)
+    ps_sfx = "_per-season" if per_season else ""
 
     if view == "player":
         if not pxs or not pys:
             return None, None
         stats = [s for s in (pxs, pys, pzs) if s]
         df = player_frame(lo, hi, ptype, mpa, mip, tf,
-                          pct_stats=stats if p_era else None)
+                          pct_stats=stats if p_era else None, split=per_season)
         if df.empty or pxs not in df.columns or pys not in df.columns:
             return None, None
         is_pitch = (ptype == "Pitchers")
-        keep = [c for c in ("Name", "Team", "IDfg", "PA", "IP") if c in df.columns]
+        id_cols = ("Name", "Team", "IDfg") + (("Season",) if per_season else ())
+        keep = [c for c in id_cols + ("PA", "IP") if c in df.columns]
         out = df[keep + [s for s in stats if s in df.columns]].copy()
         items = rank_items(
             (df[pxs], pxs, is_pitch), (df[pys], pys, is_pitch),
@@ -305,14 +334,15 @@ def _export_frame(view, season, xt, yt, xs, ys, zt, zs, league, era,
             out["Matched"] = df["Name"].astype(str).str.contains(
                 find, case=False, regex=False).values
         out = out.sort_values("Composite Rank", ascending=False)
-        fname = (f"players_{_fname_part(span)}_{_fname_part(pys)}"
+        fname = (f"players_{_fname_part(span)}{ps_sfx}_{_fname_part(pys)}"
                  f"_vs_{_fname_part(pxs)}{'_era-pctl' if p_era else ''}.csv")
         return out, fname
 
     if not xs or not ys:
         return None, None
     merged, is_3d, err = team_frame(lo, hi, xt, yt, xs, ys, zt, zs,
-                                    league or "All Teams", era)
+                                    league or "All Teams", era,
+                                    split=per_season)
     if err or merged is None:
         return None, None
     items = rank_items(
@@ -324,7 +354,7 @@ def _export_frame(view, season, xt, yt, xs, ys, zt, zs, league, era,
     })
     out["Composite Rank"] = compute_composite_rank(*items).round(1).values
     out = out.sort_values("Composite Rank", ascending=False)
-    fname = (f"teams_{_fname_part(span)}_{_fname_part(ys)}"
+    fname = (f"teams_{_fname_part(span)}{ps_sfx}_{_fname_part(ys)}"
              f"_vs_{_fname_part(xs)}{'_era-pctl' if era else ''}.csv")
     return out, fname
 
@@ -617,6 +647,15 @@ def register_callbacks(app):
         return [lo, hi] if [lo, hi] != [clo, chi] else no_update
 
     @app.callback(
+        Output("split-row", "style"),
+        Input("season-slider", "value"),
+    )
+    def toggle_split_row(season):
+        # Combined vs per-season only means something across 2+ seasons.
+        lo, hi = season_bounds(season)
+        return {} if (lo is not None and hi > lo) else {"display": "none"}
+
+    @app.callback(
         Output("season-val", "children"),
         Output("season-from", "value"), Output("season-to", "value"),
         Input("season-slider", "value"),
@@ -737,12 +776,13 @@ def register_callbacks(app):
         Input("tg-player-traj", "value"), Input("player-find", "value"),
         Input({"kind": "seg-store", "group": "plabels"}, "data"),
         Input("team-league", "value"),
+        Input({"kind": "seg-store", "group": "split"}, "data"),
         prevent_initial_call=True,
     )
     def sync_url(view, season, xt, yt, zt, xs, ys, zs, vm, hm, tr, lg,
                  trend, era, traj,
                  ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm,
-                 ptrend, pera, ptraj, find, plabels, league):
+                 ptrend, pera, ptraj, find, plabels, league, split):
         lo, hi = season_bounds(season)
         season_q = "" if lo is None else lo
         season_end_q = "" if lo is None else hi
@@ -773,6 +813,10 @@ def register_callbacks(app):
                           era=str(bool(era)).lower(),
                           traj=str(bool(traj)).lower(),
                           league=league or "All Teams")
+        # Per-season range view; omitted when off so existing links are
+        # unchanged (absent → combined).
+        if split == "season":
+            params["split"] = "season"
         return "?" + urlencode(params)
 
     app.clientside_callback(
@@ -825,22 +869,25 @@ def register_callbacks(app):
         Input({"kind": "seg-store", "group": "plabels"}, "data"),
         Input("team-league", "value"),
         Input("theme-store", "data"),
+        Input({"kind": "seg-store", "group": "split"}, "data"),
     )
     def render(view, season, xt, yt, zt, xs, ys, zs, vm, hm, tr, lg,
                trend, era, traj,
                ptype, pxs, pys, pzs, mpa, mip, tf, pr, pvm, phm,
-               ptrend, pera, ptraj, find, plabels, league, theme):
+               ptrend, pera, ptraj, find, plabels, league, theme, split):
         theme = theme or "dark"
+        per_season = (split == "season")
         if view == "player":
             return render_player(season, ptype, pxs, pys, mpa, mip, tf,
                                  bool(pr), pzs, bool(pvm), bool(phm), theme,
                                  show_trend=bool(ptrend), era=bool(pera),
                                  traj=bool(ptraj), find=find or "",
-                                 label_mode=plabels or "all")
+                                 label_mode=plabels or "all",
+                                 split=per_season)
         return render_team(season, bool(lg), xt, yt, xs, ys,
                            bool(vm), bool(hm), bool(tr), zt, zs, theme,
                            league or "All Teams", show_trend=bool(trend),
-                           era=bool(era), traj=bool(traj))
+                           era=bool(era), traj=bool(traj), split=per_season)
 
     @app.callback(
         Output("leaderboard", "children"), Output("leaderboard", "style"),
@@ -856,16 +903,19 @@ def register_callbacks(app):
         Input("min-pa", "value"), Input("min-ip", "value"),
         Input("team-filter", "value"), Input("team-league", "value"),
         Input("tg-era", "value"), Input("tg-player-era", "value"),
+        Input({"kind": "seg-store", "group": "split"}, "data"),
     )
     def update_leaderboard(view, season, xt, yt, zt, xs, ys, zs,
                            ptype, pxs, pys, pzs, mpa, mip, tf, league,
-                           era, pera):
+                           era, pera, split):
         if view == "player":
             rows, n = _player_leaderboard_rows(season, ptype, pxs, pys, pzs,
-                                               mpa, mip, tf, era=bool(pera))
+                                               mpa, mip, tf, era=bool(pera),
+                                               split=split)
         else:
             rows, n = _leaderboard_rows(season, xt, yt, xs, ys, zt, zs,
-                                        league or "All Teams", era=bool(era))
+                                        league or "All Teams", era=bool(era),
+                                        split=split)
         if not rows:
             return [], {"display": "none"}
         return leaderboard_cards(rows, n), {}
@@ -888,16 +938,17 @@ def register_callbacks(app):
         State("min-pa", "value"), State("min-ip", "value"),
         State("team-filter", "value"), State("player-find", "value"),
         State("tg-player-era", "value"),
+        State({"kind": "seg-store", "group": "split"}, "data"),
         prevent_initial_call=True,
     )
     def export_csv(n, view, season, xt, yt, zt, xs, ys, zs, league, era,
-                   ptype, pxs, pys, pzs, mpa, mip, tf, find, pera):
+                   ptype, pxs, pys, pzs, mpa, mip, tf, find, pera, split):
         if not n:
             return no_update
         df, fname = _export_frame(view, season, xt, yt, xs, ys, zt, zs,
                                   league, bool(era), ptype or "Batters",
                                   pxs, pys, pzs, mpa, mip, tf or "All Teams",
-                                  find, bool(pera))
+                                  find, bool(pera), split=split)
         if df is None:
             return no_update
         return dcc.send_data_frame(df.to_csv, fname, index=False)
@@ -910,24 +961,34 @@ def register_callbacks(app):
         Input({"kind": "lb-card", "ref": ALL, "rank": ALL}, "n_clicks"),
         Input("detail-close", "n_clicks"),
         State({"kind": "seg-store", "group": "view"}, "data"),
+        State({"kind": "seg-store", "group": "split"}, "data"),
+        State("season-slider", "value"),
         prevent_initial_call=True,
     )
-    def open_detail(click, lb_clicks, _close, view):
+    def open_detail(click, lb_clicks, _close, view, split, season):
         hidden = {"display": "none"}
         trig = ctx.triggered_id
         if trig == "detail-close":
             return hidden, no_update
         # Store a bare team abbr for teams, or {"type":"player","idfg":N} for
-        # players; render_detail branches on the shape.
+        # players; render_detail branches on the shape. Per-season entries add
+        # "season" (team: {"type":"team","team":abbr,"season":Y}) so the panel
+        # shows that one season instead of the slider's whole range.
+        per_season = _split_on(split, *season_bounds(season))
         if isinstance(trig, dict) and trig.get("kind") == "lb-card":
             if not any(lb_clicks or []):
                 return no_update, no_update
-            ref = trig["ref"]
+            ref, _, yr = str(trig["ref"]).partition("|")
             if view == "player":
                 try:
-                    return {}, {"type": "player", "idfg": int(ref)}
+                    store = {"type": "player", "idfg": int(ref)}
+                    if yr:
+                        store["season"] = int(yr)
+                    return {}, store
                 except (TypeError, ValueError):
                     return no_update, no_update
+            if yr:
+                return {}, {"type": "team", "team": ref, "season": int(yr)}
             return {}, ref
         if trig == "main-graph":
             if not click:
@@ -939,8 +1000,22 @@ def register_callbacks(app):
             if view == "player":
                 cd = pt.get("customdata")
                 try:
-                    return {}, {"type": "player", "idfg": int(cd[0])}
+                    store = {"type": "player", "idfg": int(cd[0])}
+                    # Per-season scatter points carry [IDfg, _row, Season].
+                    if per_season and len(cd) >= 3:
+                        store["season"] = int(cd[2])
+                    return {}, store
                 except (TypeError, ValueError, IndexError):
+                    return no_update, no_update
+            cd = pt.get("customdata")
+            # Per-season team points carry [Team, Season, rank]; their text
+            # label ("LAD ’22") isn't a bare team code.
+            if (per_season and isinstance(cd, (list, tuple)) and len(cd) >= 3
+                    and cd[0] in TEAM_COLORS):
+                try:
+                    return {}, {"type": "team", "team": cd[0],
+                                "season": int(cd[1])}
+                except (TypeError, ValueError):
                     return no_update, no_update
             abbr = pt.get("text")
             if not abbr:
@@ -1003,10 +1078,15 @@ def register_callbacks(app):
         lo, hi = season_bounds(season)
         if lo is None:
             lo = hi = config["current_year"]
+        if isinstance(store, dict) and store.get("season"):
+            # A per-season point/card: show that one season.
+            lo = hi = int(store["season"])
         if isinstance(store, dict) and store.get("type") == "player":
             return _player_detail(store["idfg"], lo, hi, ptype or "Batters",
                                   mpa, mip, tf or "All Teams")
-        team = store
+        team = store.get("team") if isinstance(store, dict) else store
+        if not team:
+            return None
         groups, all_pcts = [], []
         for gname, gtype, dir_key, stats in DETAIL_GROUPS:
             tiles = []

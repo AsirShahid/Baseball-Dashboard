@@ -116,7 +116,7 @@ def top_nav():
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
-def _year_scrubber(init_lo, init_hi):
+def _year_scrubber(init_lo, init_hi, init_split="combined"):
     first, last = config["start_year"], config["current_year"]
     # A stale/hand-edited URL (?season=2099) must not seed the slider out of
     # range; the data-aware callback clamps later, but clamp up front so the
@@ -147,6 +147,16 @@ def _year_scrubber(init_lo, init_hi):
             dcc.Input(id="season-to", type="number", value=init_hi,
                       min=first, max=last, debounce=True),
         ]),
+        # Range view: one cumulative point per team/player across the span,
+        # or one point per team/player-season. Shown only for a 2+ season
+        # range (toggle_split_row); a single season is the same either way.
+        html.Div(id="split-row", className="yr-split",
+                 style=({} if init_hi > init_lo else {"display": "none"}),
+                 children=[
+                     segmented("split", [("combined", "Combined"),
+                                         ("season", "Per season")],
+                               init_split, small=True),
+                 ]),
     ])
 
 
@@ -302,7 +312,8 @@ def sidebar(init):
         team_axes,
         player_axes,
         html.Div(className="sb-section",
-                 children=[_year_scrubber(init["season"], init["season_end"])]),
+                 children=[_year_scrubber(init["season"], init["season_end"],
+                                          init.get("split", "combined"))]),
         team_extra,
         player_extra,
         html.Div(id="rank-legend", className="sb-section",

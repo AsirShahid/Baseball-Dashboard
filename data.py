@@ -426,6 +426,13 @@ def season_label(lo, hi) -> str:
     return str(lo) if lo == hi else f"{lo}–{hi}"
 
 
+def season_tag(season, lo, hi) -> str:
+    """Short per-season point label: ’22 when the range sits inside one
+    century (unambiguous), the full year otherwise (1922 vs 2022)."""
+    s = int(season)
+    return f"’{s % 100:02d}" if int(lo) // 100 == int(hi) // 100 else str(s)
+
+
 def decade_marks(mn: int, mx: int) -> dict:
     """Slider mark labels: endpoints in full, decades between as ’90-style.
 
@@ -515,18 +522,35 @@ def _aggregate_span(df: pd.DataFrame, group_key: str, weight_col: str,
     return out.rename(columns={out.columns[0]: group_key})
 
 
-def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team") -> pd.DataFrame:
+def _season_rows(frames_by_year) -> pd.DataFrame:
+    """Stack (year, frame) pairs into one frame of entity-season rows, stamping
+    each row's Season (overwriting the CSV's own Season column, which carries
+    the same value) so per-season views can key on (entity, Season)."""
+    frames = [df.assign(Season=y) for y, df in frames_by_year if not df.empty]
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
+def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team",
+               split: bool = False) -> pd.DataFrame:
     """Load one entity-per-row frame for a season or an inclusive season range.
 
     For a single season (hi is None or hi == lo) this is just the season CSV, so
     the common case stays as cheap as before. For a range it concatenates the
     seasons and rolls them up per entity via _aggregate_span — summing counting
     stats and weight-averaging rate stats — so the chart and leaderboard show one
-    cumulative point per team/player across the span."""
+    cumulative point per team/player across the span.
+
+    With split=True the range is *not* rolled up: every entity-season stays its
+    own row, tagged with a Season column (the "per season" range view)."""
     lo, _ = season_bounds(lo if hi is None else [lo, hi])
     if lo is None:
         return pd.DataFrame()
     hi = lo if hi is None else int(hi)
+    if split:
+        return _season_rows((y, load_csv(f"{config[dir_key]}/{y}.csv"))
+                            for y in range(lo, max(lo, hi) + 1))
     if hi <= lo:
         return load_csv(f"{config[dir_key]}/{lo}.csv")
     frames = [df for y in range(lo, hi + 1)
@@ -556,7 +580,7 @@ def pct_within_season(df: pd.DataFrame, stats) -> pd.DataFrame:
 
 
 def load_stats_pct(dir_key: str, lo, hi, stats, group_key: str = "Team",
-                   season_prep=None) -> pd.DataFrame:
+                   season_prep=None, split: bool = False) -> pd.DataFrame:
     """Era-adjusted variant of load_stats: percentiles instead of raw values.
 
     Each stat in `stats` is converted to its percentile rank within each
@@ -566,7 +590,8 @@ def load_stats_pct(dir_key: str, lo, hi, stats, group_key: str = "Team",
     ranking (derived columns, per-season qualification filters) so the
     percentile pool matches the filters in play. Only the identity, weight,
     display and stat columns survive — this frame is for plotting, not as a
-    general stat table."""
+    general stat table. With split=True the seasons are not rolled up: each
+    entity-season keeps its own percentile row, tagged with Season."""
     lo, hi = season_bounds(lo if hi is None else [lo, hi])
     if lo is None:
         return pd.DataFrame()
@@ -584,10 +609,12 @@ def load_stats_pct(dir_key: str, lo, hi, stats, group_key: str = "Team",
         if df.empty or group_key not in df.columns:
             continue
         df = pct_within_season(df, stats)
-        frames.append(df[[c for c in keep if c in df.columns]])
+        frames.append((y, df[[c for c in keep if c in df.columns]]))
     if not frames:
         return pd.DataFrame()
-    combined = pd.concat(frames, ignore_index=True)
+    if split:
+        return _season_rows(frames)
+    combined = pd.concat([f for _, f in frames], ignore_index=True)
     return _aggregate_span(combined, group_key, weight_col, display,
                            rate_cols=frozenset(stats))
 

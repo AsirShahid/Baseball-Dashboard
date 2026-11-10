@@ -440,6 +440,7 @@ button { font-family: inherit; }
 }
 .yr-step input:focus { border-color: color-mix(in oklab, var(--accent) 55%, var(--border)); }
 .yr-arrow { color: var(--text-3); font-family: 'Geist Mono', monospace; font-size: 13px; }
+.yr-split { margin-top: 8px; }
 
 /* Find-player search box */
 .find-input {
