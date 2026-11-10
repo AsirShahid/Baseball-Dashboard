@@ -395,7 +395,8 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         x_lo, x_hi = x_min - x_pad, x_max + x_pad
         y_lo, y_hi = y_min - y_pad, y_max + y_pad
         images = []
-        # Box (0.07 × 0.11 of the data range) is tuned for a square logo. Size
+        # Box (0.045 × 0.07 of the data range; was 0.07 × 0.11 until 2026-11-10,
+        # which made the mid-pack cluster pile up) is tuned for a square logo. Size
         # each team's box to its logo's native aspect while holding the box
         # *area* constant, so banner-shaped logos (Braves, Reds) and tall ones
         # (Pirates, Angels) render with the same visible area as square ones
@@ -408,8 +409,8 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
                 images.append(dict(
                     source=src, xref="x", yref="y",
                     x=float(xv), y=float(yv),
-                    sizex=(x_hi - x_lo) * 0.07 * k,
-                    sizey=(y_hi - y_lo) * 0.11 / k,
+                    sizex=(x_hi - x_lo) * 0.045 * k,
+                    sizey=(y_hi - y_lo) * 0.07 / k,
                     sizing="contain",
                     xanchor="center", yanchor="middle", layer="above",
                 ))
