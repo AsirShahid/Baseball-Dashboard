@@ -127,8 +127,34 @@ TEAM_LOGO_MAP = {
 }
 
 SEASONS        = list(range(config["current_year"], 1870, -1))
-MIN_PA_LIST    = ["Qualified"] + list(range(0, 701, 10))
-MIN_IP_LIST    = ["Qualified"] + list(range(0, 301, 10))
+# Minimum-PA / minimum-IP ladder, copied from FanGraphs' leaderboard filter so
+# the same steps work for a single season and for a whole career: fine steps
+# up to 250, 50s to 1,000, then 500s to 10,000. Both stats use the same rungs.
+MIN_THRESHOLD_LADDER = ([0, 1, 5, 10] + list(range(20, 251, 10))
+                        + list(range(300, 1001, 50))
+                        + list(range(1500, 10001, 500)))
+MIN_PA_LIST    = ["Qualified"] + MIN_THRESHOLD_LADDER
+MIN_IP_LIST    = ["Qualified"] + MIN_THRESHOLD_LADDER
+
+# Largest threshold a single season can be judged against (the old top of
+# each dropdown). Anything above it can only mean a span total, so per-season
+# views judge it against the player's total over the selected range instead.
+SEASON_THRESHOLD_CAP = {"PA": 700, "IP": 300}
+
+
+def snap_threshold(raw, ladder=MIN_THRESHOLD_LADDER, default="Qualified"):
+    """Map a URL/user value onto the dropdown ladder: 'Qualified' stays, a number
+    drops to the nearest rung at or below it (old links carried 10-step values
+    such as 320 that the coarser FanGraphs ladder no longer lists)."""
+    if raw == "Qualified":
+        return raw
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return default
+    if n < 0:
+        return default
+    return max((r for r in ladder if r <= n), default=0)
 
 TEAM_COLORS = {
     "ARI": "#A71930", "ATL": "#CE1141", "BAL": "#DF4601", "BOS": "#BD3039",

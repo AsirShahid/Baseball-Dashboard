@@ -10,7 +10,7 @@ import pandas as pd
 from data import (
     load_stats, load_stats_pct, pct_within_season, stat_higher_better,
     season_bounds, season_label, season_tag, team_in_league,
-    TEAM_COLORS, MULTI_TEAM, PALETTE, RANK_COLORSCALE,
+    TEAM_COLORS, MULTI_TEAM, PALETTE, RANK_COLORSCALE, SEASON_THRESHOLD_CAP,
     logo_b64, logo_aspect,
 )
 
@@ -598,8 +598,22 @@ def _add_war_rate(df, is_batter):
     return df
 
 
+def _career_cohort(key, lo, hi, col, thr):
+    """IDfg of every player whose total `col` (PA/IP) over lo..hi reaches `thr`.
+
+    Used when a threshold is larger than any single season can reach: it can
+    only mean a career/span total, so per-season views (era percentiles,
+    per-season rows, trajectories) keep each season's rows for the players who
+    clear it over the whole range instead of judging each season alone."""
+    totals = load_stats(key, lo, hi, group_key="IDfg")
+    if totals.empty or col not in totals.columns or "IDfg" not in totals.columns:
+        return set()
+    tot = pd.to_numeric(totals[col], errors="coerce").fillna(0)
+    return set(totals.loc[tot >= thr, "IDfg"])
+
+
 def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None,
-                 split=False):
+                 split=False, cohort_span=None):
     """Filtered player frame for a season or range — the single source of truth
     shared by the scatter and the leaderboard so they never rank different rows.
 
@@ -614,7 +628,12 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None,
 
     With split=True (per-season range view) each player-season is its own row,
     tagged with Season: the min PA/IP threshold and league membership then
-    apply to that one season, not the span total."""
+    apply to that one season, not the span total.
+
+    A threshold above SEASON_THRESHOLD_CAP (the 1,000-10,000 rungs of the
+    dropdown) is a career-scale cut no single season can meet, so the per-season
+    paths above judge it against each player's total over `cohort_span`
+    (default: lo..hi) and keep every season of the players who clear it."""
     split = bool(split) and hi is not None and lo is not None and hi > lo
     is_batter    = (player_type == "Batters")
     min_val, col = (min_pa, "PA") if is_batter else (min_ip, "IP")
@@ -623,10 +642,25 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None,
     all_key = "all_batting_dir"        if is_batter else "all_pitching_dir"
     key = q_key if use_qualified else all_key
 
+    try:
+        thr = None if use_qualified else int(min_val)
+    except (TypeError, ValueError):
+        thr = None
+    career = thr is not None and thr > SEASON_THRESHOLD_CAP[col]
+    # Plain aggregate view: the span's summed PA/IP is already the career
+    # total, so the cohort is only needed where rows are per season.
+    cohort = None
+    if career and (pct_stats or split or cohort_span):
+        c_lo, c_hi = cohort_span or (lo, hi)
+        cohort = _career_cohort(key, c_lo, c_hi, col, thr)
+
     if pct_stats:
         def _prep(season_df):
             season_df = _add_war_rate(season_df, is_batter)
-            if not use_qualified and col in season_df.columns:
+            if cohort is not None:
+                if "IDfg" in season_df.columns:
+                    season_df = season_df[season_df["IDfg"].isin(cohort)]
+            elif not use_qualified and col in season_df.columns:
                 try:
                     season_df = season_df[season_df[col] >= int(min_val)]
                 except (TypeError, ValueError):
@@ -643,7 +677,10 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None,
         if df.empty:
             return df
         df = _add_war_rate(df, is_batter)
-        if not use_qualified and col in df.columns:
+        if cohort is not None:
+            if "IDfg" in df.columns:
+                df = df[df["IDfg"].isin(cohort)]
+        elif not use_qualified and col in df.columns:
             try:
                 df = df[df[col] >= int(min_val)]
             except (TypeError, ValueError):
@@ -908,7 +945,8 @@ def _render_player_traj(lo, hi, player_type, x_stat, y_stat, min_pa, min_ip,
 
     frames = []
     for y in range(lo, hi + 1):
-        season_df = player_frame(y, y, player_type, min_pa, min_ip, team)
+        season_df = player_frame(y, y, player_type, min_pa, min_ip, team,
+                                 cohort_span=(lo, hi))
         if season_df.empty or "IDfg" not in season_df.columns:
             continue
         if x_stat not in season_df.columns or y_stat not in season_df.columns:

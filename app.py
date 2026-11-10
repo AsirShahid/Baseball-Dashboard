@@ -13,7 +13,7 @@ import dash
 from dash import dcc, html
 import flask
 
-from data import safe_int, config
+from data import safe_int, snap_threshold, config
 from components import dashboard_view, about_view
 from callbacks import register_callbacks
 
@@ -105,10 +105,8 @@ def serve_layout():
     p_show_v = p.get("p_show_v", "true") == "true"
     p_show_h = p.get("p_show_h", "true") == "true"
 
-    raw_pa = p.get("min_pa", "Qualified")
-    min_pa = raw_pa if raw_pa == "Qualified" else safe_int(raw_pa, "Qualified")
-    raw_ip = p.get("min_ip", "Qualified")
-    min_ip = raw_ip if raw_ip == "Qualified" else safe_int(raw_ip, "Qualified")
+    min_pa = snap_threshold(p.get("min_pa", "Qualified"))
+    min_ip = snap_threshold(p.get("min_ip", "Qualified"))
 
     # Range view: "season" = one point per team/player-season; anything else
     # (or absent, as in older share links) = the cumulative combined view.

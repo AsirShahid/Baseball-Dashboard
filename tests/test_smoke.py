@@ -925,3 +925,88 @@ def test_export_split_has_season_rows():
                                    False, split="season")
     assert "Season" in out_p.columns and "_per-season" in fname_p
 
+
+
+# ── Min PA / IP ladder (FanGraphs steps) and career-scale thresholds ─────────
+
+def test_min_threshold_ladder_matches_fangraphs():
+    from data import MIN_PA_LIST, MIN_IP_LIST, snap_threshold
+    assert MIN_PA_LIST[0] == "Qualified" and MIN_IP_LIST == MIN_PA_LIST
+    nums = MIN_PA_LIST[1:]
+    assert nums == sorted(set(nums)) and nums[0] == 0 and nums[-1] == 10000
+    for v in (1, 5, 10, 250, 300, 700, 1000, 1500, 3000, 5000, 10000):
+        assert v in nums
+    assert 260 not in nums and 1050 not in nums      # FanGraphs' coarser steps
+    assert snap_threshold("Qualified") == "Qualified"
+    assert snap_threshold("320") == 300 and snap_threshold(3250) == 3000
+    assert snap_threshold(20000) == 10000 and snap_threshold("0") == 0
+    assert snap_threshold("junk") == "Qualified" and snap_threshold(-5) == "Qualified"
+
+
+@pytest.fixture
+def career_data(tmp_path, monkeypatch):
+    """Three synthetic seasons in throwaway all-batting / all-pitching dirs."""
+    import data
+    bat, pit = tmp_path / "bat", tmp_path / "pit"
+    bat.mkdir(); pit.mkdir()
+    # id: PA per season (2001, 2002, 2003). Career totals: 1 → 1200, 2 → 1950,
+    # 3 → 350, 4 → 950 (just under a 1,000 cut).
+    pa = {1: (400, 400, 400), 2: (650, 650, 650), 3: (350, 0, 0), 4: (500, 450, 0)}
+    war = {1: 2.0, 2: 6.0, 3: 1.0, 4: 3.0}
+    for i, y in enumerate((2001, 2002, 2003)):
+        rows = [dict(IDfg=p, Name=f"B{p}", Team="BOS", PA=v[i], WAR=war[p],
+                     **{"wRC+": 100 + p}) for p, v in pa.items() if v[i]]
+        pd.DataFrame(rows).to_csv(bat / f"{y}.csv", index=False)
+    ip = {1: (200, 200, 200), 2: (150, 150, 150)}      # 600 vs 450 career IP
+    for i, y in enumerate((2001, 2002, 2003)):
+        rows = [dict(IDfg=p, Name=f"P{p}", Team="BOS", IP=v[i], WAR=p, ERA=3.0 + p)
+                for p, v in ip.items()]
+        pd.DataFrame(rows).to_csv(pit / f"{y}.csv", index=False)
+    monkeypatch.setitem(data.config, "all_batting_dir", str(bat))
+    monkeypatch.setitem(data.config, "all_pitching_dir", str(pit))
+
+
+def test_career_threshold_judged_on_span_total(career_data):
+    from charts import player_frame
+    # Aggregate view: summed PA >= 1000 keeps players 1 and 2, nobody else.
+    agg = player_frame(2001, 2003, "Batters", 1000, "Qualified", "All Teams")
+    assert dict(zip(agg["IDfg"], agg["PA"])) == {1: 1200, 2: 1950}
+    # Per-season rows: every season of the cohort, none of anyone else.
+    per = player_frame(2001, 2003, "Batters", 1000, "Qualified", "All Teams",
+                       split=True)
+    assert sorted(per["IDfg"]) == [1, 1, 1, 2, 2, 2]
+    # Era-adjusted: percentile pool per season is the cohort itself.
+    era = player_frame(2001, 2003, "Batters", 1000, "Qualified", "All Teams",
+                       pct_stats=["WAR"])
+    assert set(era["IDfg"]) == {1, 2}
+    assert era.set_index("IDfg").loc[2, "WAR"] == 100.0
+    assert era.set_index("IDfg").loc[1, "WAR"] == 50.0
+    # Trajectory-style single-season call still uses the whole-range cohort.
+    one = player_frame(2002, 2002, "Batters", 1000, "Qualified", "All Teams",
+                       cohort_span=(2001, 2003))
+    assert sorted(one["IDfg"]) == [1, 2]
+    # ...whereas one season on its own cannot reach 1,000 PA.
+    assert player_frame(2002, 2002, "Batters", 1000, "Qualified", "All Teams").empty
+    # Pitchers use IP the same way (500 > the 300-IP single-season cap).
+    pit = player_frame(2001, 2003, "Pitchers", "Qualified", 500, "All Teams",
+                       split=True)
+    assert sorted(pit["IDfg"]) == [1, 1, 1]
+
+
+def test_season_scale_threshold_still_per_season(career_data):
+    """At or below the single-season cap the threshold keeps judging each
+    season's row (unchanged behaviour)."""
+    from charts import player_frame
+    per = player_frame(2001, 2003, "Batters", 600, "Qualified", "All Teams",
+                       split=True)
+    assert sorted(per["IDfg"]) == [2, 2, 2]
+
+
+def test_player_trajectory_with_career_threshold(career_data):
+    from charts import render_player
+    fig, eyebrow, _ = render_player([2001, 2003], "Batters", "WAR", "wRC+",
+                                    1000, "Qualified", "All Teams",
+                                    False, None, False, False, "dark",
+                                    traj=True)
+    assert eyebrow[0] == "TRAJECTORY"
+    assert {t.name for t in fig.data} == {"B1", "B2"}
