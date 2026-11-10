@@ -1087,3 +1087,109 @@ def test_ordinal_suffix(n, want):
     from components import ordinal_suffix
     assert ordinal_suffix(n) == want
 
+
+# ── Player panel + span cache ─────────────────────────────────────────────────
+
+def test_span_cache_hits_and_invalidates():
+    import data
+    from data import load_stats
+    data._SPAN_CACHE.clear()
+    a = load_stats("qualified_batting_dir", 2019, 2021, group_key="IDfg")
+    assert len(data._SPAN_CACHE) == 1
+    a["WAR"] = -999.0                         # caller mutation must not leak
+    b = load_stats("qualified_batting_dir", 2019, 2021, group_key="IDfg")
+    assert (b["WAR"] != -999.0).all()
+    # Touching a season file changes the key → rebuilt, not served stale.
+    f = os.path.join(data.config["qualified_batting_dir"], "2020.csv")
+    st = os.stat(f)
+    os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+    try:
+        load_stats("qualified_batting_dir", 2019, 2021, group_key="IDfg")
+        assert len(data._SPAN_CACHE) == 2
+    finally:
+        os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns))
+
+
+def test_span_rollup_carries_first_last_and_position():
+    from data import load_stats
+    df = load_stats("qualified_batting_dir", 2019, 2024, group_key="IDfg")
+    assert {"_first", "_last", "position", "Bats"} <= set(df.columns)
+    assert df["_first"].between(2019, 2024).all()
+    assert (df["_first"] <= df["_last"]).all()
+
+
+def _retired_qualified_batter():
+    """A 2019 qualified batter absent from the 2023 and 2024 qualified files."""
+    q19 = load_csv("qualified_batting_stats/2019.csv", fetch=False)
+    later = set(load_csv("qualified_batting_stats/2023.csv", fetch=False)["IDfg"]) | \
+        set(load_csv("qualified_batting_stats/2024.csv", fetch=False)["IDfg"])
+    row = q19[~q19["IDfg"].isin(later)].sort_values("PA", ascending=False).iloc[0]
+    return int(row["IDfg"]), str(row["Name"])
+
+
+def _texts(node, out=None):
+    """All string children in a Dash component tree."""
+    out = [] if out is None else out
+    if isinstance(node, str):
+        out.append(node)
+    elif isinstance(node, (list, tuple)):
+        for n in node:
+            _texts(n, out)
+    elif hasattr(node, "children"):
+        _texts(node.children, out)
+    return out
+
+
+def test_player_panel_header_shows_player_not_slider_range():
+    from callbacks import _player_detail
+    idfg, name = _retired_qualified_batter()
+    body = _player_detail(idfg, 2019, 2024, "Batters", "Qualified",
+                          "Qualified", "All Teams")
+    txt = " | ".join(_texts(body))
+    assert name in txt
+    assert "Bats " in txt                     # handedness in the eyebrow
+    assert " PA" in txt and "Age " in txt      # facts line
+    assert "qualified season" in txt           # Qualified filter → labeled
+    # The header's season span is the player's own (ends before 2023), and the
+    # trajectory covers his seasons rather than an empty 2020–2024 window.
+    assert "TRAJECTORY · 2019–" in txt
+    assert "2019–2024 · " not in txt.split("TRAJECTORY")[0]
+
+
+def test_player_panel_single_season_keeps_5yr_trajectory():
+    from callbacks import _player_detail
+    q = load_csv("qualified_batting_stats/2024.csv", fetch=False)
+    idfg = int(q.sort_values("WAR", ascending=False)["IDfg"].iloc[0])
+    txt = " | ".join(_texts(_player_detail(idfg, 2024, 2024, "Batters",
+                                           "Qualified", "Qualified", "All Teams")))
+    assert "5-YEAR TRAJECTORY" in txt and "2024" in txt
+
+
+def test_detail_loading_placeholder():
+    from components import detail_loading
+    txt = " | ".join(_texts(detail_loading("Buck Leonard")))
+    assert "Loading" in txt and "Buck Leonard" in txt
+
+
+def test_historical_team_names():
+    from data import team_display
+    assert team_display("HG", full=True) == "Homestead Grays"
+    assert team_display("MON", full=True) == "Montreal Expos"
+    assert team_display("ZZZ", full=True) == "ZZZ"          # unknown → code
+
+
+def test_team_panel_range_uses_team_seasons():
+    """Over a range, the team header shows the team's own seasons and the
+    trajectory covers them, not the slider bounds."""
+    import app  # registers callbacks
+    from callbacks import _spark, SPARK_STATS
+    from components import detail_body
+    sp = [_spark(s, dk, "LAD", 2024, years_in=[2019, 2020, 2021])
+          for s, dk in SPARK_STATS]
+    assert all(x["years"] == [2019, 2020, 2021] for x in sp if x["values"])
+    txt = " | ".join(_texts(detail_body("LAD", "2019–2021 · 3 SEASONS", 70, sp, [],
+                                        spark_title="TRAJECTORY · 2019–2021",
+                                        foot="Percentiles vs. all teams, 2019–2021 (range totals).")))
+    assert "2019–2021 · 3 SEASONS" in txt and "TRAJECTORY · 2019–2021" in txt
+    assert "range totals" in txt
+

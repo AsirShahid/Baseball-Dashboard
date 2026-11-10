@@ -491,10 +491,12 @@ def _sparkline(values, w=200, h=56):
         f'{dots}</svg>')
 
 
-def detail_body(team, year, composite, sparks, groups):
-    """Build the slide-in team detail panel.
-    sparks = [{label, values, years, last}]; groups = [{name, tiles:[...] }].
-    tiles = [{label, value, pct, ramp}]."""
+def detail_body(team, span, composite, sparks, groups,
+                spark_title="5-YEAR TRAJECTORY", foot=None):
+    """Build the slide-in team detail panel. `span` is the seasons line
+    ("2024 SEASON", or "1969–2004 · 36 SEASONS" for the team's own seasons in
+    a range). sparks = [{label, values, years, last}];
+    groups = [{name, tiles:[...] }]. tiles = [{label, value, pct, ramp}]."""
     color = TEAM_COLORS.get(team, "#f5a524")
     alt = TEAM_COLOR_ALT.get(team, "#0a0d12")
     head = html.Div(className="dt-head", style={
@@ -511,7 +513,7 @@ def detail_body(team, year, composite, sparks, groups):
             # Pre-division clubs (the old Senators, 19th-c. teams) have no
             # division — don't render a dangling separator for them.
             html.Div(" · ".join(p for p in (TEAM_DIVISION.get(team, ""),
-                                            f"{year} SEASON") if p),
+                                            span) if p),
                      className="dt-eyebrow"),
             html.H2(TEAM_FULL_NAME.get(team, team), className="dt-name"),
             html.Div(className="dt-sub", children=[
@@ -526,7 +528,7 @@ def detail_body(team, year, composite, sparks, groups):
 
     spark_section = html.Div(className="dt-section", children=[
         html.Div(className="dt-section-head", children=[
-            html.Span("5-YEAR TRAJECTORY", className="dt-section-title"),
+            html.Span(spark_title, className="dt-section-title"),
         ]),
         html.Div(className="dt-spark-row", children=[
             html.Div(className="spark", children=[
@@ -576,14 +578,27 @@ def detail_body(team, year, composite, sparks, groups):
     ]
 
     return [head, spark_section] + stat_sections + [
-        html.Div("Stats shown vs. all teams that season.", className="dt-foot"),
+        html.Div(foot or "Stats shown vs. all teams that season.", className="dt-foot"),
     ]
 
 
-def player_detail_body(name, team, span, composite, sparks, groups):
+def detail_loading(label=None):
+    """Placeholder shown the instant a team/player is clicked, so the panel
+    never displays the previously opened entity while the new one builds."""
+    return [html.Div(className="dt-head dt-loading", children=[
+        html.Div(className="dt-name-block", children=[
+            html.Div("Loading…", className="dt-eyebrow"),
+            html.H2(str(label) if label else "\u00a0", className="dt-name"),
+        ]),
+    ])]
+
+
+def player_detail_body(name, team, eyebrow, facts, composite, sparks, groups,
+                       spark_title="5-YEAR TRAJECTORY", foot=None):
     """Slide-in player detail panel — the player analogue of detail_body.
     Shares the dt-* / spark CSS so it matches the team panel. Tiles click
-    through to the player X axis (kind=pdt-stat). `span` is the season label."""
+    through to the player X axis (kind=pdt-stat). `eyebrow` is the
+    team · position · handedness line, `facts` the seasons · age · PA line."""
     color = TEAM_COLORS.get(team, "#f5a524")
     alt = TEAM_COLOR_ALT.get(team, "#0a0d12")
     initials = "".join(p[0] for p in str(name).split()[:2]).upper() or "—"
@@ -595,9 +610,10 @@ def player_detail_body(name, team, span, composite, sparks, groups):
                             "fontSize": 18}),
         ]),
         html.Div(className="dt-name-block", children=[
-            html.Div(f"{team_display(team, full=True)} · {span}",
+            html.Div(eyebrow or team_display(team, full=True),
                      className="dt-eyebrow"),
             html.H2(str(name), className="dt-name"),
+            html.Div(facts, className="dt-facts") if facts else None,
             html.Div(className="dt-sub", children=[
                 "Overall ",
                 html.Span([str(composite),
@@ -610,7 +626,7 @@ def player_detail_body(name, team, span, composite, sparks, groups):
 
     spark_section = html.Div(className="dt-section", children=[
         html.Div(className="dt-section-head", children=[
-            html.Span("5-YEAR TRAJECTORY", className="dt-section-title"),
+            html.Span(spark_title, className="dt-section-title"),
         ]),
         html.Div(className="dt-spark-row", children=[
             html.Div(className="spark", children=[
@@ -659,6 +675,6 @@ def player_detail_body(name, team, span, composite, sparks, groups):
     ]
 
     return [head, spark_section] + stat_sections + [
-        html.Div("Stats shown vs. the players matching your filters.",
+        html.Div(foot or "Stats shown vs. the players matching your filters.",
                  className="dt-foot"),
     ]

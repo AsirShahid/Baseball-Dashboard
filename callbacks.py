@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Callback layer — every Dash callback, registered via register_callbacks(app)."""
 
+import re
+import time
 from urllib.parse import urlencode
 
 import pandas as pd
@@ -20,6 +22,7 @@ from charts import (
 )
 from components import (
     leaderboard_cards, detail_body, player_detail_body, player_preset_chips,
+    detail_loading,
 )
 
 # Curated, direction-aware stats for the team detail panel.
@@ -43,15 +46,13 @@ PLAYER_DETAIL_GROUPS = {
     "Pitchers": [("Run prevention", ["WAR", "ERA", "FIP", "WHIP"]),
                  ("Stuff & control", ["K/9", "BB/9", "K%", "HR/9"])],
 }
-# (stat, dir for both batter/pitcher) for the player trajectory sparklines.
+# Stats for the player trajectory sparklines (read from the same season files
+# as the chart's player pool: qualified or all-players).
 PLAYER_SPARKS = {
-    "Batters":  [("WAR", "qualified_batting_dir"),
-                 ("wRC+", "qualified_batting_dir"),
-                 ("OPS", "qualified_batting_dir")],
-    "Pitchers": [("WAR", "qualified_pitching_dir"),
-                 ("ERA", "qualified_pitching_dir"),
-                 ("K/9", "qualified_pitching_dir")],
+    "Batters":  ["WAR", "wRC+", "OPS"],
+    "Pitchers": ["WAR", "ERA", "K/9"],
 }
+SPARK_MAX_SEASONS = 20      # a career-range trajectory shows at most this many
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -68,7 +69,7 @@ def _pct(series, value, higher_better) -> int:
 
 
 def _team_value(dir_key, year, team, stat, fetch=True):
-    df = load_csv(f"{config[dir_key]}/{year}.csv", fetch=fetch)
+    df = load_csv(f"{config[dir_key]}/{year}.csv", fetch=fetch, copy=False)
     if df.empty or stat not in df.columns or "Team" not in df.columns:
         return None, df
     row = df[df["Team"] == team]
@@ -89,9 +90,11 @@ def _team_span_value(dir_key, lo, hi, team, stat):
     return row.iloc[0][stat], df
 
 
-def _spark(stat, dir_key, team, season):
+def _spark(stat, dir_key, team, season, years_in=None):
+    """One stat's per-season values for a team: the 5 seasons up to `season`,
+    or exactly `years_in` when given (a range's own seasons)."""
     years, values = [], []
-    for y in range(season - 4, season + 1):
+    for y in (years_in if years_in is not None else range(season - 4, season + 1)):
         # fetch=False: don't fire blocking network requests for missing
         # neighbouring seasons just to draw a sparkline.
         v, _ = _team_value(dir_key, y, team, stat, fetch=False)
@@ -102,42 +105,115 @@ def _spark(stat, dir_key, team, season):
             "last": fmt_stat(stat, values[-1]) if values else "—"}
 
 
-def _player_spark(idfg, stat, dir_key, hi):
-    """Per-season trajectory of one stat for a single player, joined by IDfg.
-    fetch=False so drawing the panel never blocks on a missing neighbour CSV."""
-    years, values = [], []
-    for y in range(hi - 4, hi + 1):
-        df = load_csv(f"{config[dir_key]}/{y}.csv", fetch=False)
-        if df.empty or "IDfg" not in df.columns or stat not in df.columns:
+def _player_dir(ptype, mpa, mip) -> str:
+    """Season-file directory behind the player pool for these filters (the
+    same choice player_frame makes)."""
+    is_batter = (ptype != "Pitchers")
+    qualified = (mpa if is_batter else mip) == "Qualified"
+    if is_batter:
+        return "qualified_batting_dir" if qualified else "all_batting_dir"
+    return "qualified_pitching_dir" if qualified else "all_pitching_dir"
+
+
+def _player_season_rows(idfg, dir_key, years) -> pd.DataFrame:
+    """This player's own rows from each season file in `years`, tagged with
+    Season. Read-only lookups into the CSV cache (copy=False) and fetch=False,
+    so the panel never copies or downloads whole seasons to find one player."""
+    rows = []
+    for y in years:
+        df = load_csv(f"{config[dir_key]}/{y}.csv", fetch=False, copy=False)
+        if df.empty or "IDfg" not in df.columns:
             continue
-        row = df[df["IDfg"] == idfg]
-        if row.empty:
-            continue
-        v = row.iloc[0][stat]
-        if pd.notna(v):
-            years.append(y)
-            values.append(float(v))
-    return {"label": stat, "values": values, "years": years,
-            "last": fmt_stat(stat, values[-1]) if values else "—"}
+        r = df[df["IDfg"] == idfg]
+        if not r.empty:
+            rows.append(r.assign(Season=y))
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+
+
+def _player_facts(rows, prow, lo, hi, is_pitch, qualified=False):
+    """Header facts for the player panel from his own season rows in the
+    range: (eyebrow, facts line, primary team code). With the Qualified
+    filter the rows (and the range totals) are qualified seasons only, and
+    the facts say so — Ruth shows "14 qualified seasons", not a short career."""
+    wcol = "IP" if is_pitch else "PA"
+    team = str(prow.get("Team", "")).strip()
+    eyebrow, facts = [], []
+    if not rows.empty:
+        w = pd.to_numeric(rows.get(wcol), errors="coerce").fillna(0) \
+            if wcol in rows.columns else pd.Series(1.0, index=rows.index)
+        # Teams by playing time; FanGraphs' "- - -" rows are traded-season
+        # totals, not a team.
+        tdf = pd.DataFrame({"t": rows["Team"].astype(str).str.strip(), "w": w})
+        tdf = tdf[(tdf["t"] != MULTI_TEAM) & (tdf["t"] != "")]
+        tw = tdf.groupby("t")["w"].sum().sort_values(ascending=False)
+        if len(tw):
+            team = tw.index[0]
+            label = team_display(team, full=True)
+            if len(tw) > 1:
+                label += f" +{len(tw) - 1} more"
+            eyebrow.append(label)
+        elif team == MULTI_TEAM:
+            eyebrow.append("Multiple teams")
+        if "position" in rows.columns:
+            pos = (pd.DataFrame({"p": rows["position"], "w": w}).dropna()
+                   .groupby("p")["w"].sum())
+            if len(pos):
+                eyebrow.append(str(pos.idxmax()))
+        hand_col, hand_lbl = ("Throws", "Throws") if is_pitch else ("Bats", "Bats")
+        if hand_col in rows.columns:
+            h = rows[hand_col].dropna().astype(str).str.strip()
+            h = h[h != ""]
+            if len(h):
+                eyebrow.append(f"{hand_lbl} {h.mode().iloc[0]}")
+        yrs = sorted(int(y) for y in rows["Season"].unique())
+        facts.append(season_label(yrs[0], yrs[-1]))
+        q = "qualified " if qualified else ""
+        if len(yrs) > 1:
+            facts.append(f"{len(yrs)} {q}seasons")
+        elif qualified and hi > lo:
+            facts.append("1 qualified season")
+        if "Age" in rows.columns:
+            ages = pd.to_numeric(rows["Age"], errors="coerce").dropna()
+            if len(ages):
+                a, b = int(ages.min()), int(ages.max())
+                facts.append(f"Age {a}" if a == b else f"Age {a}–{b}")
+    else:
+        eyebrow.append(team_display(team, full=True))
+    for col in ((["IP", "G", "GS"] if is_pitch else ["PA", "G"])):
+        v = prow.get(col)
+        if v is None or pd.isna(v) or (col == "GS" and float(v) == 0):
+            continue                      # relievers: no "0 GS"
+        facts.append(f"{fmt_stat(col, v)} {col}")
+    return " · ".join(eyebrow), " · ".join(facts), team
 
 
 def _player_detail(idfg, lo, hi, ptype, mpa, mip, tf):
     """Build the player detail panel: percentile tiles vs the current player
-    pool (same filters as the chart), a composite badge, and 5-year sparklines."""
+    pool (same filters as the chart), a composite badge, the player's own
+    seasons/teams/position in the header, and per-season sparklines."""
+    dir_key = _player_dir(ptype, mpa, mip)
     pool = player_frame(lo, hi, ptype, mpa, mip, tf)
     prow = pool[pool["IDfg"] == idfg] if "IDfg" in pool.columns else pool.iloc[0:0]
     if prow.empty:
         # The clicked player can sit outside the filtered pool (e.g. an active
         # team filter, or a min-PA threshold). Fall back to the unfiltered
         # all-teams pool so the panel still renders the player in context.
+        dir_key = _player_dir(ptype, "Qualified", "Qualified")
         pool = player_frame(lo, hi, ptype, "Qualified", "Qualified", "All Teams")
         prow = pool[pool["IDfg"] == idfg] if "IDfg" in pool.columns else pool.iloc[0:0]
     if prow.empty:
         return None
     prow = prow.iloc[0]
     name = str(prow.get("Name", "—"))
-    team = str(prow.get("Team", "")).strip()
     is_pitch = (ptype == "Pitchers")
+
+    # Only scan the seasons this player actually appears in (the roll-up
+    # carries _first/_last), not all 156 when the slider spans 1871–2026.
+    first = int(prow["_first"]) if pd.notna(prow.get("_first")) else lo
+    last = int(prow["_last"]) if pd.notna(prow.get("_last")) else hi
+    rows = _player_season_rows(idfg, dir_key, range(max(lo, first), min(hi, last) + 1))
+    eyebrow, facts, team = _player_facts(rows, prow, lo, hi, is_pitch,
+                                         qualified=dir_key.startswith("qualified"))
 
     groups, all_pcts = [], []
     for gname, stats in PLAYER_DETAIL_GROUPS.get(ptype, []):
@@ -156,10 +232,37 @@ def _player_detail(idfg, lo, hi, ptype, mpa, mip, tf):
         if tiles:
             groups.append({"name": gname, "tiles": tiles})
     composite = int(round(sum(all_pcts) / len(all_pcts))) if all_pcts else 50
-    sparks = [_player_spark(idfg, s, dk, hi)
-              for s, dk in PLAYER_SPARKS.get(ptype, [])]
-    return player_detail_body(name, team, season_label(lo, hi),
-                              composite, sparks, groups)
+
+    # Trajectory: across a range, the player's own seasons in it (most recent
+    # SPARK_MAX_SEASONS); for a single season, the 5 seasons leading up to it.
+    if hi > lo:
+        spark_rows = rows
+        if not rows.empty:
+            keep = sorted(rows["Season"].unique())[-SPARK_MAX_SEASONS:]
+            spark_rows = rows[rows["Season"].isin(keep)]
+    else:
+        spark_rows = _player_season_rows(idfg, dir_key, range(hi - 4, hi + 1))
+    sparks = []
+    for stat in PLAYER_SPARKS.get(ptype, []):
+        years, values = [], []
+        if not spark_rows.empty and stat in spark_rows.columns:
+            for y, v in spark_rows.sort_values("Season")[["Season", stat]].values:
+                if pd.notna(v):
+                    years.append(int(y))
+                    values.append(float(v))
+        sparks.append({"label": stat, "values": values, "years": years,
+                       "last": fmt_stat(stat, values[-1]) if values else "—"})
+    yrs = sorted({y for sp in sparks for y in sp["years"]})
+    if hi > lo:
+        spark_title = (f"TRAJECTORY · {season_label(yrs[0], yrs[-1])}"
+                       if len(yrs) > 1 else "TRAJECTORY")
+    else:
+        spark_title = "5-YEAR TRAJECTORY"
+    foot = ("Percentiles vs. the players matching your filters, "
+            f"{season_label(lo, hi)}"
+            + (" (range totals)." if hi > lo else "."))
+    return player_detail_body(name, team, eyebrow, facts, composite, sparks,
+                              groups, spark_title=spark_title, foot=foot)
 
 
 def _split_on(split, lo, hi) -> bool:
@@ -952,6 +1055,7 @@ def register_callbacks(app):
     @app.callback(
         Output("detail-overlay", "style"),
         Output("detail-store", "data"),
+        Output("detail-body", "children", allow_duplicate=True),
         Input("main-graph", "clickData"),
         Input({"kind": "lb-card", "ref": ALL, "rank": ALL}, "n_clicks"),
         Input("detail-close", "n_clicks"),
@@ -961,37 +1065,49 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def open_detail(click, lb_clicks, _close, view, split, season):
-        hidden = {"display": "none"}
+        nothing = (no_update, no_update, no_update)
         trig = ctx.triggered_id
         if trig == "detail-close":
-            return hidden, no_update
-        # Store a bare team abbr for teams, or {"type":"player","idfg":N} for
-        # players; render_detail branches on the shape. Per-season entries add
-        # "season" (team: {"type":"team","team":abbr,"season":Y}) so the panel
-        # shows that one season instead of the slider's whole range.
+            return {"display": "none"}, no_update, no_update
+
+        def opened(store, label=None):
+            # The overlay opens with a loading placeholder in the same
+            # response, so the previously opened team/player never shows while
+            # render_detail builds the new one. The nonce makes the store
+            # change (and render_detail fire) even when re-opening the same
+            # entity after the placeholder replaced its body.
+            store = dict(store, n=time.time_ns())
+            if label is None and store.get("type") == "team":
+                label = TEAM_FULL_NAME.get(store.get("team"), store.get("team"))
+            return {}, store, detail_loading(label)
+
+        # Store {"type":"team","team":abbr} or {"type":"player","idfg":N};
+        # render_detail branches on the type. Per-season entries add "season"
+        # so the panel shows that one season instead of the slider's range.
         per_season = _split_on(split, *season_bounds(season))
         if isinstance(trig, dict) and trig.get("kind") == "lb-card":
             if not any(lb_clicks or []):
-                return no_update, no_update
+                return nothing
             ref, _, yr = str(trig["ref"]).partition("|")
             if view == "player":
                 try:
                     store = {"type": "player", "idfg": int(ref)}
-                    if yr:
-                        store["season"] = int(yr)
-                    return {}, store
                 except (TypeError, ValueError):
-                    return no_update, no_update
+                    return nothing
+                if yr:
+                    store["season"] = int(yr)
+                return opened(store)
+            store = {"type": "team", "team": ref}
             if yr:
-                return {}, {"type": "team", "team": ref, "season": int(yr)}
-            return {}, ref
+                store["season"] = int(yr)
+            return opened(store)
         if trig == "main-graph":
             if not click:
-                return no_update, no_update
+                return nothing
             try:
                 pt = click["points"][0]
             except (KeyError, IndexError, TypeError):
-                return no_update, no_update
+                return nothing
             if view == "player":
                 cd = pt.get("customdata")
                 try:
@@ -999,31 +1115,33 @@ def register_callbacks(app):
                     # Per-season scatter points carry [IDfg, _row, Season].
                     if per_season and len(cd) >= 3:
                         store["season"] = int(cd[2])
-                    return {}, store
                 except (TypeError, ValueError, IndexError):
-                    return no_update, no_update
+                    return nothing
+                return opened(store, pt.get("hovertext"))
             cd = pt.get("customdata")
             # Per-season team points carry [Team, Season, rank]; their text
             # label ("LAD ’22") isn't a bare team code.
             if (per_season and isinstance(cd, (list, tuple)) and len(cd) >= 3
-                    and cd[0] in TEAM_COLORS):
+                    and isinstance(cd[0], str)
+                    and re.fullmatch(r"[A-Z0-9]{2,4}", cd[0])):
                 try:
-                    return {}, {"type": "team", "team": cd[0],
-                                "season": int(cd[1])}
+                    return opened({"type": "team", "team": cd[0],
+                                   "season": int(cd[1])})
                 except (TypeError, ValueError):
-                    return no_update, no_update
+                    return nothing
             abbr = pt.get("text")
             if not abbr:
                 # Trajectory paths label only their final point; the team code
                 # rides in customdata[0] so mid-path clicks work too. (In
                 # rank-color mode customdata is a scalar score — skip it.)
-                cd = pt.get("customdata")
                 if isinstance(cd, (list, tuple)) and cd:
                     abbr = cd[0]
-            if abbr not in TEAM_COLORS:
-                return no_update, no_update
-            return {}, abbr
-        return no_update, no_update
+            # Any FanGraphs team code opens its panel — historical clubs (MON,
+            # BRO, HG…) included, not just the 30 current ones with colors.
+            if not (isinstance(abbr, str) and re.fullmatch(r"[A-Z0-9]{2,4}", abbr)):
+                return nothing
+            return opened({"type": "team", "team": abbr})
+        return nothing
 
     @app.callback(
         Output({"kind": "seg-store", "group": "xtype"}, "data",
@@ -1097,7 +1215,30 @@ def register_callbacks(app):
             if tiles:
                 groups.append({"name": gname, "tiles": tiles})
         composite = int(round(sum(all_pcts) / len(all_pcts))) if all_pcts else 50
-        # The trajectory sparkline is inherently per-season; anchor it at the
-        # end of the range so it reads as "the 5 seasons up to hi".
-        sparks = [_spark(s, dk, team, hi) for s, dk in SPARK_STATS]
-        return detail_body(team, season_label(lo, hi), composite, sparks, groups)
+        # The team's own seasons inside the range (a franchise that folded or
+        # moved — MON 1969–2004 — doesn't span the whole slider).
+        seasons = []
+        for y in range(lo, hi + 1):
+            df = load_csv(f"{config['team_batting_dir']}/{y}.csv",
+                          fetch=False, copy=False)
+            if not df.empty and "Team" in df.columns and (df["Team"] == team).any():
+                seasons.append(y)
+        if hi > lo and seasons:
+            span = season_label(seasons[0], seasons[-1])
+            eyebrow = (f"{span} · {len(seasons)} SEASONS" if len(seasons) > 1
+                       else f"{span} SEASON")
+            spark_years = seasons[-SPARK_MAX_SEASONS:]
+            sparks = [_spark(s, dk, team, hi, years_in=spark_years)
+                      for s, dk in SPARK_STATS]
+            sp_yrs = sorted({y for sp in sparks for y in sp["years"]})
+            spark_title = (f"TRAJECTORY · {season_label(sp_yrs[0], sp_yrs[-1])}"
+                           if len(sp_yrs) > 1 else "TRAJECTORY")
+            foot = (f"Percentiles vs. all teams, {season_label(lo, hi)} "
+                    "(range totals).")
+        else:
+            eyebrow = f"{season_label(lo, hi)} SEASON"
+            sparks = [_spark(s, dk, team, hi) for s, dk in SPARK_STATS]
+            spark_title = "5-YEAR TRAJECTORY"
+            foot = None
+        return detail_body(team, eyebrow, composite, sparks, groups,
+                           spark_title=spark_title, foot=foot)

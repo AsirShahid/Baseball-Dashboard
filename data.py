@@ -196,6 +196,31 @@ TEAM_FULL_NAME = {
     "TBR": "Tampa Bay Rays",       "TEX": "Texas Rangers",
     "TOR": "Toronto Blue Jays",    "WSN": "Washington Nationals",
     "WAS": "Washington Senators",  "ATH": "Athletics",
+    # Former MLB identities that FanGraphs keeps under their own codes.
+    "BSN": "Boston Braves",        "BRO": "Brooklyn Dodgers",
+    "NYG": "New York Giants",      "NYH": "New York Highlanders",
+    "PHA": "Philadelphia Athletics", "SLB": "St. Louis Browns",
+    "KCA": "Kansas City Athletics", "CAL": "California Angels",
+    "ANA": "Anaheim Angels",       "MON": "Montreal Expos",
+    "FLA": "Florida Marlins",      "TBD": "Tampa Bay Devil Rays",
+    # Federal League (1914–15).
+    "BKF": "Brooklyn Tip-Tops",    "CWH": "Chicago Whales",
+    "KCP": "Kansas City Packers",  "PRB": "Pittsburgh Rebels",
+    "SLT": "St. Louis Terriers",   "NWK": "Newark Peppers",
+    # Negro Leagues (MLB-recognized 1920–48); clubs with 4+ seasons in the data.
+    "HG":  "Homestead Grays",      "KCM": "Kansas City Monarchs",
+    "CAG": "Chicago American Giants", "BEG": "Baltimore Elite Giants",
+    "NE":  "Newark Eagles",        "PC":  "Pittsburgh Crawfords",
+    "PS":  "Philadelphia Stars",   "NYC": "New York Cubans",
+    "NBY": "New York Black Yankees", "BBB": "Birmingham Black Barons",
+    "MRS": "Memphis Red Sox",      "CBE": "Cleveland Buckeyes",
+    "CIC": "Cincinnati-Indianapolis Clowns", "IC": "Indianapolis Clowns",
+    "HIL": "Hilldale",             "DS":  "Detroit Stars",
+    "SLS": "St. Louis Stars",      "ABC": "Indianapolis ABCs",
+    "BBS": "Baltimore Black Sox",  "NLG": "Lincoln Giants",
+    "CSE": "Cuban Stars (East)",   "CSW": "Cuban Stars (West)",
+    "AC":  "Bacharach Giants",     "BRG": "Brooklyn Royal Giants",
+    "HBG": "Harrisburg Giants",    "NEG": "Nashville Elite Giants",
 }
 
 TEAM_DIVISION = {
@@ -490,16 +515,17 @@ def _normalize_ids(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_csv(path: str, fetch: bool = True) -> pd.DataFrame:
+def load_csv(path: str, fetch: bool = True, copy: bool = True) -> pd.DataFrame:
     """Load CSV; auto-fetches the season live if the file doesn't exist
-    (unless fetch=False)."""
+    (unless fetch=False). copy=False returns the cached frame itself — only
+    for read-only lookups (filtering a row out of it), never mutate it."""
     try:
         p = Path(path)
         if p.exists():
             mtime = p.stat().st_mtime
             cached = _CSV_CACHE.get(path)
             if cached and cached[0] == mtime:
-                return cached[1].copy()
+                return cached[1].copy() if copy else cached[1]
             df = _normalize_ids(strip_html(pd.read_csv(path)))
             if not df.empty:
                 if len(_CSV_CACHE) >= _CSV_CACHE_MAX:
@@ -608,6 +634,12 @@ def _aggregate_span(df: pd.DataFrame, group_key: str, weight_col: str,
         else:
             parts.append(plain_mean)
 
+    if "Season" in df.columns and group_key != "Season" and len(df):
+        # First/last season each entity appears in the span (the rolled-up
+        # "Season" column is a meaningless weighted mean of years).
+        yrs = pd.to_numeric(df["Season"], errors="coerce").groupby(g)
+        parts.append(pd.DataFrame({"_first": yrs.min(), "_last": yrs.max()}))
+
     if display_cols and len(df):
         # Representative row per entity: its largest-weight season (or the
         # last row when there is no weight column).
@@ -626,6 +658,7 @@ def _aggregate_span(df: pd.DataFrame, group_key: str, weight_col: str,
         return pd.DataFrame({group_key: sorted(g.unique())})
     out = pd.concat(parts, axis=1)
     order = ([c for c in numeric_cols if c in out.columns]
+             + [c for c in ("_first", "_last") if c in out.columns]
              + [d for d in display_cols if d in out.columns])
     out = out[order].reset_index()
     # groupby names the index after the grouping series; make sure the id
@@ -641,6 +674,31 @@ def _season_rows(frames_by_year) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
+
+
+# Rolled-up multi-season frames, keyed on the span and the mtimes of every
+# season file in it (so a data refresh invalidates). The chart, leaderboard,
+# CSV export and detail panel all ask for the same roll-up; rebuilding it for
+# 1871–2026 (156 CSVs × ~300 columns) took ~1.5 s per call. Small: a long
+# player span is ~10 MB, and each gunicorn worker holds its own copy.
+_SPAN_CACHE: dict = {}
+_SPAN_CACHE_MAX = 6
+
+
+def _span_key(dir_key, lo, hi, group_key):
+    d = Path(config[dir_key])
+    sig = []
+    for y in range(lo, hi + 1):
+        try:
+            sig.append((d / f"{y}.csv").stat().st_mtime_ns)
+        except OSError:
+            sig.append(None)
+    return (dir_key, lo, hi, group_key, tuple(sig))
+
+
+# Per-player descriptive columns carried from each entity's largest-weight
+# season through a range roll-up (they're strings, not stats).
+PLAYER_DISPLAY_COLS = ["Name", "Team", "position", "Bats", "Throws"]
 
 
 def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team",
@@ -664,6 +722,10 @@ def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team",
                             for y in range(lo, max(lo, hi) + 1))
     if hi <= lo:
         return load_csv(f"{config[dir_key]}/{lo}.csv")
+    key = _span_key(dir_key, lo, hi, group_key)
+    hit = _SPAN_CACHE.get(key)
+    if hit is not None:
+        return hit.copy()
     frames = [df for y in range(lo, hi + 1)
               if not (df := load_csv(f"{config[dir_key]}/{y}.csv")).empty]
     if not frames:
@@ -673,8 +735,15 @@ def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team",
     combined = pd.concat(frames, ignore_index=True)
     if group_key not in combined.columns:
         return frames[-1]
-    display = ["Name", "Team"] if group_key != "Team" else []
-    return _aggregate_span(combined, group_key, _weight_col_for(dir_key), display)
+    display = PLAYER_DISPLAY_COLS if group_key != "Team" else []
+    out = _aggregate_span(combined, group_key, _weight_col_for(dir_key), display)
+    # Re-key after loading: a missing season may have just been fetched.
+    key = _span_key(dir_key, lo, hi, group_key)
+    _SPAN_CACHE.pop(key, None)
+    if len(_SPAN_CACHE) >= _SPAN_CACHE_MAX:
+        _SPAN_CACHE.pop(next(iter(_SPAN_CACHE)))
+    _SPAN_CACHE[key] = out
+    return out.copy()
 
 
 def pct_within_season(df: pd.DataFrame, stats) -> pd.DataFrame:
@@ -708,7 +777,7 @@ def load_stats_pct(dir_key: str, lo, hi, stats, group_key: str = "Team",
         return pd.DataFrame()
     stats = [s for s in stats if s]
     weight_col = _weight_col_for(dir_key)
-    display = ["Name", "Team"] if group_key != "Team" else []
+    display = PLAYER_DISPLAY_COLS if group_key != "Team" else []
     keep = [group_key, weight_col] + display + stats
     frames = []
     for y in range(lo, hi + 1):

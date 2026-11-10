@@ -711,6 +711,17 @@ button { font-family: inherit; }
   font-size: 30px; font-weight: 600; letter-spacing: -0.025em;
   margin: 0 0 10px; text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
+.dt-facts {
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px; letter-spacing: 0.04em; opacity: 0.88;
+  margin: -4px 0 12px;
+}
+.dt-loading {
+  background: linear-gradient(135deg, var(--surface-2) 0%, var(--surface) 100%);
+  color: var(--text);
+}
+.dt-loading .dt-eyebrow { animation: dtpulse 1s ease-in-out infinite alternate; }
+@keyframes dtpulse { from { opacity: 0.35; } to { opacity: 0.9; } }
 .dt-sub {
   font-family: 'Geist Mono', monospace;
   font-size: 12px; letter-spacing: 0.06em; opacity: 0.92;
