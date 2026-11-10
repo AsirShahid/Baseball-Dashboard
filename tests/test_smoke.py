@@ -1193,3 +1193,22 @@ def test_team_panel_range_uses_team_seasons():
     assert "2019–2021 · 3 SEASONS" in txt and "TRAJECTORY · 2019–2021" in txt
     assert "range totals" in txt
 
+
+def test_span_cache_respects_byte_budget(monkeypatch):
+    import data
+    from data import load_stats
+    data._SPAN_CACHE.clear()
+    load_stats("qualified_batting_dir", 2019, 2021, group_key="IDfg")
+    one = sum(b for _, b in data._SPAN_CACHE.values())
+    assert one > 0
+    # Budget fits one roll-up: the next span evicts the first.
+    monkeypatch.setattr(data, "_SPAN_CACHE_BYTES", int(one * 1.5))
+    load_stats("qualified_batting_dir", 2020, 2022, group_key="IDfg")
+    assert len(data._SPAN_CACHE) == 1
+    assert sum(b for _, b in data._SPAN_CACHE.values()) <= data._SPAN_CACHE_BYTES
+    # Larger than the whole budget → served but not cached.
+    monkeypatch.setattr(data, "_SPAN_CACHE_BYTES", 10)
+    data._SPAN_CACHE.clear()
+    df = load_stats("qualified_batting_dir", 2019, 2021, group_key="IDfg")
+    assert not df.empty and len(data._SPAN_CACHE) == 0
+

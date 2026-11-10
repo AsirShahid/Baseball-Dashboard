@@ -679,10 +679,12 @@ def _season_rows(frames_by_year) -> pd.DataFrame:
 # Rolled-up multi-season frames, keyed on the span and the mtimes of every
 # season file in it (so a data refresh invalidates). The chart, leaderboard,
 # CSV export and detail panel all ask for the same roll-up; rebuilding it for
-# 1871–2026 (156 CSVs × ~300 columns) took ~1.5 s per call. Small: a long
-# player span is ~10 MB, and each gunicorn worker holds its own copy.
-_SPAN_CACHE: dict = {}
-_SPAN_CACHE_MAX = 6
+# 1871–2026 (156 CSVs × ~470 columns) took ~1.5 s per call. Bounded by bytes,
+# not entries: a full-history qualified roll-up is ~16 MB but the all-players
+# one is ~89 MB, and each gunicorn worker (already ~0.5 GB with its CSV cache)
+# holds its own copy inside a 1.5 GB container.
+_SPAN_CACHE: dict = {}                 # key -> (frame, nbytes), oldest first
+_SPAN_CACHE_BYTES = 128_000_000
 
 
 def _span_key(dir_key, lo, hi, group_key):
@@ -694,6 +696,19 @@ def _span_key(dir_key, lo, hi, group_key):
         except OSError:
             sig.append(None)
     return (dir_key, lo, hi, group_key, tuple(sig))
+
+
+def _span_cache_put(key, df) -> None:
+    """Insert a roll-up, evicting the oldest entries to stay under the byte
+    budget (a frame bigger than the whole budget is simply not cached)."""
+    nbytes = int(df.memory_usage(deep=True).sum())
+    _SPAN_CACHE.pop(key, None)
+    if nbytes > _SPAN_CACHE_BYTES:
+        return
+    while _SPAN_CACHE and (sum(b for _, b in _SPAN_CACHE.values())
+                           + nbytes > _SPAN_CACHE_BYTES):
+        _SPAN_CACHE.pop(next(iter(_SPAN_CACHE)))
+    _SPAN_CACHE[key] = (df, nbytes)
 
 
 # Per-player descriptive columns carried from each entity's largest-weight
@@ -725,7 +740,7 @@ def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team",
     key = _span_key(dir_key, lo, hi, group_key)
     hit = _SPAN_CACHE.get(key)
     if hit is not None:
-        return hit.copy()
+        return hit[0].copy()
     frames = [df for y in range(lo, hi + 1)
               if not (df := load_csv(f"{config[dir_key]}/{y}.csv")).empty]
     if not frames:
@@ -739,10 +754,7 @@ def load_stats(dir_key: str, lo, hi=None, group_key: str = "Team",
     out = _aggregate_span(combined, group_key, _weight_col_for(dir_key), display)
     # Re-key after loading: a missing season may have just been fetched.
     key = _span_key(dir_key, lo, hi, group_key)
-    _SPAN_CACHE.pop(key, None)
-    if len(_SPAN_CACHE) >= _SPAN_CACHE_MAX:
-        _SPAN_CACHE.pop(next(iter(_SPAN_CACHE)))
-    _SPAN_CACHE[key] = out
+    _span_cache_put(key, out)
     return out.copy()
 
 
