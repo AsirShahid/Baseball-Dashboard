@@ -9,7 +9,7 @@ from . import db, queries
 
 PRESETS = {
     "team": [
-        ("Offense vs pitching", "pit:ERA", "bat:wRC+"), ("Power and contact", "bat:HardHit%", "bat:Barrel%"),
+        ("Offense vs pitching", "pit:ERA-", "bat:wRC+"), ("Power and contact", "bat:HardHit%", "bat:Barrel%"),
         ("Plate discipline", "bat:K%", "bat:BB%"), ("Strikeouts and walks", "pit:BB%", "pit:K%"),
         ("Run prevention", "pit:FIP", "pit:ERA"), ("Hitting vs pitching fWAR", "pit:WAR", "bat:WAR"),
     ],
@@ -24,7 +24,7 @@ PRESETS = {
         ("Velocity and whiffs", "FBv", "SwStr%"), ("Luck", "BABIP", "LOB%"),
     ],
 }
-DEFAULTS = {"team": ("pit:ERA", "bat:wRC+"), "bat": ("wRC+", "WAR"), "pit": ("FIP", "ERA")}
+DEFAULTS = {"team": ("pit:ERA-", "bat:wRC+"), "bat": ("wRC+", "WAR"), "pit": ("FIP", "ERA")}
 
 
 def team_colors() -> dict:

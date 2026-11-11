@@ -143,7 +143,10 @@ def column(kind: str, stat: str) -> dict | None:
     info = db.catalog(kind).get(stat)
     if info is None:
         return None
-    return {"key": stat, "head": cat.head(stat), "name": info["name"], "fmt": "ip" if stat == "IP" else info["fmt"],
+    # Descriptions come from the code when it has one, so wording fixes show
+    # without a rebuild; the built catalog covers the rest.
+    name = cat.NAMES[stat] if stat in cat.NAMES else info["name"]
+    return {"key": stat, "head": cat.head(stat), "name": name, "fmt": "ip" if stat == "IP" else info["fmt"],
             "better": not info["lower"], "rule": rule_of(stat, kind), "group": info["grp"]}
 
 

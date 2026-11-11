@@ -107,3 +107,19 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
   multi-season cut, same league group), via `queries.percentiles(pid, kind, lo, hi)`.
 - The season number no longer links to that season's leaderboard (it picks the span).
 - Photo is 2:3 like MLB's headshots (88x132; phones 64x96). The summary line always has G.
+
+## Standout labels; ERA- on the hitting vs pitching chart (2026-11-11)
+
+- Labels ("Standouts"): `standoutOrder()` in `chart.js` takes candidates in turn from seven lists:
+  best on both axes, the loneliest dot on screen (distance to the second-nearest dot), each axis
+  leader, furthest above and below the trend, and furthest from the middle. It works in robust
+  z-scores of the screen position, so a far outlier counts as far (percentile ranks squash the
+  tails). The old rule weighted distance toward the good corner, so labels were mostly
+  good-at-both players. Labels are placed down that list until enough fit. 3D labels take the
+  best overall and each axis leader in turn. basketball.asir.dev uses the same function.
+- Team chart default and the "Offense vs pitching" preset use ERA- instead of ERA. ERA- is park-
+  and league-adjusted with 100 as average, like wRC+. FIP- was rejected because FanGraphs has
+  no FIP- for Negro League clubs (16 of 32 teams in 1925); ERA- covers every team-season.
+- Stat descriptions now come from `pipeline/catalog.NAMES` at run time when present, so wording
+  fixes show without a rebuild.
+- Rollback image `baseball-site:pre-labels-20261111`.

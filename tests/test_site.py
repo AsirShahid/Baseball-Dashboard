@@ -429,3 +429,10 @@ def test_player_span_row_and_percentiles(client, app):
 def test_player_summary_counts_games_in_every_mode(client):
     html = page(client, f"/player/{JUDGE}?bmode=advanced")
     assert "PA · 0 G" not in html and re.search(r"PA · \d{2,3} G", html)
+
+
+def test_team_chart_defaults_to_adjusted_pitching(client):
+    from web import charts
+    assert charts.DEFAULTS["team"] == ("pit:ERA-", "bat:wRC+")       # both park and league adjusted, 100 = average
+    data = client.get("/api/chart?view=team&x=pit:ERA-&y=bat:wRC%2B&season=2024").get_json()
+    assert data["axes"]["x"]["better"] is False

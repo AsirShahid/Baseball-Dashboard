@@ -13,7 +13,7 @@
   var MENUS = JSON.parse(document.getElementById("c-menus").textContent);
   var PRESETS = JSON.parse(document.getElementById("c-presets-data").textContent);
   var init = JSON.parse(document.getElementById("c-state").textContent);
-  var DEFAULTS = { team: ["pit:ERA", "bat:wRC+"], bat: ["wRC+", "WAR"], pit: ["FIP", "ERA"] };
+  var DEFAULTS = { team: ["pit:ERA-", "bat:wRC+"], bat: ["wRC+", "WAR"], pit: ["FIP", "ERA"] };
   var LATEST = root.dataset.latest;
   var LADDER = [0, 1, 5, 10];
   (function () {
@@ -408,20 +408,20 @@
     if (!players && !logos && state.labels !== "none") want = shown.length;
     if (!players && logos && state.labels === "standouts") want = 0;
     if (players && state.team && state.labels === "standouts") want = Math.min(shown.length, 40);
-    var order = shown.filter(function (r) { return r._in; }).sort(function (a, b) {
-      function reach(r) {
-        var dx = r._px - 0.5, dy = r._py - 0.5;
-        return (dx * dx + dy * dy) * (0.3 + 0.7 * r._score) + 0.35 * Math.max(dy, 0);
-      }
-      return (b._hit - a._hit) || (reach(b) - reach(a));
-    });
-    var hits = order.filter(function (r) { return r._hit; }).length;
+    var visible = shown.filter(function (r) { return r._in; });
+    var hitList = visible.filter(function (r) { return r._hit; }), hits = hitList.length;
+    var order = want >= visible.length ? visible
+      : hitList.concat(standoutOrder(visible.filter(function (r) { return !r._hit; }), m, width - m.l - m.r, ph));
     var boxes = [];
     function free(box) {
       if (box.x < m.l - 2 || box.x + box.w > width - 2 || box.y < m.t - 2 || box.y + box.h > m.t + ph + 2) return false;
       return !boxes.some(function (o) { return box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y; });
     }
-    order.slice(0, Math.max(want, Math.min(hits, 24))).forEach(function (r) {
+    // Place labels down the list until enough fit; a dot whose label has no
+    // room gives its turn to the next one.
+    var limit = Math.max(want, Math.min(hits, 24)), placed = 0;
+    order.slice(0, limit * 8).forEach(function (r) {
+      if (placed >= limit) return;
       var text = (players ? shortName(r.name, narrow) : r.team) + (data.split ? seasonTag(r) : "");
       var w = text.length * 6.1 + 4, h = 13, gap = r._r + 3;
       var spots = [
@@ -434,10 +434,85 @@
         if (free(box)) {
           boxes.push(box);
           make("text", { class: "lbl" + (r._hit ? " hit" : ""), x: box.x + 2, y: box.y + h - 3 }, svg).textContent = text;
+          placed++;
           break;
         }
       }
     });
+  }
+
+  // Which dots get a name. Candidates come in turn from several lists, so the
+  // labels mix kinds of standout instead of only the good-at-both corner:
+  // best on both axes, the loneliest dots on screen, each axis's leader, the
+  // furthest above and below the trend, and the furthest from the middle.
+  // Positions are robust z-scores of where the dot sits on screen (better is
+  // right and up), so a far outlier counts as far, unlike a percentile rank.
+  function standoutOrder(points, m, pw, ph) {
+    var n = points.length;
+    if (n < 3) return points.slice();
+    var u = [], v = [];
+    points.forEach(function (r) { u.push((r._x - m.l) / pw); v.push(1 - (r._y - m.t) / ph); });
+    function scaled(a) {
+      var s = a.slice().sort(function (p, q) { return p - q; });
+      function q(f) { var i = f * (n - 1), lo = Math.floor(i); return s[lo] + (s[Math.min(n - 1, lo + 1)] - s[lo]) * (i - lo); }
+      var mid = q(0.5), spread = (q(0.75) - q(0.25)) / 1.349;
+      if (!(spread > 1e-9)) {
+        var mean = a.reduce(function (t, x) { return t + x; }, 0) / n;
+        spread = Math.sqrt(a.reduce(function (t, x) { return t + (x - mean) * (x - mean); }, 0) / n) || 1;
+      }
+      return a.map(function (x) { return (x - mid) / spread; });
+    }
+    var zu = scaled(u), zv = scaled(v);
+    var mu = 0, mv = 0, cov = 0, vu = 0, i;
+    for (i = 0; i < n; i++) { mu += zu[i]; mv += zv[i]; }
+    mu /= n; mv /= n;
+    for (i = 0; i < n; i++) { cov += (zu[i] - mu) * (zv[i] - mv); vu += (zu[i] - mu) * (zu[i] - mu); }
+    var slope = vu > 0 ? cov / vu : 0;
+    // Loneliness: distance on screen to the second-nearest dot. Dots in a
+    // crowded grid cell are not lonely, so only the sparse ones are measured.
+    var C = 24, R = 3, grid = {}, lonely = [];
+    points.forEach(function (r, k) {
+      var key = Math.floor(r._x / C) + "," + Math.floor(r._y / C);
+      (grid[key] = grid[key] || []).push(k);
+    });
+    points.forEach(function (r, k) {
+      var gx = Math.floor(r._x / C), gy = Math.floor(r._y / C);
+      if (grid[gx + "," + gy].length >= 4) { lonely.push(0); return; }
+      var d1 = Infinity, d2 = Infinity;
+      for (var a = -R; a <= R; a++) for (var b = -R; b <= R; b++) {
+        (grid[(gx + a) + "," + (gy + b)] || []).forEach(function (j) {
+          if (j === k) return;
+          var d = Math.hypot(points[j]._x - r._x, points[j]._y - r._y);
+          if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+        });
+      }
+      lonely.push(Math.min(d2, C * (R + 1)) + (d2 === Infinity ? Math.hypot(zu[k], zv[k]) : 0));
+    });
+    var keys = {
+      both: function (k) { return zu[k] + zv[k]; },
+      lonely: function (k) { return lonely[k]; },
+      y: function (k) { return zv[k]; },
+      x: function (k) { return zu[k]; },
+      above: function (k) { return zv[k] - (mv + slope * (zu[k] - mu)); },
+      below: function (k) { return (mv + slope * (zu[k] - mu)) - zv[k]; },
+      far: function (k) { return zu[k] * zu[k] + zv[k] * zv[k]; }
+    };
+    var turns = ["both", "lonely", "y", "x", "above", "below", "far"];
+    var lists = turns.map(function (name) {
+      var f = keys[name], idx = [];
+      for (var k = 0; k < n; k++) idx.push(k);
+      var val = idx.map(f);
+      return idx.sort(function (a, b) { return val[b] - val[a]; });
+    });
+    var at = turns.map(function () { return 0; }), taken = {}, out = [];
+    while (out.length < n) {
+      for (var t = 0; t < lists.length && out.length < n; t++) {
+        var list = lists[t];
+        while (at[t] < n && taken[list[at[t]]]) at[t]++;
+        if (at[t] < n) { taken[list[at[t]]] = true; out.push(points[list[at[t]]]); }
+      }
+    }
+    return out;
   }
 
   // 3D: an orthographic projection of the unit cube; drag to rotate.
@@ -498,9 +573,19 @@
       var depth = 0.55 + 0.45 * (r._d + 1.8) / 3.6;
       make("circle", { cx: r._x, cy: r._y, r: r._r * depth + 1, fill: state.color === "team" ? teamColor(r.team) : ramp(r._score), "fill-opacity": 0.9 }, g);
     });
-    shown.filter(function (r) { return r._hit; }).slice(0, 20).concat(
-      state.labels === "none" || faded ? [] : shown.slice().sort(function (a, b) { return b._score - a._score; }).slice(0, narrow ? 5 : 10)
-    ).forEach(function (r) {
+    // Labels: the best overall and each axis's leaders, in turn.
+    var named = [], seen = {};
+    if (state.labels !== "none" && !faded) {
+      var lists3 = ["_score", "_px", "_py", "_pz"].map(function (k) { return shown.slice().sort(function (a, b) { return b[k] - a[k]; }); });
+      var cap = Math.min(shown.length, state.labels === "all" ? shown.length : state.labels === "more" ? (narrow ? 10 : 20) : (narrow ? 5 : 10));
+      for (var round = 0; named.length < cap && round < shown.length; round++) {
+        lists3.forEach(function (list) {
+          var r = list[round];
+          if (r && !seen[shown.indexOf(r)] && named.length < cap) { seen[shown.indexOf(r)] = true; named.push(r); }
+        });
+      }
+    }
+    shown.filter(function (r) { return r._hit; }).slice(0, 20).concat(named.filter(function (r) { return !r._hit; })).forEach(function (r) {
       make("text", { class: "lbl" + (r._hit ? " hit" : ""), x: r._x + r._r + 3, y: r._y + 4 }, svg)
         .textContent = (data.view === "player" ? shortName(r.name, narrow) : r.team) + (data.split ? seasonTag(r) : "");
     });
