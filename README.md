@@ -19,6 +19,8 @@ front-end framework. Live at [baseball.asir.dev](https://baseball.asir.dev).
   season or a span; season-by-season points and trajectories, era-adjusted percentiles,
   trend line with r², a rotatable 3D mode, team logos, CSV download and shareable links.
   Old share links from the Dash site redirect here.
+- **Home-screen app**: installable on phones, and pages you have opened work offline (NOTES.md,
+  2026-11-11).
 
 ## Qualified
 

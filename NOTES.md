@@ -272,3 +272,36 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
 - Not cached per season (one all-time query would add ~150 entries to a 400-entry cache that clears
   when full); `db.table` caches the result. A 72-page sweep: worst 3.9 s uncached, 391 MiB vs 300 MiB
   for the old image, so mem_limit 512m -> 768m.
+
+## Home-screen app and offline use (2026-11-11)
+
+- Installable PWA on phones and tablets: `/manifest.webmanifest` and `/sw.js` come from
+  `web/pwa.py`; icons in `web/static/icons/` are rendered from `favicon.svg` by
+  `tools/make_icons.py` (rounded tile, maskable full-bleed, 180 px apple-touch-icon).
+  The manifest link has `crossorigin="use-credentials"` because a manifest is otherwise
+  fetched without cookies, which matters behind a sign-in gateway.
+- `web/sw.js` (same file on basketball and baseball; `/sw.js` prepends a CONFIG line with
+  this deploy's versioned static files, so every deploy updates phones by itself):
+  - Pages: network first, every page that loads is saved (newest 300). With no connection,
+    no answer within 8 s, or a 5xx during a restart, the saved copy is served with
+    `data-saved` on `<html>` and app.js shows "Offline: saved copy from ...". A page never
+    opened shows a grouped list of saved pages instead.
+  - The main pages (nav pages plus the favourite team) are refreshed at most hourly while a
+    page is open online (app.js posts "warm"), so they are recent when the signal drops.
+  - Static files cache first, all stored on install; old versions dropped on activate, with
+    an ignoreSearch fallback for pages saved under an older version.
+  - Images cache first (newest 800); MLB headshots are fetched with CORS (img.mlbstatic.com
+    sends `Access-Control-Allow-Origin: *`) so they are not padded opaque entries.
+  - `/api/chart`: network first, saved copy offline. `/api/search` offline searches the
+    titles of saved player and team pages ("Saved for offline").
+  - Sign-in redirects (`/oauth2/`, opaque redirects) pass through and are never saved.
+- Installed app only: returning after 15+ minutes reloads the page when online.
+- Checked in Google Chrome at Pixel 7 size against a container of the new image: no
+  installability errors (persistent profile), all main pages and static files saved, saved
+  copies styled with the banner both with emulated offline and with the server stopped,
+  list page for unsaved pages, offline search, banner gone back online, no console errors.
+  On production https://baseball.asir.dev the same checks passed (server not stopped).
+  Basketball and usage are behind Pocket ID, so production there was checked only through the
+  container IP; a real phone install was not tested. iOS keeps a home-screen app's cookies
+  apart from Safari's, so the installed app asks for the passkey once.
+- Rollback image: `baseball-site:pre-pwa-20261111` (retag as baseball-site:latest and `docker compose up -d --no-build baseball-dashboard`).
