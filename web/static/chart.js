@@ -122,7 +122,8 @@
         var box = document.createElement("optgroup");
         box.label = g[0];
         g[1].forEach(function (c) {
-          var label = c[0] + (c[1] && c[1] !== c[0] ? "  \u00b7  " + c[1] : "");
+          var head = c[4] || c[0];
+          var label = head + (c[1] && c[1] !== head ? "  \u00b7  " + c[1] : "");
           box.appendChild(new Option(label, g[2] + c[0]));
         });
         select.appendChild(box);
@@ -251,9 +252,18 @@
       drawMessage(players ? "No players match. Lower the minimum or widen the filters." : "No teams match.");
       return;
     }
-    percentile(shown, "x", ax.better);
-    percentile(shown, "y", ay.better);
-    if (az) percentile(shown, "z", az.better);
+    if (data.era) {
+      // Era values are already season percentiles (100 = best) against the full
+      // pool; re-ranking the visible points would undo the filters fix.
+      shown.forEach(function (r) {
+        r._px = r.x / 100; r._py = r.y / 100;
+        if (az) r._pz = r.z / 100;
+      });
+    } else {
+      percentile(shown, "x", ax.better);
+      percentile(shown, "y", ay.better);
+      if (az) percentile(shown, "z", az.better);
+    }
     shown.forEach(function (r) { r._score = az ? (r._px + r._py + r._pz) / 3 : (r._px + r._py) / 2; });
     var needle = fold(state.find.trim());
     shown.forEach(function (r) {

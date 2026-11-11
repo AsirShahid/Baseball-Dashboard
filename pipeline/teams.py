@@ -292,6 +292,12 @@ def league_name(code: str, season: int) -> str:
     return hit[1] if hit else other_leagues(season)
 
 
+def league_group(code: str, season: int) -> str:
+    """Who a club is compared with for percentiles: the AL and NL together (the
+    majors as today's MLB counts them), and every other league on its own."""
+    return "MLB" if league(code, season) in ("AL", "NL") else league_name(code, season)
+
+
 def league(code: str, season: int):
     """'AL', 'NL' or None (another league: NA, AA, UA, PL, FL, Negro Leagues)."""
     hit = historic(code, season) if season is not None and int(season) <= 1900 else None

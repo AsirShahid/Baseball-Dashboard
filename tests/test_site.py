@@ -25,7 +25,7 @@ JUDGE, OHTANI, SOTO, CHISHOLM, SKUBAL = 15640, 19755, 20123, 20454, 22267
 def data_root(tmp_path_factory):
     from pipeline import build
     out = tmp_path_factory.mktemp("data")
-    build.build(FIXTURES, FIXTURES, out)
+    build.build(FIXTURES, FIXTURES, out, FIXTURES / "bwar")
     return out
 
 
@@ -310,7 +310,7 @@ def test_player_percentiles(app, client):
     by = {r["col"]["key"]: r["pct"] for g in s["groups"] for r in g["rows"]}
     assert by["ERA"] >= 95 and by["K%"] >= 90
     html = page(client, f"/player/{JUDGE}")
-    assert "Percentile ranks" in html and "qualified hitters in 2024" in html
+    assert "Percentile ranks" in html and "qualified AL and NL hitters in 2024" in html
 
 
 def test_pre_1954_spans_keep_obp():
@@ -325,3 +325,81 @@ def test_pre_1954_spans_keep_obp():
     _keys, _first, out = aggregate.group_rows(np.array([1, 1]), cols, pitching=False)
     assert math.isclose(out["OBP"][0], (376 + 295 + 7) / (998 + 295 + 7), rel_tol=1e-9)
     assert not np.isnan(out["OPS"][0]) and not np.isnan(out["BABIP"][0])
+
+
+# ---------- era-adjusted percentiles ----------
+
+def _chart(client, **kw):
+    from urllib.parse import urlencode
+    data = client.get("/api/chart?" + urlencode(kw)).get_json()
+    assert "error" not in data, data
+    return [dict(zip(data["fields"], r)) for r in data["rows"]]
+
+
+def test_era_percentile_matches_hand_calculation(client, app):
+    from web import queries
+    rows = _chart(client, view="player", kind="bat", x="OPS", y="WAR", season=2024, era=1)
+    judge = next(r for r in rows if r["id"] == JUDGE)
+    with app.app_context():
+        lines, _ = queries.lines_for("bat", 2024, 2024, ("OPS",), min_mode="n", min_value=1)
+    pool = np.sort([l["OPS"] for l in lines if l["qualified"]])
+    mine = next(l["OPS"] for l in lines if l["pid"] == JUDGE)
+    want = (np.searchsorted(pool, mine, "left") + np.searchsorted(pool, mine, "right")) / 2 / len(pool) * 100
+    assert math.isclose(judge["x"], want, abs_tol=1e-3)
+
+
+def test_era_filters_do_not_change_the_pool(client):
+    base = {r["id"]: r["x"] for r in _chart(client, view="player", kind="bat", x="OPS", y="WAR", season=2024, era=1)}
+    for f in ({"team": "NYY"}, {"pos": "OF"}, {"league": "AL"}):
+        rows = _chart(client, view="player", kind="bat", x="OPS", y="WAR", season=2024, era=1, **f)
+        assert rows and all(math.isclose(r["x"], base[r["id"]], abs_tol=1e-6) for r in rows if r["id"] in base), f
+
+
+def test_era_span_is_weighted_mean_of_seasons(client):
+    split = _chart(client, view="player", kind="bat", x="OPS", y="WAR", season=1955, to=2024, era=1, split="season", min=0)
+    comb = _chart(client, view="player", kind="bat", x="OPS", y="WAR", season=1955, to=2024, era=1, min=0)
+    for pid in {r["id"] for r in comb}:
+        seasons = [r for r in split if r["id"] == pid and r["x"] is not None]
+        if not seasons:
+            continue
+        want = sum(r["x"] * r["w"] for r in seasons) / sum(r["w"] for r in seasons)
+        got = next(r["x"] for r in comb if r["id"] == pid)
+        assert math.isclose(got, want, abs_tol=0.01), pid
+
+
+def test_league_groups():
+    from pipeline import teams as T
+    assert T.league_group("NYY", 1932) == T.league_group("BRO", 1932) == "MLB"
+    assert T.league_group("HG", 1932) == "East-West League"
+    assert T.league_group("CWH", 1915) == "Federal League"
+    assert T.league_group("CPI", 1890) == "Players' League" and T.league_group("BSN", 1890) == "MLB"
+
+
+# ---------- fWAR and bWAR ----------
+
+def test_bwar_matches_baseball_reference(app, con):
+    from web import db
+    with app.app_context():
+        t = db.table("bat", 2024, 2024, ("WAR", "bWAR"))
+        idx = {r["pid"]: i for i, r in enumerate(t.ident)}
+        assert math.isclose(t.cols["bWAR"][idx[JUDGE]], 10.90, abs_tol=0.005)
+        assert math.isclose(t.cols["bWAR"][idx[CHISHOLM]], 1.40 + 1.52, abs_tol=0.005)   # two stints summed
+        assert abs(t.cols["WAR"][idx[JUDGE]] - t.cols["bWAR"][idx[JUDGE]]) > 0.05          # two different stats
+        p = db.table("pit", 2024, 2024, ("bWAR",))
+        assert math.isclose(p.cols["bWAR"][[r["pid"] for r in p.ident].index(SKUBAL)], 6.66, abs_tol=0.005)
+        s = db.table("sbat", 2024, 2024, ("bWAR",))
+        stints = {r["team"]: s.cols["bWAR"][i] for i, r in enumerate(s.ident) if r["pid"] == CHISHOLM}
+        assert math.isclose(stints["MIA"], 1.40, abs_tol=0.005) and math.isclose(stints["NYY"], 1.52, abs_tol=0.005)
+    share = con.execute("SELECT COUNT(*) FROM players WHERE bwar IS NOT NULL").fetchone()[0] / \
+        con.execute("SELECT COUNT(*) FROM players").fetchone()[0]
+    assert share > 0.95
+
+
+def test_war_is_labelled_fwar(client):
+    html = page(client, "/players?kind=bat&season=2024")
+    assert ">fWAR<" in html and ">bWAR<" in html
+    player = page(client, f"/player/{JUDGE}")
+    assert "career fWAR" in player and "10.9</b> bWAR" in player
+    assert "fWAR and bWAR" in page(client, "/about")
+    data = client.get("/api/chart?view=player&kind=bat&x=bWAR&y=WAR&season=2024").get_json()
+    assert data["axes"]["y"]["label"] == "fWAR" and data["axes"]["x"]["label"] == "bWAR"

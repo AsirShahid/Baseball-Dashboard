@@ -48,7 +48,7 @@
   <div class="section-head"><h2>Franchise history</h2><span class="more">{{ t.history|length }} seasons</span></div>
   <div class="table-wrap">
   <table class="stats sortable compact">
-  <thead><tr><th class="t" data-key="season" data-dir="desc">Season</th><th class="t" data-key="name" data-type="text" data-dir="asc">Club</th><th data-key="w">W</th><th data-key="l" data-dir="asc">L</th><th data-key="pct">PCT</th><th data-key="rs">RS</th><th data-key="ra" data-dir="asc">RA</th><th data-key="war">WAR</th><th class="t">League</th></tr></thead>
+  <thead><tr><th class="t" data-key="season" data-dir="desc">Season</th><th class="t" data-key="name" data-type="text" data-dir="asc">Club</th><th data-key="w">W</th><th data-key="l" data-dir="asc">L</th><th data-key="pct">PCT</th><th data-key="rs">RS</th><th data-key="ra" data-dir="asc">RA</th><th data-key="war" title="FanGraphs WAR, hitters plus pitchers">fWAR</th><th class="t">League</th></tr></thead>
   <tbody>
   {% for h in t.history %}
   <tr class="{{ 'me' if h.season == season }}">

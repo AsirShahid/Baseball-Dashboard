@@ -197,7 +197,7 @@ def compare():
 
 @bp.route("/chart")
 def chart():
-    menus = {k: [[title, [[c["key"], c["name"], c["fmt"], c["better"]] for c in cols]]
+    menus = {k: [[title, [[c["key"], c["name"], c["fmt"], c["better"], c["head"]] for c in cols]]
                  for title, cols in queries.stat_menu(k)] for k in ("bat", "pit")}
     latest = queries.latest_season()
     teams_now = sorted(((code, r["name"]) for code, r in queries.team_seasons(latest).items()),

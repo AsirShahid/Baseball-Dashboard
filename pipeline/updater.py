@@ -8,6 +8,8 @@ Loop:
 - otherwise: the latest season once a day (a new season appears on its own);
 - on the 2nd of each month: every season again, to pick up FanGraphs'
   recalculations (WAR, park factors, wOBA constants);
+- Baseball-Reference's daily WAR files (bWAR) once a day, downloaded only when
+  they changed;
 - a rebuild whenever a file changed, or when the database is missing or
   older than the code's schema.
 """
@@ -21,7 +23,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from . import build, fetch
+from . import build, bwar, fetch
 
 log = logging.getLogger("updater")
 
@@ -67,6 +69,15 @@ def cycle(csv_root: Path, stints_root: Path, output: Path, now: dt.datetime | No
     else:
         changed.update(fetch.run(csv_root, stints_root, year - 1 if now.month < 3 else year, year,
                                  force=True, delay=delay))
+    # Baseball-Reference's WAR files, at most once a day (a 304 when unchanged).
+    today = now.strftime("%Y-%m-%d")
+    if state.get("bwar_checked") != today:
+        try:
+            if bwar.fetch(output / "bwar"):
+                changed["bwar"] = ["war_daily"]
+            state["bwar_checked"] = today
+        except Exception:   # never let a second source stop the FanGraphs refresh
+            log.exception("bWAR download failed; keeping the previous files")
     need = bool(changed) or db_schema(output) != build.SCHEMA_VERSION
     if need:
         log.info("rebuilding (changed: %s)", {k: len(v) for k, v in changed.items()} or "schema")
@@ -91,6 +102,10 @@ def main(argv=None):
     p.add_argument("--once", action="store_true")
     a = p.parse_args(argv)
     if db_schema(a.output) != build.SCHEMA_VERSION:
+        try:
+            bwar.fetch(a.output / "bwar")
+        except Exception:
+            log.exception("bWAR download failed; building without it")
         build.build(a.csv_root, a.stints_root, a.output)
     while True:
         try:

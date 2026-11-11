@@ -11,16 +11,16 @@ PRESETS = {
     "team": [
         ("Offense vs pitching", "pit:ERA", "bat:wRC+"), ("Power and contact", "bat:HardHit%", "bat:Barrel%"),
         ("Plate discipline", "bat:K%", "bat:BB%"), ("Strikeouts and walks", "pit:BB%", "pit:K%"),
-        ("Run prevention", "pit:FIP", "pit:ERA"), ("Hitting vs pitching WAR", "pit:WAR", "bat:WAR"),
+        ("Run prevention", "pit:FIP", "pit:ERA"), ("Hitting vs pitching fWAR", "pit:WAR", "bat:WAR"),
     ],
     "bat": [
-        ("wRC+ vs WAR", "wRC+", "WAR"), ("Power and contact", "HardHit%", "Barrel%"),
+        ("wRC+ vs fWAR", "wRC+", "WAR"), ("fWAR vs bWAR", "bWAR", "WAR"), ("Power and contact", "HardHit%", "Barrel%"),
         ("Plate discipline", "K%", "BB%"), ("Speed and contact", "SB", "AVG"),
         ("Expected vs actual", "xwOBA", "wOBA"), ("Chase and whiff", "O-Swing%", "SwStr%"),
     ],
     "pit": [
         ("Strikeouts and walks", "BB%", "K%"), ("Run prevention", "FIP", "ERA"),
-        ("SIERA vs WAR", "SIERA", "WAR"), ("Groundballs and homers", "GB%", "HR/FB"),
+        ("SIERA vs fWAR", "SIERA", "WAR"), ("fWAR vs bWAR", "bWAR", "WAR"), ("Groundballs and homers", "GB%", "HR/FB"),
         ("Velocity and whiffs", "FBv", "SwStr%"), ("Luck", "BABIP", "LOB%"),
     ],
 }
@@ -171,8 +171,8 @@ def chart_payload(args) -> dict:
                          "Narrow the seasons or raise the minimum."}
     out_axes = {}
     for a, (k, stat, c) in axes.items():
-        out_axes[a] = {"key": stat, "kind": k, "label": (("Hitting " if k == "bat" else "Pitching ") + stat)
-                       if view == "team" else stat, "name": c["name"],
+        out_axes[a] = {"key": stat, "kind": k, "label": (("Hitting " if k == "bat" else "Pitching ") + c["head"])
+                       if view == "team" else c["head"], "name": c["name"],
                        "fmt": "pctl" if era else c["fmt"], "better": c["better"], "rule": c["rule"]}
     fields = ["id", "name", "team", "season", "logo", "x", "y", "z", "w", "first", "last", "lg"]
     return {"view": view, "kind": kind, "lo": lo, "hi": hi, "split": split, "era": era,
@@ -215,13 +215,18 @@ def _player_rows(kind, axes, seasons_list, args, era):
                                          team=args.get("team", ""), league=args.get("league", ""),
                                          pos=args.get("pos", ""))
         if era:
-            regulars = [l for l in lines if l["qualified"]] or lines
+            # The pool is every qualified player in his league group that season,
+            # whatever the team, league or position filter shows.
+            pools = queries.season_pools(kind, lo, stats)
+            group_of = queries.player_groups(kind, lo)
             for a, (_k, stat, c) in axes.items():
-                pool = np.array([l.get(stat) if l.get(stat) is not None else np.nan for l in regulars])
-                mine = np.array([l.get(stat) if l.get(stat) is not None else np.nan for l in lines])
-                pct = _percentiles(mine, pool, c["better"])
-                for l, p in zip(lines, pct):
-                    l["_" + a] = None if np.isnan(p) else float(p)
+                for g in {group_of.get(l["pid"], "MLB") for l in lines}:
+                    members = [l for l in lines if group_of.get(l["pid"], "MLB") == g]
+                    pool = pools.get(g, {}).get(stat, np.array([]))
+                    mine = np.array([l.get(stat) if l.get(stat) is not None else np.nan for l in members])
+                    pct = _percentiles(mine, pool, c["better"])
+                    for l, p in zip(members, pct):
+                        l["_" + a] = None if np.isnan(p) else float(p)
         for l in lines:
             if min_mode == "q":
                 ok = l["qualified"] or not rated
@@ -263,7 +268,13 @@ def _team_rows(axes, seasons_list, args, era):
         for a, (k, stat, c) in axes.items():
             t = db.table(queries.TEAM_KIND[k], lo, hi, (stat, "PA" if k == "bat" else "IP"))
             col = t.cols[stat]
-            pct = _percentiles(col, col, c["better"]) if era else None
+            pct = None
+            if era:   # each club against the clubs of its league group that season
+                pct = np.full(len(col), np.nan)
+                group = np.array([T.league_group(r["team"], lo) for r in t.ident])
+                for g in set(group):
+                    m = group == g
+                    pct[m] = _percentiles(col[m], col[m], c["better"])
             for i, r in enumerate(t.ident):
                 key = r["teamid"] if lo != hi else r["team"]
                 row = by_team.setdefault(key, {"team": r["team"], "season": r.get("last") or lo,
@@ -313,9 +324,9 @@ def _combine_era(rows):
 
 COMPARE_STATS = {
     "bat": ["G", "PA", "HR", "R", "RBI", "SB", "AVG", "OBP", "SLG", "OPS", "BB%", "K%", "ISO", "wOBA",
-            "wRC+", "Batting", "BaseRunning", "Fielding", "WAR"],
+            "wRC+", "Batting", "BaseRunning", "Fielding", "WAR", "bWAR"],
     "pit": ["W", "L", "G", "GS", "SV", "IP", "SO", "ERA", "WHIP", "K%", "BB%", "K-BB%", "HR/9", "FIP",
-            "xFIP", "SIERA", "ERA-", "WAR"],
+            "xFIP", "SIERA", "ERA-", "WAR", "bWAR"],
 }
 
 

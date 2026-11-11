@@ -94,13 +94,56 @@ def qualifying(kind: str, t: db.Table) -> tuple:
     return need, have, have >= need
 
 
+# ---------- percentile pools ----------
+
+STINT_KIND = {BAT: "sbat", PIT: "spit"}
+
+
+@db.cached
+def player_groups(kind: str, season: int) -> dict:
+    """pid -> league group that season (teams.league_group). A traded player
+    counts where he had the most PA (IP for pitchers)."""
+    weight = "PA" if kind == BAT else "IP"
+    out, best = {}, {}
+    for k in (kind, STINT_KIND[kind]):
+        t = db.table(k, season, season, (weight,))
+        col = t.cols.get(weight)
+        for i, r in enumerate(t.ident):
+            code = r.get("team") or ""
+            if code == T.MULTI_TEAM:
+                continue
+            w = 0.0 if col is None or np.isnan(col[i]) else float(col[i])
+            if r["pid"] not in best or w > best[r["pid"]]:
+                best[r["pid"]], out[r["pid"]] = w, T.league_group(code, season)
+    return out
+
+
+def season_pools(kind: str, season: int, stats: tuple) -> dict:
+    """{group: {stat: sorted values}} of the qualified players in each league group
+    that season, ignoring any display filter (a group with nobody qualified uses
+    everyone who played)."""
+    t = db.table(kind, season, season, stats)
+    _need, have, ok = qualifying(kind, t)
+    groups = player_groups(kind, season)
+    member: dict = {}
+    for i, r in enumerate(t.ident):
+        if have[i] > 0:
+            member.setdefault(groups.get(r["pid"], "MLB"), []).append(i)
+    out = {}
+    for g, idx in member.items():
+        idx = np.array(idx)
+        use = idx[ok[idx]] if ok[idx].any() else idx
+        out[g] = {s: np.sort(t.cols[s][use][~np.isnan(t.cols[s][use])]) for s in stats if s in t.cols}
+    return out
+
+
 # ---------- columns ----------
 
 def column(kind: str, stat: str) -> dict | None:
     info = db.catalog(kind).get(stat)
     if info is None:
         return None
-    return {"key": stat, "head": stat, "name": info["name"], "fmt": "ip" if stat == "IP" else info["fmt"],
+    return {"key": stat, "head": cat.head(stat), "name": info["name"], "fmt": "ip" if stat == "IP" else info["fmt"],
             "better": not info["lower"], "rule": rule_of(stat, kind), "group": info["grp"]}
 
 
@@ -224,9 +267,9 @@ def _sort_key(value, better, short=False):
 # ---------- leaders ----------
 
 BOARDS = {
-    BAT: [("WAR", "WAR"), ("wRC+", "wRC+"), ("HR", "Home runs"), ("AVG", "Batting average"),
+    BAT: [("WAR", "fWAR (FanGraphs)"), ("bWAR", "bWAR (Baseball-Reference)"), ("wRC+", "wRC+"), ("HR", "Home runs"), ("AVG", "Batting average"),
           ("OBP", "On-base percentage"), ("SB", "Stolen bases")],
-    PIT: [("WAR", "WAR"), ("ERA", "ERA"), ("SO", "Strikeouts"), ("FIP", "FIP"),
+    PIT: [("WAR", "fWAR (FanGraphs)"), ("bWAR", "bWAR (Baseball-Reference)"), ("ERA", "ERA"), ("SO", "Strikeouts"), ("FIP", "FIP"),
           ("K-BB%", "K-BB%"), ("SV", "Saves")],
 }
 
@@ -471,11 +514,11 @@ def player(pid: int, kind: str, mode: str) -> dict | None:
 
 
 PCT_STATS = {
-    BAT: [("Value", ["WAR", "wRC+", "Offense", "BaseRunning", "Defense"]),
+    BAT: [("Value", ["WAR", "bWAR", "wRC+", "Offense", "BaseRunning", "Defense"]),
           ("Hitting", ["OBP", "SLG", "ISO", "AVG", "BABIP"]),
           ("Plate skills", ["BB%", "K%", "O-Swing%", "Contact%"]),
           ("Statcast", ["xwOBA", "EV", "Barrel%", "HardHit%", "AvgBatSpeed"])],
-    PIT: [("Value", ["WAR", "ERA-", "FIP-", "RA9-Wins"]),
+    PIT: [("Value", ["WAR", "bWAR", "ERA-", "FIP-", "RA9-Wins"]),
           ("Run prevention", ["ERA", "FIP", "xFIP", "SIERA", "WHIP"]),
           ("Strikeouts and walks", ["K%", "BB%", "K-BB%", "SwStr%", "O-Swing%"]),
           ("Contact", ["GB%", "HR/9", "Barrel%", "HardHit%", "FBv"])],
@@ -484,14 +527,19 @@ PCT_STATS = {
 
 @db.cached
 def percentiles(pid: int, kind: str, season: int) -> dict | None:
-    """His percentile in each stat that season among the majors' qualified players,
-    the way Baseball Savant ranks them (100 = best)."""
+    """His percentile in each stat that season among the qualified players of his
+    league group (AL and NL together; other leagues on their own), the way
+    Baseball Savant ranks them (100 = best)."""
     stats = tuple(s for _g, group in PCT_STATS[kind] for s in group)
     t = db.table(kind, season, season, stats)
     idx = next((i for i, r in enumerate(t.ident) if r["pid"] == pid), None)
     if idx is None:
         return None
     _need, _have, ok = qualifying(kind, t)
+    group_of = player_groups(kind, season)
+    mine = group_of.get(pid, "MLB")
+    same = np.array([group_of.get(r["pid"], "MLB") == mine for r in t.ident])
+    ok = ok & same
     groups = []
     for title, group in PCT_STATS[kind]:
         rows_out = []
@@ -510,7 +558,8 @@ def percentiles(pid: int, kind: str, season: int) -> dict | None:
             rows_out.append({"col": c, "value": float(v), "pct": max(0, min(100, pct))})
         if rows_out:
             groups.append({"title": title, "rows": rows_out})
-    return {"season": season, "qualified": bool(ok[idx]), "pool": int(ok.sum()), "groups": groups}
+    return {"season": season, "qualified": bool(ok[idx]), "pool": int(ok.sum()), "groups": groups,
+            "group": "AL and NL" if mine == "MLB" else mine}
 
 
 @db.cached

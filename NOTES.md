@@ -70,3 +70,24 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
 - **Bug fixed**: spans entirely before 1954 lost OBP/OPS/BABIP (no SF recorded); missing
   SF/HBP now count as 0, as on FanGraphs (Ruth .474/.690/1.164).
 - `SCHEMA_VERSION = 2` (team_seasons.lg_name): the updater rebuilds the DB on start.
+
+## Era percentiles fixed; fWAR and bWAR (2026-11-11)
+
+- **Era-adjusted percentiles** were mathematically right (single seasons match a hand
+  calculation from the raw FanGraphs file; spans are the PA/IP-weighted mean of season
+  percentiles) but had a pool bug: the team, position and league filters shrank the pool
+  (Judge 2024 OPS 99.6 -> 90.0 with Yankees selected). The pool is now every qualified
+  player that season in the player's league group, whatever the filters show.
+- **League groups** (`teams.league_group`): AL and NL together ("MLB"), every other league
+  on its own (NA, AA, UA, PL, FL, each Negro League). Before, 1920-48 pools mixed AL/NL with
+  Negro Leagues clubs (65 of 170 qualified hitters in 1932). Same rule for teams and the
+  player-page percentile panel. A traded player counts where he had the most PA/IP.
+- The chart's "Best on both axes" used to re-rank the visible points; in era mode it now
+  uses the season percentiles.
+- **fWAR / bWAR**: FanGraphs' WAR keeps the key `WAR` (links unchanged) but is labelled
+  fWAR everywhere (`catalog.HEADS`). bWAR comes from Baseball-Reference's daily WAR files
+  (`pipeline/bwar.py`, stored gzipped in `/data/bwar`, fetched once a day with
+  If-Modified-Since). Joined by MLBAM id, else name + season (+ club) for Negro Leagues
+  players; stints by club, else nearest PA/IP. Coverage 99.4-100% of player-seasons, 96% in
+  1920-48. Career bWAR equals Baseball-Reference's totals (Ruth 182.6, Bonds 162.8).
+  No team bWAR. Build peak memory 457 MB (was 275). `SCHEMA_VERSION = 3`.

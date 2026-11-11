@@ -34,7 +34,8 @@
       <span>{{ p.pos or ('P' if p.primary == 'pit' else '') }}</span>
       {% if p.bats or p.throws %}<span>{% if p.bats %}Bats {{ p.bats }}{% endif %}{% if p.bats and p.throws %} · {% endif %}{% if p.throws %}Throws {{ p.throws }}{% endif %}</span>{% endif %}
       <span>{{ p.first }}{% if p.last != p.first %}&ndash;{{ p.last }}{% endif %}</span>
-      <span><b>{{ p.war|f('d1') }}</b> career WAR</span>
+      <span title="FanGraphs WAR"><b>{{ p.war|f('d1') }}</b> career fWAR</span>
+      {% if p.bwar is defined and p.bwar is not none %}<span title="Baseball-Reference WAR"><b>{{ p.bwar|f('d1') }}</b> bWAR</span>{% endif %}
       {% if p.two_way %}<span class="chip accent">Two-way</span>{% endif %}
     </div>
     {% if main %}{% set fx = main.facts %}
@@ -64,13 +65,13 @@
     </div>
     {% endfor %}
   </div>
-  <p class="sub" style="margin-bottom:0">Against the majors' {{ pct.pool }} qualified {{ 'hitters' if pkind == 'bat' else 'pitchers' }} in {{ pct.season }}; 100 is best, and lower-is-better stats (K% for hitters, ERA for pitchers) count the right way round.{% if not pct.qualified %} He was not qualified that season, so his numbers come from fewer {{ 'plate appearances' if pkind == 'bat' else 'innings' }}.{% endif %}</p>
+  <p class="sub" style="margin-bottom:0">Against the {{ pct.pool }} qualified {{ pct.group }} {{ 'hitters' if pkind == 'bat' else 'pitchers' }} in {{ pct.season }}; 100 is best, and lower-is-better stats (K% for hitters, ERA for pitchers) count the right way round.{% if not pct.qualified %} He was not qualified that season, so his numbers come from fewer {{ 'plate appearances' if pkind == 'bat' else 'innings' }}.{% endif %}</p>
 </section>
 {% endif %}
 
 {% if p.war_seasons|length > 1 %}
 <section class="section card">
-  <div class="legend"><b style="margin-right:6px">WAR by season</b>{% if p.war_bat %}<span><i style="background:#f97316"></i>Hitting</span>{% endif %}{% if p.war_pit %}<span><i style="background:#60a5fa"></i>Pitching</span>{% endif %}</div>
+  <div class="legend"><b style="margin-right:6px" title="FanGraphs WAR">fWAR by season</b>{% if p.war_bat %}<span><i style="background:#f97316"></i>Hitting</span>{% endif %}{% if p.war_pit %}<span><i style="background:#60a5fa"></i>Pitching</span>{% endif %}</div>
   {% set yrs = p.war_seasons.keys()|list|sort %}
   <div class="scrollx">{{ svg.season_bars(range(yrs[0], yrs[-1] + 1)|list, [('Hitting', '#f97316', dict(p.war_bat)), ('Pitching', '#60a5fa', dict(p.war_pit))]) }}</div>
 </section>

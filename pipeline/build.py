@@ -30,11 +30,11 @@ from pathlib import Path
 
 import numpy as np
 
-from . import aggregate, catalog, teams
+from . import aggregate, bwar, catalog, teams
 from .text import search_key
 
 log = logging.getLogger("build")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SOURCES = {
     "bat": "all_batting_stats", "pit": "all_pitching_stats",
     "tbat": "team_batting", "tpit": "team_pitching",
@@ -154,8 +154,10 @@ def _careers(con, kind: str, parts, stats) -> None:
             con.execute("INSERT OR REPLACE INTO cols VALUES (?,?,?,?)", (kind, 0, stat, pack(values)))
 
 
-def build(csv_root: Path, stints_root: Path, output: Path) -> dict:
+def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | None = None) -> dict:
     started = time.time()
+    # Baseball-Reference WAR files live beside the database (pipeline/bwar.py).
+    bw = bwar.BWar(bwar_root if bwar_root is not None else output / "bwar")
     output.mkdir(parents=True, exist_ok=True)
     tmp = output / "baseball.sqlite.tmp"
     if tmp.exists():
@@ -170,7 +172,8 @@ def build(csv_root: Path, stints_root: Path, output: Path) -> dict:
                              counting INT, weight TEXT, first INT, last INT, seasons INT,
                              PRIMARY KEY(kind, stat)) WITHOUT ROWID;
         CREATE TABLE players(pid INTEGER PRIMARY KEY, name TEXT, key TEXT, mlbam INT, bats TEXT,
-                             throws TEXT, first INT, last INT, pa REAL, ip REAL, war REAL, pos TEXT);
+                             throws TEXT, first INT, last INT, pa REAL, ip REAL, war REAL, pos TEXT,
+                             bwar REAL);
         CREATE TABLE team_seasons(season INT, team TEXT, teamid INT, name TEXT, league TEXT,
                                   division TEXT, w INT, l INT, g INT, rs INT, ra INT, lg_name TEXT,
                                   PRIMARY KEY(season, team)) WITHOUT ROWID;
@@ -199,6 +202,15 @@ def build(csv_root: Path, stints_root: Path, output: Path) -> dict:
             if not ident:
                 continue
             seasons_seen.setdefault(kind, set()).add(season)
+            if kind in ("bat", "pit"):
+                extra = bw.season_column(kind, season, ident)
+            elif kind in ("sbat", "spit"):
+                extra = bw.stint_column(kind, season, ident, columns.get("PA" if kind == "sbat" else "IP",
+                                                                       np.full(len(ident), np.nan)))
+            else:
+                extra = None
+            if extra is not None and not np.isnan(extra).all():
+                columns["bWAR"] = extra
             for stat in list(columns):
                 # FanGraphs stores percentages as fractions; guard against a column in 0-100.
                 if catalog.fmt(stat) == "pct1":
@@ -223,9 +235,11 @@ def build(csv_root: Path, stints_root: Path, output: Path) -> dict:
             if kind in ("bat", "pit"):
                 weight = columns.get("PA" if kind == "bat" else "IP", np.zeros(len(ident)))
                 war = columns.get("WAR", np.zeros(len(ident)))
+                bwar_col = columns.get("bWAR", np.full(len(ident), np.nan))
                 for i, r in enumerate(ident):
                     p = people.setdefault(r["pid"], {"name": r["name"], "season": -1, "first": season,
                                                      "last": season, "pa": 0.0, "ip": 0.0, "war": 0.0,
+                                                     "bwar": None,
                                                      "bats": None, "throws": None, "mlbam": None,
                                                      "pos": {}})
                     if season >= p["season"]:
@@ -235,6 +249,8 @@ def build(csv_root: Path, stints_root: Path, output: Path) -> dict:
                     w = 0.0 if np.isnan(weight[i]) else float(weight[i])
                     p["pa" if kind == "bat" else "ip"] += w
                     p["war"] += 0.0 if np.isnan(war[i]) else float(war[i])
+                    if not np.isnan(bwar_col[i]):
+                        p["bwar"] = (p["bwar"] or 0.0) + float(bwar_col[i])
                     hand = "bats" if kind == "bat" else "throws"
                     p[hand] = r["hand"] or p[hand]
                     if r["pos"] and kind == "bat":
@@ -264,10 +280,11 @@ def build(csv_root: Path, stints_root: Path, output: Path) -> dict:
              catalog.weight(stat, pitching), first, last, len(years))
             for stat, (first, last, years) in stats.items()])
     # Players.
-    con.executemany("INSERT INTO players VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [
+    con.executemany("INSERT INTO players VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", [
         (pid, p["name"], search_key(p["name"]), p["mlbam"], p["bats"], p["throws"], p["first"],
          p["last"], round(p["pa"], 1), round(p["ip"], 2), round(p["war"], 1),
-         max(p["pos"], key=p["pos"].get) if p["pos"] else ("P" if p["ip"] > 0 else None))
+         max(p["pos"], key=p["pos"].get) if p["pos"] else ("P" if p["ip"] > 0 else None),
+         None if p["bwar"] is None else round(p["bwar"], 1))
         for pid, p in people.items() if pid is not None])
     # Team seasons (records from the team pitching rows, runs from both sides).
     con.executemany("INSERT INTO team_seasons VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [

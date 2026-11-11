@@ -27,7 +27,7 @@
   <div class="hero-side">
     {% for kind in ('bat', 'pit') %}{% for p in (fav.rosters[kind].lines|sort(attribute='WAR', reverse=True))[:3] if p.WAR is not none %}
     <a class="mini" href="{{ url_for('site.player', pid=p.pid) }}"><span class="k">{{ p.pos or ('P' if kind == 'pit' else '') }}</span>
-      <span><b>{{ p.name }}</b> <span class="muted">· {{ p.WAR|f('d1') }} WAR{% if kind == 'bat' %}, {{ p.HR|f('d0') }} HR, {{ p.AVG|f('avg') }}/{{ p.OBP|f('avg') }}/{{ p.SLG|f('avg') }}{% else %}, {{ p.ERA|f('d2') }} ERA, {{ p.IP|ip }} IP{% endif %}</span></span></a>
+      <span><b>{{ p.name }}</b> <span class="muted">· {{ p.WAR|f('d1') }} fWAR{% if kind == 'bat' %}, {{ p.HR|f('d0') }} HR, {{ p.AVG|f('avg') }}/{{ p.OBP|f('avg') }}/{{ p.SLG|f('avg') }}{% else %}, {{ p.ERA|f('d2') }} ERA, {{ p.IP|ip }} IP{% endif %}</span></span></a>
     {% endfor %}{% endfor %}
   </div>
 </section>

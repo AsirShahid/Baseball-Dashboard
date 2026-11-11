@@ -19,7 +19,7 @@ NOT_STATS = {
 # values). Everything else is a rate and is averaged or rebuilt. From the Dash
 # site's fangraphs_api.COUNTING_STATS, plus the pitching value splits.
 COUNTING = frozenset({
-    "G", "GS", "WAR", "WPA", "RE24", "REW", "Clutch", "Events", "Pitches", "Balls", "Strikes",
+    "G", "GS", "WAR", "bWAR", "WPA", "RE24", "REW", "Clutch", "Events", "Pitches", "Balls", "Strikes",
     "Barrels", "PA", "AB", "H", "1B", "2B", "3B", "HR", "R", "RBI", "BB", "IBB", "SO", "HBP",
     "SF", "SH", "GDP", "SB", "CS", "TB", "IP", "W", "L", "SV", "BS", "HLD", "ER", "TBF", "GB",
     "FB", "LD", "IFFB", "IFH", "BU", "BUH", "Pull", "Cent", "Oppo", "Soft", "Med", "Hard",
@@ -49,7 +49,8 @@ NAMES = {
     "wRC": "Weighted runs created",
     "wRC+": "Weighted runs created plus (100 is league average, park-adjusted)",
     "Spd": "Speed score", "UBR": "Ultimate base running (runs)", "wSB": "Stolen base runs",
-    "wBsR": "Base running runs", "GDPRuns": "Double-play avoidance runs", "WAR": "Wins above replacement",
+    "wBsR": "Base running runs", "GDPRuns": "Double-play avoidance runs", "WAR": "fWAR: FanGraphs wins above replacement (pitchers from FIP)",
+    "bWAR": "bWAR: Baseball-Reference wins above replacement (pitchers from runs allowed)",
     "RAR": "Runs above replacement", "Batting": "Batting runs", "BaseRunning": "Base running runs",
     "Fielding": "Fielding runs", "Positional": "Positional adjustment (runs)",
     "Offense": "Offensive runs above average", "Defense": "Defensive runs above average",
@@ -88,7 +89,7 @@ NAMES = {
     "FIP-": "FIP minus (100 is league average, lower is better)",
     "xFIP-": "xFIP minus (100 is league average, lower is better)", "K-BB%": "Strikeout rate minus walk rate",
     "E-F": "ERA minus FIP", "RS": "Run support", "RS/9": "Run support per 9 innings",
-    "RA9-Wins": "Wins above replacement from runs allowed", "LOB-Wins": "Strand-rate wins",
+    "RA9-Wins": "FanGraphs WAR from runs allowed instead of FIP (RA9-WAR)", "LOB-Wins": "Strand-rate wins",
     "BIP-Wins": "Balls-in-play wins", "BS-Wins": "Sequencing wins", "Starting": "Value as a starter (runs)",
     "Relieving": "Value as a reliever (runs)", "Start-IP": "Innings as a starter",
     "Relief-IP": "Innings as a reliever", "gmLI": "Leverage entering games", "inLI": "Leverage entering innings",
@@ -113,11 +114,11 @@ NAMES = {
 # the "columns" lists; the chart menu lists every stat under its group.
 BAT_GROUPS = [
     ("standard", "Standard", ["G", "PA", "AB", "H", "2B", "3B", "HR", "R", "RBI", "BB", "SO",
-                              "SB", "CS", "AVG", "OBP", "SLG", "OPS", "wRC+", "WAR"]),
+                              "SB", "CS", "AVG", "OBP", "SLG", "OPS", "wRC+", "WAR", "bWAR"]),
     ("advanced", "Advanced", ["PA", "BB%", "K%", "BB/K", "ISO", "BABIP", "AVG", "OBP", "SLG",
                               "wOBA", "xwOBA", "wRC+", "Spd", "wBsR"]),
     ("value", "Value", ["PA", "Batting", "BaseRunning", "Fielding", "Positional", "Offense",
-                        "Defense", "RAR", "WAR", "WPA", "RE24", "Clutch"]),
+                        "Defense", "RAR", "WAR", "bWAR", "WPA", "RE24", "Clutch"]),
     ("battedball", "Batted ball", ["PA", "GB/FB", "LD%", "GB%", "FB%", "IFFB%", "HR/FB", "Pull%",
                                    "Cent%", "Oppo%", "Soft%", "Med%", "Hard%"]),
     ("discipline", "Plate discipline", ["PA", "O-Swing%", "Z-Swing%", "Swing%", "O-Contact%",
@@ -128,10 +129,10 @@ BAT_GROUPS = [
 ]
 PIT_GROUPS = [
     ("standard", "Standard", ["W", "L", "ERA", "G", "GS", "SV", "HLD", "IP", "H", "R", "ER",
-                              "HR", "BB", "SO", "WHIP", "FIP", "WAR"]),
+                              "HR", "BB", "SO", "WHIP", "FIP", "WAR", "bWAR"]),
     ("advanced", "Advanced", ["IP", "K/9", "BB/9", "HR/9", "K%", "BB%", "K-BB%", "AVG", "BABIP",
                               "LOB%", "ERA-", "FIP-", "FIP", "xFIP", "SIERA"]),
-    ("value", "Value", ["IP", "RA9-Wins", "LOB-Wins", "BIP-Wins", "RAR", "WAR", "WPA", "RE24",
+    ("value", "Value", ["IP", "RA9-Wins", "LOB-Wins", "BIP-Wins", "RAR", "WAR", "bWAR", "WPA", "RE24",
                         "gmLI", "SD", "MD"]),
     ("battedball", "Batted ball", ["IP", "GB/FB", "LD%", "GB%", "FB%", "IFFB%", "HR/FB",
                                    "Pull%", "Cent%", "Oppo%", "Soft%", "Med%", "Hard%"]),
@@ -157,7 +158,7 @@ _LOWER_FOR_BATTERS = frozenset({"K%", "SO", "SwStr%", "O-Swing%", "CStr%", "C+Sw
 
 _DEC3 = frozenset({"AVG", "OBP", "SLG", "OPS", "ISO", "BABIP", "wOBA", "xwOBA", "xAVG", "xSLG"})
 _DEC1 = frozenset({
-    "WAR", "RAR", "Off", "Def", "BsR", "Batting", "Fielding", "Positional", "Replacement",
+    "WAR", "bWAR", "RAR", "Off", "Def", "BsR", "Batting", "Fielding", "Positional", "Replacement",
     "Offense", "Defense", "BaseRunning", "wRAA", "UBR", "wSB", "wGDP", "Spd", "EV", "EV90", "LA",
     "maxEV", "IP", "CFraming", "wBsR", "GDPRuns", "wLeague", "RA9-Wins", "LOB-Wins", "BIP-Wins",
     "BS-Wins", "Starting", "Relieving", "Start-IP", "Relief-IP", "AvgBatSpeed", "SwingLength",
@@ -250,6 +251,15 @@ GROUP_TITLES = {
     "pitchinfo": "Pitch Info", "umpire": "Umpires and replay",
 }
 GROUP_ORDER = list(GROUP_TITLES)
+
+
+# Column heads that differ from the stat key. The key stays "WAR" so old links
+# keep working; on screen it is always fWAR, next to Baseball-Reference's bWAR.
+HEADS = {"WAR": "fWAR"}
+
+
+def head(stat: str) -> str:
+    return HEADS.get(stat, stat)
 
 
 def describe(stat: str) -> str:
