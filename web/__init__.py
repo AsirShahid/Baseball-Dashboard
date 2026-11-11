@@ -76,11 +76,19 @@ def create_app(data_root=None) -> Flask:
         return ("https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/"
                 f"w_{width * 2},q_auto:best/v1/people/{mlbam}/headshot/67/current")
 
+    def ramp(pct) -> str:
+        """0-100 percentile -> red, orange, green (the chart's percentile colors)."""
+        stops = ((229, 72, 77), (249, 115, 22), (70, 167, 88))
+        t = max(0.0, min(1.0, float(pct or 0) / 100))
+        i = 0 if t < 0.5 else 1
+        k = (t - i * 0.5) / 0.5
+        return "rgb(%d,%d,%d)" % tuple(round(a + (b - a) * k) for a, b in zip(stops[i], stops[i + 1]))
+
     app.jinja_env.filters.update(f=fmt.fmt, sv=fmt.sort_value, ordinal=ordinal, stamp=stamp,
-                                 ip=fmt.ip_notation)
+                                 ip=fmt.ip_notation, ramp=ramp)
     app.jinja_env.globals.update(
         asset=asset, url_with=url_with, NAV=NAV, svg=svg, logo_url=logo_url, headshot=headshot,
-        team_name=T.team_name, MULTI_TEAM=T.MULTI_TEAM, span_label=queries.span_label,
+        team_name=T.team_name, team_color=T.color, MULTI_TEAM=T.MULTI_TEAM, span_label=queries.span_label,
         has_endpoint=lambda name: name in app.view_functions,
     )
 

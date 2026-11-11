@@ -93,6 +93,12 @@ def rebuild_rates(c: dict, pitching: bool) -> None:
         return
     ab, pa = g("AB"), g("PA")
     parts = {k: g(k) for k in ("H", "1B", "2B", "3B", "HR", "BB", "HBP", "SF", "SO")}
+    # Sacrifice flies were not recorded before 1954 (and HBP is missing in a few
+    # early seasons): count them as 0, as FanGraphs does, or every pre-1954 span
+    # loses its OBP, OPS and BABIP.
+    for k in ("HBP", "SF"):
+        if parts[k] is not None:
+            parts[k] = np.where(np.isnan(parts[k]), 0.0, parts[k])
     if ab is not None:
         if parts["H"] is not None:
             put("AVG", div(parts["H"], ab))

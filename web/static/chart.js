@@ -15,6 +15,13 @@
   var init = JSON.parse(document.getElementById("c-state").textContent);
   var DEFAULTS = { team: ["pit:ERA", "bat:wRC+"], bat: ["wRC+", "WAR"], pit: ["FIP", "ERA"] };
   var LATEST = root.dataset.latest;
+  var LADDER = [0, 1, 5, 10];
+  (function () {
+    var n;
+    for (n = 20; n <= 250; n += 10) LADDER.push(n);
+    for (n = 300; n <= 1000; n += 50) LADDER.push(n);
+    for (n = 1500; n <= 10000; n += 500) LADDER.push(n);
+  })();
 
   var state = {
     view: init.view, kind: init.kind, x: init.x, y: init.y, z: init.z || "",
@@ -144,10 +151,12 @@
     var unit = state.kind === "pit" ? "IP" : "PA";
     $("min-label").textContent = "Min " + unit;
     var span = +state.to !== +state.season;
-    var nums = state.kind === "pit" ? [0, 1, 10, 20, 30, 50, 70, 100, 130, 162, 200] : [0, 1, 10, 25, 50, 100, 200, 300, 400, 502, 600];
-    if (span) nums = nums.concat(state.kind === "pit" ? [300, 500, 1000, 1500, 2000] : [1000, 2000, 3000, 5000, 8000]);
+    // FanGraphs' ladder (62 options with Qualified), for seasons and spans alike.
+    var nums = LADDER.slice();
+    if (state.min !== "q" && nums.indexOf(+state.min) === -1) nums.push(+state.min);
+    nums.sort(function (a, b) { return a - b; });
     var opts = [["q", "Qualified"]].concat(nums.map(function (n) { return [String(n), n.toLocaleString()]; }));
-    if (state.min !== "q" && nums.indexOf(+state.min) === -1) opts.push([state.min, state.min]);
+    opts.push(["__custom", "Other number\u2026"]);
     fillSelect($("min"), opts, state.min);
     var pos = state.kind === "pit" ? [["", "All"], ["SP", "Starters"], ["RP", "Relievers"]]
       : [["", "All"], ["C", "C"], ["1B", "1B"], ["2B", "2B"], ["3B", "3B"], ["SS", "SS"], ["OF", "OF"], ["DH", "DH"]];
@@ -336,10 +345,17 @@
     shown.slice().sort(function (a, b) { return (a._hit - b._hit) || (!!a._path - !!b._path); }).forEach(function (r) {
       var on = r._hit || r._path;
       var group = make("g", { class: "pt" + (faded && !on ? " faded" : "") + (r._hit ? " hit" : "") }, layer);
+      var size = narrow ? 22 : 28;
       if (logos && r.logo) {
-        var size = narrow ? 22 : 28;
         make("image", { href: r.logo, x: r._x - size / 2, y: r._y - size / 2, width: size, height: size, preserveAspectRatio: "xMidYMid meet" }, group);
         r._r = size / 2;
+      } else if (logos) {
+        // No logo that season: a square with the club's code, in its color when known.
+        var side = size * 0.8, code = String(r.team || "").slice(0, 4);
+        var color = TEAM_COLORS[r.team] || "#334155";
+        make("rect", { x: r._x - side / 2, y: r._y - side / 2, width: side, height: side, rx: 4, fill: color, stroke: "rgba(255,255,255,0.35)", "stroke-width": 1 }, group);
+        make("text", { x: r._x, y: r._y + 3.2, "text-anchor": "middle", class: "codesq", "font-size": code.length > 3 ? 7.5 : 9 }, group).textContent = code;
+        r._r = side / 2;
       } else {
         var fill = r._path ? r._path : state.color === "rank" ? ramp(r._score)
           : state.color === "team" ? teamColor(r.team) : "#7fa3d9";
@@ -489,6 +505,12 @@
     var span = r.season ? r.season : (r.first && r.last && r.first !== r.last ? r.first + "\u2013" + r.last : (r.first || ""));
     name.textContent = r.name + "  " + (data.view === "player" ? (r.team === "- - -" ? "2+ teams" : r.team) + " " : "") + span;
     tip.appendChild(name);
+    if (data.view === "team" && r.lg) {   // "Chicago Pirates (1890, Players' League)"
+      var lgline = document.createElement("span");
+      lgline.textContent = r.team + " \u00b7 " + r.lg;
+      lgline.style.cssText = "display:block;color:var(--muted);font-size:12px";
+      tip.appendChild(lgline);
+    }
     ["y", "x", "z"].forEach(function (k) {
       var a = data.axes[k];
       if (a) tip.appendChild(line(a.label, show(r[k], a.fmt)));
@@ -547,9 +569,20 @@
     ["x", "y", "z"].forEach(function (k) { if (a[k]) head.push(a[k].label + (data.era ? " (percentile)" : "")); });
     head.push("composite percentile");
     var lines = [head];
+    // Rounded like the screen (FanGraphs' precision); percentages stay fractions, as FanGraphs exports them.
+    function round(v, kind) {
+      if (v == null) return "";
+      if (kind === "pct1") return +v.toFixed(3);
+      if (kind === "avg") return +v.toFixed(3);
+      if (kind === "d0" || kind === "pctl") return Math.round(v);
+      if (kind === "d1") return +v.toFixed(1);
+      if (kind === "ip") return show(v, "ip");
+      return +v.toFixed(2);
+    }
+    var unit = data.kind === "pit" && data.view === "player" ? "ip" : "d0";
     shown.slice().sort(function (p, q) { return q._score - p._score; }).forEach(function (r) {
-      var row = [r.name, r.team, r.season || "", r.first || "", r.last || "", r.w == null ? "" : r.w];
-      ["x", "y", "z"].forEach(function (k) { if (a[k]) row.push(r[k]); });
+      var row = [r.name, r.team, r.season || "", r.first || "", r.last || "", round(r.w, unit)];
+      ["x", "y", "z"].forEach(function (k) { if (a[k]) row.push(round(r[k], a[k].fmt)); });
       row.push(Math.round(r._score * 100));
       lines.push(row);
     });
@@ -584,8 +617,20 @@
       syncControls(); load();
     });
   });
-  ["x", "y", "z", "min", "pos", "team", "league"].forEach(function (id) {
+  ["x", "y", "z", "pos", "team", "league"].forEach(function (id) {
     $(id).addEventListener("change", function () { state[id] = this.value; load(); });
+  });
+  $("min").addEventListener("change", function () {
+    if (this.value === "__custom") {
+      var typed = window.prompt("Minimum " + (state.kind === "pit" ? "IP" : "PA"), "");
+      var n = typed == null ? NaN : parseFloat(String(typed).replace(/,/g, ""));
+      if (isNaN(n) || n < 0) { this.value = state.min; return; }
+      state.min = String(Math.round(n));
+      syncControls();
+    } else {
+      state.min = this.value;
+    }
+    load();
   });
   $("split").addEventListener("change", function () { state.split = this.checked; if (!this.checked) state.path = false; syncControls(); load(); });
   $("path").addEventListener("change", function () { state.path = this.checked; if (this.checked) state.split = true; syncControls(); load(); });

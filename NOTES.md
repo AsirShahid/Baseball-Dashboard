@@ -45,3 +45,28 @@ docker compose -p baseball-dashboard -f legacy/dash/docker-compose.rollback.yml 
 Leftover images to remove by hand when convenient (the agent cannot run `docker rmi`):
 the many `baseball-dashboard-baseball-dashboard:*` tags from earlier Dash work,
 `baseball-site-base:dev`, `baseball-site:candidate`.
+
+## Follow-ups from the logo chat (2026-11-11)
+
+The Dash-era session (`20261110_213200_37868ebc`) left three open suggestions for
+clubs with no logo (code squares) and several Dash features; all are in the Flask site:
+
+- **Names and leagues by season** for 1871-1900, the Federal League and the Negro
+  Leagues: `pipeline/historic_teams.json` (Lahman `Teams.csv` matched on W-L-R for
+  431 team-seasons; Seamheads team pages for 344 Negro League team-seasons; AC from
+  Wikipedia). `teams.team_name`/`league_name` use it; standings group by the real
+  league (Players' League, Eastern Colored League, ...). Hover shows "CPI · Players' League".
+  How to rebuild: `tools/team_names/README.md`.
+- **Colors**: `pipeline/historic_colors.json`, only colors stated in Wikipedia
+  infoboxes (27 clubs). Code squares and table chips use them.
+- **Logos**: 15 Negro and Federal League logos from Wikipedia/Commons, each checked by
+  eye; provenance and licenses in `Logos/eras/historic_sources.json`, script
+  `tools/logo_eras/historic.py`. 707 code-square team-seasons became 595.
+- **Min PA/IP**: FanGraphs' 62-option ladder for seasons and spans, plus "Other
+  number..." for any value; hint line under the filters.
+- **Player pages**: percentile ranks (Savant-style, vs that season's qualified players,
+  default = latest qualified season) and a career facts line.
+- **CSV export** rounds to the displayed precision.
+- **Bug fixed**: spans entirely before 1954 lost OBP/OPS/BABIP (no SF recorded); missing
+  SF/HBP now count as 0, as on FanGraphs (Ruth .474/.690/1.164).
+- `SCHEMA_VERSION = 2` (team_seasons.lg_name): the updater rebuilds the DB on start.

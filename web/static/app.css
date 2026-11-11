@@ -318,3 +318,7 @@ a.game:hover { border-color: #3a475d; color: inherit; }
 .explorer .controls .check input:disabled + * , .check:has(input:disabled) { opacity: 0.45; }
 .scrollx { overflow-x: auto; }
 @media (max-width: 860px) { .scrollx .sbars { min-width: 680px; } }
+.plot .codesq { fill: #fff; font-weight: 700; letter-spacing: -0.02em; pointer-events: none; paint-order: stroke; stroke: rgba(0, 0, 0, 0.35); stroke-width: 2px; }
+.pct-groups .pbar { grid-template-columns: 92px 1fr 52px 30px; }
+.hint { margin: -4px 0 10px; }
+.chipcode.long { font-size: 6.5px; letter-spacing: -0.06em; overflow: hidden; }

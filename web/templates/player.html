@@ -37,10 +37,36 @@
       <span><b>{{ p.war|f('d1') }}</b> career WAR</span>
       {% if p.two_way %}<span class="chip accent">Two-way</span>{% endif %}
     </div>
+    {% if main %}{% set fx = main.facts %}
+    <div class="line">
+      <span>{{ fx.seasons }} season{{ 's' if fx.seasons != 1 }}{% if fx.qualified %}, {{ fx.qualified }} qualified{% endif %}</span>
+      {% if fx.ages %}<span>Age {{ fx.ages[0] }}{% if fx.ages[1] != fx.ages[0] %}&ndash;{{ fx.ages[1] }}{% endif %}</span>{% endif %}
+      <span>{% if pkind == 'bat' %}{{ fx.weight|f('d0') }} PA{% else %}{{ fx.weight|ip }} IP{% endif %} · {{ fx.games|f('d0') }} G</span>
+    </div>
+    {% endif %}
     <div class="line">{% for t in p.teams %}<span>{{ m.team(t.team, t.b, size=16) }} <span class="muted">{{ t.a }}{% if t.b != t.a %}&ndash;{{ t.b % 100 if t.b // 100 == t.a // 100 else t.b }}{% endif %}</span></span>{% endfor %}</div>
   </div>
   <a class="btn" style="margin-left:auto" href="{{ url_for('site.compare', p=p.pid, kind=p.primary) }}">Compare</a>
 </div>
+
+{% if pct and pct.groups %}
+<section class="section card">
+  <div class="section-head">
+    <h2>Percentile ranks · {{ 'hitting' if pkind == 'bat' else 'pitching' }}</h2>
+    <span class="toolbar" style="margin:0"><select data-nav="pseason" aria-label="Season">{% for s in pct_seasons %}<option value="{{ s }}"{{ ' selected' if s == pct.season }}>{{ s }}</option>{% endfor %}</select></span>
+  </div>
+  <div class="cols-2 pct-groups">
+    {% for g in pct.groups %}
+    <div><h3 style="margin-bottom:8px">{{ g.title }}</h3>
+      <div class="pbars">{% for r in g.rows %}
+        <div class="pbar" title="{{ r.col.name }}"><span>{{ r.col.head }}</span><div class="track"><div class="fill" style="width:{{ [r.pct, 2]|max }}%;background:{{ r.pct|ramp }}"></div></div><span class="v">{{ r.value|f(r.col.fmt, r.col.key) }}</span><span class="p" style="color:{{ r.pct|ramp }}">{{ r.pct }}</span></div>
+      {% endfor %}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="sub" style="margin-bottom:0">Against the majors' {{ pct.pool }} qualified {{ 'hitters' if pkind == 'bat' else 'pitchers' }} in {{ pct.season }}; 100 is best, and lower-is-better stats (K% for hitters, ERA for pitchers) count the right way round.{% if not pct.qualified %} He was not qualified that season, so his numbers come from fewer {{ 'plate appearances' if pkind == 'bat' else 'innings' }}.{% endif %}</p>
+</section>
+{% endif %}
 
 {% if p.war_seasons|length > 1 %}
 <section class="section card">

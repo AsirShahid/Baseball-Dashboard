@@ -1,0 +1,1896 @@
+{
+ "AB2": [
+  [
+   1931,
+   1931,
+   "Indianapolis ABCs",
+   "Negro National League I"
+  ],
+  [
+   1932,
+   1932,
+   "Indianapolis ABCs",
+   "Negro Southern League"
+  ]
+ ],
+ "AB3": [
+  [
+   1938,
+   1938,
+   "Indianapolis ABCs",
+   "Negro American League"
+  ]
+ ],
+ "ABC": [
+  [
+   1920,
+   1926,
+   "Indianapolis ABCs",
+   "Negro National League I"
+  ]
+ ],
+ "AC": [
+  [
+   1923,
+   1928,
+   "Bacharach Giants",
+   "Eastern Colored League"
+  ],
+  [
+   1929,
+   1929,
+   "Bacharach Giants",
+   "American Negro League"
+  ]
+ ],
+ "ALT": [
+  [
+   1884,
+   1884,
+   "Altoona Mountain City",
+   "Union Association"
+  ]
+ ],
+ "BA14": [
+  [
+   1914,
+   1915,
+   "Baltimore Terrapins",
+   "Federal League"
+  ]
+ ],
+ "BA72": [
+  [
+   1872,
+   1874,
+   "Baltimore Canaries",
+   "National Association"
+  ]
+ ],
+ "BA82": [
+  [
+   1882,
+   1891,
+   "Baltimore Orioles",
+   "American Association"
+  ],
+  [
+   1892,
+   1899,
+   "Baltimore Orioles",
+   "National League"
+  ]
+ ],
+ "BA84": [
+  [
+   1884,
+   1884,
+   "Baltimore Monumentals",
+   "Union Association"
+  ]
+ ],
+ "BBB": [
+  [
+   1924,
+   1925,
+   "Birmingham Black Barons",
+   "Negro National League I"
+  ],
+  [
+   1927,
+   1930,
+   "Birmingham Black Barons",
+   "Negro National League I"
+  ],
+  [
+   1932,
+   1932,
+   "Birmingham Black Barons",
+   "Negro Southern League"
+  ],
+  [
+   1937,
+   1938,
+   "Birmingham Black Barons",
+   "Negro American League"
+  ],
+  [
+   1940,
+   1948,
+   "Birmingham Black Barons",
+   "Negro American League"
+  ]
+ ],
+ "BBS": [
+  [
+   1923,
+   1928,
+   "Baltimore Black Sox",
+   "Eastern Colored League"
+  ],
+  [
+   1929,
+   1929,
+   "Baltimore Black Sox",
+   "American Negro League"
+  ],
+  [
+   1932,
+   1932,
+   "Baltimore Black Sox",
+   "East-West League"
+  ],
+  [
+   1934,
+   1934,
+   "Baltimore Black Sox",
+   "Negro National League II"
+  ]
+ ],
+ "BCA": [
+  [
+   1932,
+   1932,
+   "Atlanta Black Crackers",
+   "Negro Southern League"
+  ],
+  [
+   1938,
+   1938,
+   "Atlanta Black Crackers",
+   "Negro American League"
+  ]
+ ],
+ "BE": [
+  [
+   1935,
+   1935,
+   "Brooklyn Eagles",
+   "Negro National League II"
+  ]
+ ],
+ "BEG": [
+  [
+   1938,
+   1948,
+   "Baltimore Elite Giants",
+   "Negro National League II"
+  ]
+ ],
+ "BKA": [
+  [
+   1872,
+   1875,
+   "Brooklyn Atlantics",
+   "National Association"
+  ]
+ ],
+ "BKE": [
+  [
+   1872,
+   1872,
+   "Brooklyn Eckfords",
+   "National Association"
+  ]
+ ],
+ "BKF": [
+  [
+   1914,
+   1915,
+   "Brooklyn Tip-Tops",
+   "Federal League"
+  ]
+ ],
+ "BKG": [
+  [
+   1890,
+   1890,
+   "Brooklyn Gladiators",
+   "American Association"
+  ]
+ ],
+ "BKW": [
+  [
+   1890,
+   1890,
+   "Brooklyn Ward's Wonders",
+   "Players' League"
+  ]
+ ],
+ "BMD": [
+  [
+   1873,
+   1873,
+   "Baltimore Marylands",
+   "National Association"
+  ]
+ ],
+ "BOS": [
+  [
+   1914,
+   1915,
+   "Boston Red Sox",
+   "American League"
+  ]
+ ],
+ "BRG": [
+  [
+   1923,
+   1927,
+   "Brooklyn Royal Giants",
+   "Eastern Colored League"
+  ]
+ ],
+ "BRO": [
+  [
+   1884,
+   1884,
+   "Brooklyn Atlantics",
+   "American Association"
+  ],
+  [
+   1885,
+   1887,
+   "Brooklyn Grays",
+   "American Association"
+  ],
+  [
+   1888,
+   1889,
+   "Brooklyn Bridegrooms",
+   "American Association"
+  ],
+  [
+   1890,
+   1890,
+   "Brooklyn Bridegrooms",
+   "National League"
+  ],
+  [
+   1891,
+   1895,
+   "Brooklyn Grooms",
+   "National League"
+  ],
+  [
+   1896,
+   1898,
+   "Brooklyn Bridegrooms",
+   "National League"
+  ],
+  [
+   1899,
+   1900,
+   "Brooklyn Superbas",
+   "National League"
+  ],
+  [
+   1914,
+   1915,
+   "Brooklyn Robins",
+   "National League"
+  ]
+ ],
+ "BSN": [
+  [
+   1871,
+   1875,
+   "Boston Red Stockings",
+   "National Association"
+  ],
+  [
+   1876,
+   1882,
+   "Boston Red Caps",
+   "National League"
+  ],
+  [
+   1883,
+   1900,
+   "Boston Beaneaters",
+   "National League"
+  ],
+  [
+   1914,
+   1915,
+   "Boston Braves",
+   "National League"
+  ]
+ ],
+ "BSR": [
+  [
+   1890,
+   1890,
+   "Boston Reds",
+   "Players' League"
+  ],
+  [
+   1891,
+   1891,
+   "Boston Reds",
+   "American Association"
+  ]
+ ],
+ "BSU": [
+  [
+   1884,
+   1884,
+   "Boston Reds",
+   "Union Association"
+  ]
+ ],
+ "BUF": [
+  [
+   1879,
+   1885,
+   "Buffalo Bisons",
+   "National League"
+  ],
+  [
+   1890,
+   1890,
+   "Buffalo Bisons",
+   "Players' League"
+  ],
+  [
+   1914,
+   1914,
+   "Buffalo Buffeds",
+   "Federal League"
+  ],
+  [
+   1915,
+   1915,
+   "Buffalo Blues",
+   "Federal League"
+  ]
+ ],
+ "CAG": [
+  [
+   1920,
+   1930,
+   "Chicago American Giants",
+   "Negro National League I"
+  ],
+  [
+   1932,
+   1932,
+   "Chicago American Giants",
+   "Negro Southern League"
+  ],
+  [
+   1933,
+   1935,
+   "Chicago American Giants",
+   "Negro National League II"
+  ],
+  [
+   1937,
+   1948,
+   "Chicago American Giants",
+   "Negro American League"
+  ]
+ ],
+ "CBB": [
+  [
+   1933,
+   1933,
+   "Columbus Blue Birds",
+   "Negro National League II"
+  ]
+ ],
+ "CBE": [
+  [
+   1943,
+   1948,
+   "Cleveland Buckeyes",
+   "Negro American League"
+  ]
+ ],
+ "CBN": [
+  [
+   1924,
+   1924,
+   "Cleveland Browns",
+   "Negro National League I"
+  ]
+ ],
+ "CBR": [
+  [
+   1939,
+   1940,
+   "Cleveland Bears",
+   "Negro American League"
+  ]
+ ],
+ "CC": [
+  [
+   1943,
+   1943,
+   "Cincinnati Clowns",
+   "Negro American League"
+  ]
+ ],
+ "CC2": [
+  [
+   1931,
+   1931,
+   "Chicago Columbia Giants",
+   "Negro National League I"
+  ]
+ ],
+ "CCB": [
+  [
+   1942,
+   1942,
+   "Cincinnati-Cleveland Buckeyes",
+   "Negro American League"
+  ]
+ ],
+ "CCU": [
+  [
+   1931,
+   1931,
+   "Cleveland Cubs",
+   "Negro National League I"
+  ]
+ ],
+ "CEG": [
+  [
+   1935,
+   1935,
+   "Columbus Elite Giants",
+   "Negro National League II"
+  ]
+ ],
+ "CEL": [
+  [
+   1926,
+   1926,
+   "Cleveland Elites",
+   "Negro National League I"
+  ]
+ ],
+ "CHC": [
+  [
+   1914,
+   1915,
+   "Chicago Cubs",
+   "National League"
+  ]
+ ],
+ "CHI": [
+  [
+   1871,
+   1871,
+   "Chicago White Stockings",
+   "National Association"
+  ],
+  [
+   1874,
+   1875,
+   "Chicago White Stockings",
+   "National Association"
+  ],
+  [
+   1876,
+   1889,
+   "Chicago White Stockings",
+   "National League"
+  ],
+  [
+   1890,
+   1897,
+   "Chicago Colts",
+   "National League"
+  ],
+  [
+   1898,
+   1900,
+   "Chicago Orphans",
+   "National League"
+  ]
+ ],
+ "CHT": [
+  [
+   1927,
+   1927,
+   "Cleveland Hornets",
+   "Negro National League I"
+  ]
+ ],
+ "CHW": [
+  [
+   1914,
+   1915,
+   "Chicago White Sox",
+   "American League"
+  ]
+ ],
+ "CI76": [
+  [
+   1876,
+   1880,
+   "Cincinnati Reds",
+   "National League"
+  ]
+ ],
+ "CIC": [
+  [
+   1944,
+   1947,
+   "Cincinnati-Indianapolis Clowns",
+   "Negro American League"
+  ]
+ ],
+ "CIN": [
+  [
+   1882,
+   1889,
+   "Cincinnati Red Stockings",
+   "American Association"
+  ],
+  [
+   1890,
+   1900,
+   "Cincinnati Reds",
+   "National League"
+  ],
+  [
+   1914,
+   1915,
+   "Cincinnati Reds",
+   "National League"
+  ]
+ ],
+ "CKE": [
+  [
+   1891,
+   1891,
+   "Cincinnati Kelly's Killers",
+   "American Association"
+  ]
+ ],
+ "CL71": [
+  [
+   1871,
+   1872,
+   "Cleveland Forest Citys",
+   "National Association"
+  ]
+ ],
+ "CL79": [
+  [
+   1879,
+   1884,
+   "Cleveland Blues",
+   "National League"
+  ]
+ ],
+ "CL87": [
+  [
+   1887,
+   1888,
+   "Cleveland Blues",
+   "American Association"
+  ],
+  [
+   1889,
+   1899,
+   "Cleveland Spiders",
+   "National League"
+  ]
+ ],
+ "CLE": [
+  [
+   1914,
+   1914,
+   "Cleveland Naps",
+   "American League"
+  ],
+  [
+   1915,
+   1915,
+   "Cleveland Indians",
+   "American League"
+  ]
+ ],
+ "CLI": [
+  [
+   1890,
+   1890,
+   "Cleveland Infants",
+   "Players' League"
+  ]
+ ],
+ "CLS": [
+  [
+   1932,
+   1932,
+   "Cleveland Stars",
+   "East-West League"
+  ]
+ ],
+ "CO83": [
+  [
+   1883,
+   1884,
+   "Columbus Buckeyes",
+   "American Association"
+  ]
+ ],
+ "CO89": [
+  [
+   1889,
+   1891,
+   "Columbus Solons",
+   "American Association"
+  ]
+ ],
+ "COB": [
+  [
+   1921,
+   1921,
+   "Columbus Buckeyes",
+   "Negro National League I"
+  ]
+ ],
+ "COG": [
+  [
+   1920,
+   1921,
+   "Chicago Giants",
+   "Negro National League I"
+  ]
+ ],
+ "COR": [
+  [
+   1884,
+   1884,
+   "Cincinnati Outlaw Reds",
+   "Union Association"
+  ]
+ ],
+ "CPI": [
+  [
+   1890,
+   1890,
+   "Chicago Pirates",
+   "Players' League"
+  ]
+ ],
+ "CRS": [
+  [
+   1934,
+   1934,
+   "Cleveland Red Sox",
+   "Negro National League II"
+  ]
+ ],
+ "CS": [
+  [
+   1921,
+   1921,
+   "Cincinnati Cuban Stars",
+   "Negro National League I"
+  ]
+ ],
+ "CSE": [
+  [
+   1923,
+   1928,
+   "Cuban Stars East",
+   "Eastern Colored League"
+  ],
+  [
+   1929,
+   1929,
+   "Cuban Stars East",
+   "American Negro League"
+  ]
+ ],
+ "CSW": [
+  [
+   1920,
+   1920,
+   "Cuban Stars West",
+   "Negro National League I"
+  ],
+  [
+   1922,
+   1930,
+   "Cuban Stars West",
+   "Negro National League I"
+  ]
+ ],
+ "CT": [
+  [
+   1937,
+   1937,
+   "Cincinnati Tigers",
+   "Negro American League"
+  ]
+ ],
+ "CTG": [
+  [
+   1928,
+   1928,
+   "Cleveland Tigers",
+   "Negro National League I"
+  ]
+ ],
+ "CTS": [
+  [
+   1922,
+   1922,
+   "Cleveland Tate Stars",
+   "Negro National League I"
+  ]
+ ],
+ "CUN": [
+  [
+   1884,
+   1884,
+   "Chicago/Pittsburgh (Union League)",
+   "Union Association"
+  ]
+ ],
+ "CUP": [
+  [
+   1932,
+   1932,
+   "Pollock's Cuban Stars",
+   "East-West League"
+  ]
+ ],
+ "CWH": [
+  [
+   1914,
+   1914,
+   "Chicago Chi-Feds",
+   "Federal League"
+  ],
+  [
+   1915,
+   1915,
+   "Chicago Whales",
+   "Federal League"
+  ]
+ ],
+ "DE81": [
+  [
+   1881,
+   1888,
+   "Detroit Wolverines",
+   "National League"
+  ]
+ ],
+ "DET": [
+  [
+   1914,
+   1915,
+   "Detroit Tigers",
+   "American League"
+  ]
+ ],
+ "DM": [
+  [
+   1920,
+   1920,
+   "Dayton Marcos",
+   "Negro National League I"
+  ],
+  [
+   1926,
+   1926,
+   "Dayton Marcos",
+   "Negro National League I"
+  ]
+ ],
+ "DS": [
+  [
+   1920,
+   1931,
+   "Detroit Stars",
+   "Negro National League I"
+  ]
+ ],
+ "DTS": [
+  [
+   1937,
+   1937,
+   "Detroit Stars",
+   "Negro American League"
+  ]
+ ],
+ "DW": [
+  [
+   1932,
+   1932,
+   "Detroit Wolves",
+   "East-West League"
+  ]
+ ],
+ "ELI": [
+  [
+   1873,
+   1873,
+   "Elizabeth Resolutes",
+   "National Association"
+  ]
+ ],
+ "FTW": [
+  [
+   1871,
+   1871,
+   "Fort Wayne Kekiongas",
+   "National Association"
+  ]
+ ],
+ "HAR": [
+  [
+   1874,
+   1875,
+   "Hartford Dark Blues",
+   "National Association"
+  ],
+  [
+   1876,
+   1877,
+   "Hartford Dark Blues",
+   "National League"
+  ]
+ ],
+ "HBG": [
+  [
+   1924,
+   1927,
+   "Harrisburg Giants",
+   "Eastern Colored League"
+  ]
+ ],
+ "HG": [
+  [
+   1929,
+   1929,
+   "Homestead Grays",
+   "American Negro League"
+  ],
+  [
+   1932,
+   1932,
+   "Homestead Grays",
+   "East-West League"
+  ],
+  [
+   1933,
+   1933,
+   "Homestead Grays",
+   "Negro National League II"
+  ],
+  [
+   1935,
+   1948,
+   "Homestead Grays",
+   "Negro National League II"
+  ]
+ ],
+ "HIL": [
+  [
+   1923,
+   1927,
+   "Hilldale Club",
+   "Eastern Colored League"
+  ],
+  [
+   1929,
+   1929,
+   "Hilldale Club",
+   "American Negro League"
+  ],
+  [
+   1932,
+   1932,
+   "Hilldale Club",
+   "East-West League"
+  ]
+ ],
+ "HSS": [
+  [
+   1943,
+   1943,
+   "Harrisburg-St. Louis Stars",
+   "Negro National League II"
+  ]
+ ],
+ "IA": [
+  [
+   1937,
+   1937,
+   "Indianapolis Athletics",
+   "Negro American League"
+  ]
+ ],
+ "IAB": [
+  [
+   1939,
+   1939,
+   "Indianapolis ABCs/Atlanta Black Crackers",
+   "Negro American League"
+  ]
+ ],
+ "IC": [
+  [
+   1948,
+   1948,
+   "Indianapolis Clowns",
+   "Negro American League"
+  ]
+ ],
+ "ID": [
+  [
+   1933,
+   1933,
+   "Indianapolis ABCs/Detroit Stars",
+   "Negro National League II"
+  ]
+ ],
+ "IND": [
+  [
+   1878,
+   1878,
+   "Indianapolis Blues",
+   "National League"
+  ],
+  [
+   1884,
+   1884,
+   "Indianapolis Hoosiers",
+   "American Association"
+  ],
+  [
+   1887,
+   1889,
+   "Indianapolis Hoosiers",
+   "National League"
+  ],
+  [
+   1914,
+   1914,
+   "Indianapolis Hoosiers",
+   "Federal League"
+  ]
+ ],
+ "JRC": [
+  [
+   1938,
+   1938,
+   "Jacksonville Red Caps",
+   "Negro American League"
+  ],
+  [
+   1941,
+   1942,
+   "Jacksonville Red Caps",
+   "Negro American League"
+  ]
+ ],
+ "KCC": [
+  [
+   1884,
+   1884,
+   "Kansas City Cowboys",
+   "Union Association"
+  ],
+  [
+   1886,
+   1886,
+   "Kansas City Cowboys",
+   "National League"
+  ],
+  [
+   1888,
+   1889,
+   "Kansas City Cowboys",
+   "American Association"
+  ]
+ ],
+ "KCM": [
+  [
+   1920,
+   1930,
+   "Kansas City Monarchs",
+   "Negro National League I"
+  ],
+  [
+   1937,
+   1948,
+   "Kansas City Monarchs",
+   "Negro American League"
+  ]
+ ],
+ "KCP": [
+  [
+   1914,
+   1915,
+   "Kansas City Packers",
+   "Federal League"
+  ]
+ ],
+ "KEO": [
+  [
+   1875,
+   1875,
+   "Keokuk Westerns",
+   "National Association"
+  ]
+ ],
+ "LOU": [
+  [
+   1876,
+   1877,
+   "Louisville Grays",
+   "National League"
+  ],
+  [
+   1882,
+   1884,
+   "Louisville Eclipse",
+   "American Association"
+  ],
+  [
+   1885,
+   1891,
+   "Louisville Colonels",
+   "American Association"
+  ],
+  [
+   1892,
+   1899,
+   "Louisville Colonels",
+   "National League"
+  ]
+ ],
+ "LOW": [
+  [
+   1931,
+   1931,
+   "Louisville White Sox",
+   "Negro National League I"
+  ]
+ ],
+ "LRG": [
+  [
+   1932,
+   1932,
+   "Little Rock Grays",
+   "Negro Southern League"
+  ]
+ ],
+ "LVB": [
+  [
+   1930,
+   1930,
+   "Louisville Black Caps",
+   "Independent Clubs"
+  ],
+  [
+   1932,
+   1932,
+   "Louisville Black Caps",
+   "Negro Southern League"
+  ]
+ ],
+ "MB": [
+  [
+   1923,
+   1923,
+   "Milwaukee Bears",
+   "Negro National League I"
+  ]
+ ],
+ "MGS": [
+  [
+   1932,
+   1932,
+   "Montgomery Grey Sox",
+   "Negro Southern League"
+  ]
+ ],
+ "MI78": [
+  [
+   1878,
+   1878,
+   "Milwaukee Grays",
+   "National League"
+  ]
+ ],
+ "MI84": [
+  [
+   1884,
+   1884,
+   "Milwaukee Brewers",
+   "Union Association"
+  ]
+ ],
+ "MI91": [
+  [
+   1891,
+   1891,
+   "Milwaukee Brewers",
+   "American Association"
+  ]
+ ],
+ "MID": [
+  [
+   1872,
+   1872,
+   "Middletown Mansfields",
+   "National Association"
+  ]
+ ],
+ "MRM": [
+  [
+   1932,
+   1932,
+   "Monroe Monarchs",
+   "Negro Southern League"
+  ]
+ ],
+ "MRS": [
+  [
+   1924,
+   1925,
+   "Memphis Red Sox",
+   "Negro National League I"
+  ],
+  [
+   1927,
+   1930,
+   "Memphis Red Sox",
+   "Negro National League I"
+  ],
+  [
+   1932,
+   1932,
+   "Memphis Red Sox",
+   "Negro Southern League"
+  ],
+  [
+   1937,
+   1948,
+   "Memphis Red Sox",
+   "Negro American League"
+  ]
+ ],
+ "NBY": [
+  [
+   1936,
+   1948,
+   "New York Black Yankees",
+   "Negro National League II"
+  ]
+ ],
+ "ND": [
+  [
+   1934,
+   1935,
+   "Newark Dodgers",
+   "Negro National League II"
+  ]
+ ],
+ "NE": [
+  [
+   1936,
+   1948,
+   "Newark Eagles",
+   "Negro National League II"
+  ]
+ ],
+ "NEG": [
+  [
+   1930,
+   1930,
+   "Nashville Elite Giants",
+   "Negro National League I"
+  ],
+  [
+   1932,
+   1932,
+   "Nashville Elite Giants",
+   "Negro Southern League"
+  ],
+  [
+   1933,
+   1934,
+   "Nashville Elite Giants",
+   "Negro National League II"
+  ]
+ ],
+ "NHE": [
+  [
+   1875,
+   1875,
+   "New Haven Elm Citys",
+   "National Association"
+  ]
+ ],
+ "NLG": [
+  [
+   1923,
+   1928,
+   "New York Lincoln Giants",
+   "Eastern Colored League"
+  ],
+  [
+   1929,
+   1929,
+   "New York Lincoln Giants",
+   "American Negro League"
+  ]
+ ],
+ "NS": [
+  [
+   1926,
+   1926,
+   "Newark Stars",
+   "Eastern Colored League"
+  ]
+ ],
+ "NWB": [
+  [
+   1932,
+   1932,
+   "Newark Browns",
+   "East-West League"
+  ]
+ ],
+ "NWK": [
+  [
+   1915,
+   1915,
+   "Newark Pepper",
+   "Federal League"
+  ]
+ ],
+ "NY71": [
+  [
+   1871,
+   1875,
+   "New York Mutuals",
+   "National Association"
+  ],
+  [
+   1876,
+   1876,
+   "New York Mutuals",
+   "National League"
+  ]
+ ],
+ "NY83": [
+  [
+   1883,
+   1887,
+   "New York Metropolitans",
+   "American Association"
+  ]
+ ],
+ "NYC": [
+  [
+   1935,
+   1936,
+   "New York Cubans",
+   "Negro National League II"
+  ],
+  [
+   1939,
+   1948,
+   "New York Cubans",
+   "Negro National League II"
+  ]
+ ],
+ "NYG": [
+  [
+   1883,
+   1884,
+   "New York Gothams",
+   "National League"
+  ],
+  [
+   1885,
+   1900,
+   "New York Giants",
+   "National League"
+  ],
+  [
+   1914,
+   1915,
+   "New York Giants",
+   "National League"
+  ]
+ ],
+ "NYK": [
+  [
+   1890,
+   1890,
+   "New York Giants",
+   "Players' League"
+  ]
+ ],
+ "NYY": [
+  [
+   1914,
+   1915,
+   "New York Yankees",
+   "American League"
+  ]
+ ],
+ "PBG": [
+  [
+   1934,
+   1934,
+   "Philadelphia Bacharach Giants",
+   "Negro National League II"
+  ]
+ ],
+ "PBU": [
+  [
+   1890,
+   1890,
+   "Pittsburgh Burghers",
+   "Players' League"
+  ]
+ ],
+ "PC": [
+  [
+   1933,
+   1938,
+   "Pittsburgh Crawfords",
+   "Negro National League II"
+  ]
+ ],
+ "PCN": [
+  [
+   1875,
+   1875,
+   "Philadelphia Centennials",
+   "National Association"
+  ]
+ ],
+ "PH82": [
+  [
+   1882,
+   1890,
+   "Philadelphia Athletics",
+   "American Association"
+  ]
+ ],
+ "PH91": [
+  [
+   1891,
+   1891,
+   "Philadelphia Athletics",
+   "American Association"
+  ]
+ ],
+ "PHA": [
+  [
+   1914,
+   1915,
+   "Philadelphia Athletics",
+   "American League"
+  ]
+ ],
+ "PHI": [
+  [
+   1883,
+   1889,
+   "Philadelphia Quakers",
+   "National League"
+  ],
+  [
+   1890,
+   1900,
+   "Philadelphia Phillies",
+   "National League"
+  ],
+  [
+   1914,
+   1915,
+   "Philadelphia Phillies",
+   "National League"
+  ]
+ ],
+ "PHK": [
+  [
+   1884,
+   1884,
+   "Philadelphia Keystones",
+   "Union Association"
+  ]
+ ],
+ "PHN": [
+  [
+   1871,
+   1875,
+   "Philadelphia Athletics",
+   "National Association"
+  ],
+  [
+   1876,
+   1876,
+   "Philadelphia Athletics",
+   "National League"
+  ]
+ ],
+ "PHQ": [
+  [
+   1890,
+   1890,
+   "Philadelphia Athletics",
+   "Players' League"
+  ]
+ ],
+ "PIT": [
+  [
+   1882,
+   1886,
+   "Pittsburg Alleghenys",
+   "American Association"
+  ],
+  [
+   1887,
+   1890,
+   "Pittsburg Alleghenys",
+   "National League"
+  ],
+  [
+   1891,
+   1900,
+   "Pittsburgh Pirates",
+   "National League"
+  ],
+  [
+   1914,
+   1915,
+   "Pittsburgh Pirates",
+   "National League"
+  ]
+ ],
+ "PK": [
+  [
+   1922,
+   1922,
+   "Pittsburgh Keystones",
+   "Negro National League I"
+  ]
+ ],
+ "PRB": [
+  [
+   1914,
+   1915,
+   "Pittsburgh Rebels",
+   "Federal League"
+  ]
+ ],
+ "PRO": [
+  [
+   1878,
+   1885,
+   "Providence Grays",
+   "National League"
+  ]
+ ],
+ "PS": [
+  [
+   1934,
+   1948,
+   "Philadelphia Stars",
+   "Negro National League II"
+  ]
+ ],
+ "PTG": [
+  [
+   1928,
+   1928,
+   "Philadelphia Tigers",
+   "Eastern Colored League"
+  ]
+ ],
+ "PWS": [
+  [
+   1873,
+   1875,
+   "Philadelphia Whites",
+   "National Association"
+  ]
+ ],
+ "RCH": [
+  [
+   1890,
+   1890,
+   "Rochester Broncos",
+   "American Association"
+  ]
+ ],
+ "RIC": [
+  [
+   1884,
+   1884,
+   "Richmond Virginians",
+   "American Association"
+  ]
+ ],
+ "ROC": [
+  [
+   1871,
+   1871,
+   "Rockford Forest Citys",
+   "National Association"
+  ]
+ ],
+ "SEN": [
+  [
+   1938,
+   1938,
+   "Washington Black Senators",
+   "Negro National League II"
+  ]
+ ],
+ "SL2": [
+  [
+   1937,
+   1937,
+   "St. Louis Stars",
+   "Negro American League"
+  ]
+ ],
+ "SL3": [
+  [
+   1939,
+   1939,
+   "St. Louis Stars",
+   "Negro American League"
+  ]
+ ],
+ "SL75": [
+  [
+   1875,
+   1875,
+   "St. Louis Brown Stockings",
+   "National Association"
+  ],
+  [
+   1876,
+   1877,
+   "St. Louis Brown Stockings",
+   "National League"
+  ]
+ ],
+ "SL84": [
+  [
+   1884,
+   1884,
+   "St. Louis Maroons",
+   "Union Association"
+  ],
+  [
+   1885,
+   1886,
+   "St. Louis Maroons",
+   "National League"
+  ]
+ ],
+ "SLB": [
+  [
+   1914,
+   1915,
+   "St. Louis Browns",
+   "American League"
+  ]
+ ],
+ "SLG": [
+  [
+   1920,
+   1921,
+   "St. Louis Giants",
+   "Negro National League I"
+  ]
+ ],
+ "SLR": [
+  [
+   1875,
+   1875,
+   "St. Louis Red Stockings",
+   "National Association"
+  ]
+ ],
+ "SLS": [
+  [
+   1922,
+   1931,
+   "St. Louis Stars",
+   "Negro National League I"
+  ]
+ ],
+ "SLT": [
+  [
+   1914,
+   1915,
+   "St. Louis Terriers",
+   "Federal League"
+  ]
+ ],
+ "SNS": [
+  [
+   1940,
+   1941,
+   "St. Louis-New Orleans Stars",
+   "Negro American League"
+  ]
+ ],
+ "SOX": [
+  [
+   1933,
+   1933,
+   "Baltimore Sox",
+   "Negro National League II"
+  ]
+ ],
+ "SPS": [
+  [
+   1884,
+   1884,
+   "St. Paul White Caps",
+   "Union Association"
+  ]
+ ],
+ "STL": [
+  [
+   1882,
+   1882,
+   "St. Louis Brown Stockings",
+   "American Association"
+  ],
+  [
+   1883,
+   1891,
+   "St. Louis Browns",
+   "American Association"
+  ],
+  [
+   1892,
+   1898,
+   "St. Louis Browns",
+   "National League"
+  ],
+  [
+   1899,
+   1899,
+   "St. Louis Perfectos",
+   "National League"
+  ],
+  [
+   1900,
+   1900,
+   "St. Louis Cardinals",
+   "National League"
+  ],
+  [
+   1914,
+   1915,
+   "St. Louis Cardinals",
+   "National League"
+  ]
+ ],
+ "SYR": [
+  [
+   1879,
+   1879,
+   "Syracuse Stars",
+   "National League"
+  ],
+  [
+   1890,
+   1890,
+   "Syracuse Stars",
+   "American Association"
+  ]
+ ],
+ "TC": [
+  [
+   1939,
+   1939,
+   "Toledo Crawfords",
+   "Negro National League II"
+  ]
+ ],
+ "TIC": [
+  [
+   1940,
+   1940,
+   "Toledo-Indianapolis Crawfords",
+   "Negro American League"
+  ]
+ ],
+ "TOL": [
+  [
+   1884,
+   1884,
+   "Toledo Blue Stockings",
+   "American Association"
+  ],
+  [
+   1890,
+   1890,
+   "Toledo Maumees",
+   "American Association"
+  ]
+ ],
+ "TRO": [
+  [
+   1871,
+   1872,
+   "Troy Haymakers",
+   "National Association"
+  ],
+  [
+   1879,
+   1882,
+   "Troy Trojans",
+   "National League"
+  ]
+ ],
+ "TT": [
+  [
+   1923,
+   1923,
+   "Toledo Tigers",
+   "Negro National League I"
+  ]
+ ],
+ "WA86": [
+  [
+   1886,
+   1889,
+   "Washington Nationals",
+   "National League"
+  ]
+ ],
+ "WA91": [
+  [
+   1891,
+   1891,
+   "Washington Statesmen",
+   "American Association"
+  ],
+  [
+   1892,
+   1899,
+   "Washington Senators",
+   "National League"
+  ]
+ ],
+ "WAP": [
+  [
+   1932,
+   1932,
+   "Washington Pilots",
+   "East-West League"
+  ]
+ ],
+ "WEG": [
+  [
+   1936,
+   1937,
+   "Washington Elite Giants",
+   "Negro National League II"
+  ]
+ ],
+ "WIL": [
+  [
+   1884,
+   1884,
+   "Wilmington Quicksteps",
+   "Union Association"
+  ]
+ ],
+ "WMP": [
+  [
+   1925,
+   1925,
+   "Wilmington Potomacs",
+   "Eastern Colored League"
+  ]
+ ],
+ "WOR": [
+  [
+   1880,
+   1882,
+   "Worcester Ruby Legs",
+   "National League"
+  ]
+ ],
+ "WP": [
+  [
+   1924,
+   1924,
+   "Washington Potomacs",
+   "Eastern Colored League"
+  ]
+ ],
+ "WS72": [
+  [
+   1872,
+   1872,
+   "Washington Nationals",
+   "National Association"
+  ]
+ ],
+ "WS73": [
+  [
+   1873,
+   1873,
+   "Washington Blue Legs",
+   "National Association"
+  ]
+ ],
+ "WS84": [
+  [
+   1884,
+   1884,
+   "Washington Nationals",
+   "American Association"
+  ]
+ ],
+ "WSH": [
+  [
+   1914,
+   1915,
+   "Washington Senators",
+   "American League"
+  ]
+ ],
+ "WSO": [
+  [
+   1871,
+   1872,
+   "Washington Olympics",
+   "National Association"
+  ],
+  [
+   1875,
+   1875,
+   "Washington Nationals",
+   "National Association"
+  ]
+ ],
+ "WST": [
+  [
+   1884,
+   1884,
+   "Washington Nationals",
+   "Union Association"
+  ]
+ ]
+}

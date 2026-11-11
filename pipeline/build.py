@@ -34,7 +34,7 @@ from . import aggregate, catalog, teams
 from .text import search_key
 
 log = logging.getLogger("build")
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SOURCES = {
     "bat": "all_batting_stats", "pit": "all_pitching_stats",
     "tbat": "team_batting", "tpit": "team_pitching",
@@ -172,7 +172,7 @@ def build(csv_root: Path, stints_root: Path, output: Path) -> dict:
         CREATE TABLE players(pid INTEGER PRIMARY KEY, name TEXT, key TEXT, mlbam INT, bats TEXT,
                              throws TEXT, first INT, last INT, pa REAL, ip REAL, war REAL, pos TEXT);
         CREATE TABLE team_seasons(season INT, team TEXT, teamid INT, name TEXT, league TEXT,
-                                  division TEXT, w INT, l INT, g INT, rs INT, ra INT,
+                                  division TEXT, w INT, l INT, g INT, rs INT, ra INT, lg_name TEXT,
                                   PRIMARY KEY(season, team)) WITHOUT ROWID;
         CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
     """)
@@ -270,11 +270,11 @@ def build(csv_root: Path, stints_root: Path, output: Path) -> dict:
          max(p["pos"], key=p["pos"].get) if p["pos"] else ("P" if p["ip"] > 0 else None))
         for pid, p in people.items() if pid is not None])
     # Team seasons (records from the team pitching rows, runs from both sides).
-    con.executemany("INSERT INTO team_seasons VALUES (?,?,?,?,?,?,?,?,?,?,?)", [
+    con.executemany("INSERT INTO team_seasons VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [
         (season, team, t["teamid"], teams.team_name(team, season), teams.league(team, season),
          teams.division(team, season), t.get(("tpit", "W")), t.get(("tpit", "L")),
          games.get((season, team)) or ((t.get(("tpit", "W")) or 0) + (t.get(("tpit", "L")) or 0)),
-         t.get(("tbat", "R")), t.get(("tpit", "R")))
+         t.get(("tbat", "R")), t.get(("tpit", "R")), teams.league_name(team, season))
         for (season, team), t in team_rows.items() if team != teams.MULTI_TEAM])
     latest = max(seasons_seen.get("bat", {0}))
     meta = {"schema": SCHEMA_VERSION, "built_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),

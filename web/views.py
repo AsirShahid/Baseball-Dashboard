@@ -59,15 +59,22 @@ def _min(kind):
     if raw == "q":
         return "q", 0
     try:
-        return "n", max(0, float(raw))
+        value = max(0.0, min(20000.0, float(raw)))
+        return "n", int(value) if value.is_integer() else value
     except ValueError:
         return "q", 0
 
 
-MIN_OPTIONS = {"bat": ([0, 1, 10, 25, 50, 100, 150, 200, 250, 300, 400, 502, 600],
-                       [1000, 1500, 2000, 3000, 4000, 5000, 7500, 10000]),
-               "pit": ([0, 1, 10, 20, 30, 40, 50, 70, 100, 130, 162, 200],
-                       [300, 500, 750, 1000, 1500, 2000, 3000])}
+# FanGraphs' minimum PA/IP ladder, the same for both and for seasons and spans
+# (with "Qualified", 62 options): fine steps to 250, 50s to 1,000, 500s to 10,000.
+LADDER = [0, 1, 5, 10] + list(range(20, 251, 10)) + list(range(300, 1001, 50)) + list(range(1500, 10001, 500))
+
+
+def min_options(kind: str, span: bool, value=None) -> list:
+    options = list(LADDER)
+    if value is not None and value not in options:
+        options = sorted(set(options) | {value})
+    return options
 
 
 @bp.route("/")
@@ -100,8 +107,8 @@ def players():
     pos = request.args.get("pos", "")
     lines, cols, sort, info = queries.player_table(kind, lo, hi, mode, min_mode, min_value, team, league,
                                                    pos, request.args.get("sort", ""))
-    short, long_ = MIN_OPTIONS[kind]
-    options = short + (long_ if lo != hi else [])
+    shown = int(min_value) if min_mode == "n" and float(min_value).is_integer() else min_value
+    options = min_options(kind, lo != hi, shown if min_mode == "n" else None)
     clubs = sorted({(code, r["name"]) for s in range(lo, hi + 1)
                     for code, r in queries.team_seasons(s).items()}, key=lambda x: x[1])
     return render_template("players.html", kind=kind, lo=lo, hi=hi, mode=mode, modes=queries.MODES[kind],
@@ -132,8 +139,18 @@ def player(pid: int):
     batting = queries.player(pid, "bat", bmode) if info["has_bat"] else None
     pitching = queries.player(pid, "pit", pmode) if info["has_pit"] else None
     order = ["pit", "bat"] if info["primary"] == "pit" else ["bat", "pit"]
+    main = pitching if info["primary"] == "pit" and pitching else (batting or pitching)
+    pkind = "pit" if main is pitching else "bat"
+    pct_seasons = [r["season"] for r in reversed(main["rows"])] if main else []
+    qualified = [r["season"] for r in reversed(main["rows"]) if r["qualified"]] if main else []
+    default = qualified[0] if qualified else (pct_seasons[0] if pct_seasons else 0)
+    pseason = _int("pseason", default)
+    if pct_seasons and pseason not in pct_seasons:
+        pseason = pct_seasons[0]
+    pct = queries.percentiles(pid, pkind, pseason) if pct_seasons else None
     return render_template("player.html", p=info, batting=batting, pitching=pitching, order=order,
-                           bmode=bmode, pmode=pmode, modes=queries.MODES)
+                           bmode=bmode, pmode=pmode, modes=queries.MODES, main=main, pkind=pkind,
+                           pct=pct, pct_seasons=pct_seasons)
 
 
 @bp.route("/team/<code>")

@@ -260,3 +260,68 @@ def test_formats():
     assert fmt(0.243, "pct1") == "24.3%" and fmt(192.0, "d1", "IP") == "192.0"
     assert ip_notation(177 + 2 / 3) == "177.2" and fmt(None) == ""
     assert fmt(float("nan"), "d2") == ""
+
+
+# ---------- follow-ups from the logo chat (2026-11-11) ----------
+
+def test_historic_names_leagues_and_colors():
+    from pipeline import teams as T
+    assert T.team_name("CPI", 1890) == "Chicago Pirates" and T.league_name("CPI", 1890) == "Players' League"
+    assert T.team_name("PIT", 1885) == "Pittsburg Alleghenys" and T.league("PIT", 1885) is None
+    assert T.team_name("PIT", 1895) == "Pittsburgh Pirates" and T.league("PIT", 1895) == "NL"
+    assert T.team_name("BSN", 1875) == "Boston Red Stockings" and T.league_name("BSN", 1875) == "National Association"
+    assert T.team_name("CWH", 1915) == "Chicago Whales" and T.league_name("CWH", 1914) == "Federal League"
+    assert T.league_name("HG", 1932) == "East-West League" and T.league_name("HG", 1940) == "Negro National League II"
+    assert T.team_name("CLE", 1948) == "Cleveland Indians" and T.team_name("NYY", 2024) == "New York Yankees"
+    assert T.color("TRO").lower() == "#1e7b3a" and T.color("NYY") == T.TEAM_COLORS["NYY"]
+
+
+def test_negro_and_federal_league_logos():
+    from pipeline import teams as T
+    for code, season in (("HG", 1931), ("KCM", 1942), ("CWH", 1914), ("BEG", 1940), ("SLT", 1915)):
+        path = T.logo(code, season)
+        assert path and (T.LOGO_DIR / path).is_file(), (code, season, path)
+    assert T.logo("HG", 1920) is None            # nothing before the dated logo
+    sources = __import__("json").loads((T.LOGO_DIR / "eras" / "historic_sources.json").read_text())
+    assert all(v["source_page"].startswith("https://") and v["license"] for v in sources.values())
+
+
+def test_minimum_ladder_matches_fangraphs(client):
+    from web import views
+    assert len(views.LADDER) + 1 == 62 and views.LADDER[-1] == 10000
+    html = page(client, "/players?kind=bat&season=2024&min=2750")
+    assert 'value="2750" selected' in html and "Other number" in html
+    assert "At least 2,750 PA." in html
+    span = page(client, "/players?kind=bat&season=1955&to=2024&min=2750")
+    assert "At least 2,750 PA over 1955&ndash;2024." in span
+    html = page(client, "/players?kind=bat&season=2024")
+    assert "Qualified: 502+ PA (3.1 per team game)." in html
+
+
+def test_player_percentiles(app, client):
+    from web import queries
+    with app.app_context():
+        p = queries.percentiles(JUDGE, "bat", 2024)
+    assert p["qualified"] and p["pool"] > 100
+    by = {r["col"]["key"]: r["pct"] for g in p["groups"] for r in g["rows"]}
+    assert by["WAR"] >= 99 and by["wRC+"] >= 99 and 20 < by["K%"] < 50   # 24.3% K: below average, lower is better
+    with app.app_context():
+        s = queries.percentiles(SKUBAL, "pit", 2024)
+    by = {r["col"]["key"]: r["pct"] for g in s["groups"] for r in g["rows"]}
+    assert by["ERA"] >= 95 and by["K%"] >= 90
+    html = page(client, f"/player/{JUDGE}")
+    assert "Percentile ranks" in html and "qualified hitters in 2024" in html
+
+
+def test_pre_1954_spans_keep_obp():
+    """No sacrifice flies before 1954: Ruth's 1920-21 OBP is (H+BB+HBP)/(AB+BB+HBP)."""
+    from pipeline import aggregate
+    cols = {"AB": np.array([458.0, 540.0]), "PA": np.array([616.0, 693.0]), "H": np.array([172.0, 204.0]),
+            "1B": np.array([73.0, 85.0]), "2B": np.array([36.0, 44.0]), "3B": np.array([9.0, 16.0]),
+            "HR": np.array([54.0, 59.0]), "BB": np.array([150.0, 145.0]), "HBP": np.array([3.0, 4.0]),
+            "SF": np.array([np.nan, np.nan]), "SO": np.array([80.0, 81.0]),
+            "OBP": np.array([0.532, 0.512]), "SLG": np.array([0.847, 0.846]), "OPS": np.array([1.379, 1.358]),
+            "BABIP": np.array([0.366, 0.373])}
+    _keys, _first, out = aggregate.group_rows(np.array([1, 1]), cols, pitching=False)
+    assert math.isclose(out["OBP"][0], (376 + 295 + 7) / (998 + 295 + 7), rel_tol=1e-9)
+    assert not np.isnan(out["OPS"][0]) and not np.isnan(out["BABIP"][0])

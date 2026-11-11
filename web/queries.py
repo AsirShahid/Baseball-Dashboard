@@ -276,13 +276,10 @@ def standings(season: int) -> list[dict]:
     for r in rows:
         if r["division"]:
             title = r["division"]
-        elif r["league"]:
-            title = {"AL": "American League", "NL": "National League"}[r["league"]]
         else:
-            title = T.other_leagues(season)
+            title = r.get("lg_name") or T.league_name(code, season)
         groups.setdefault(title, []).append(r)
-    order = ["AL East", "AL Central", "AL West", "NL East", "NL Central", "NL West",
-             "American League", "National League"]
+    order = ["AL East", "AL Central", "AL West", "NL East", "NL Central", "NL West"] + T.LEAGUE_ORDER
     out = []
     for title in sorted(groups, key=lambda t: (order.index(t) if t in order else 99, t)):
         members = sorted(groups[title], key=lambda r: (-r["pct"], -r["w"]))
@@ -290,8 +287,8 @@ def standings(season: int) -> list[dict]:
         for r in members:
             r["gb"] = ((top["w"] - r["w"]) + (r["l"] - top["l"])) / 2
         out.append({"title": title, "rows": members,
-                    "league": "AL" if title.startswith(("AL", "American")) else
-                              "NL" if title.startswith(("NL", "National")) else ""})
+                    "league": "AL" if title.startswith(("AL", "American League")) else
+                              "NL" if title.startswith(("NL", "National League")) else ""})
     return out
 
 
@@ -462,7 +459,58 @@ def player(pid: int, kind: str, mode: str) -> dict | None:
             row["stints"].append({"team": s["team"], "values": _row_values("s" + kind, s["season"], s["i"], stats)})
         seasons_rows.append(row)
         del t
-    return {"cols": cols, "rows": seasons_rows, "career": career}
+    ages = [r["age"] for r in seasons_rows if r["age"]]
+    weight = "PA" if kind == BAT else "IP"
+    facts = {"seasons": len(seasons_rows), "qualified": sum(r["qualified"] for r in seasons_rows),
+             "ages": (min(ages), max(ages)) if ages else None,
+             "weight": (career or {}).get(weight) if career else sum((r["values"].get(weight) or 0) for r in seasons_rows),
+             "games": (career or {}).get("G") if career else sum((r["values"].get("G") or 0) for r in seasons_rows)}
+    if facts["games"] is None:
+        facts["games"] = sum((r["values"].get("G") or 0) for r in seasons_rows)
+    return {"cols": cols, "rows": seasons_rows, "career": career, "facts": facts}
+
+
+PCT_STATS = {
+    BAT: [("Value", ["WAR", "wRC+", "Offense", "BaseRunning", "Defense"]),
+          ("Hitting", ["OBP", "SLG", "ISO", "AVG", "BABIP"]),
+          ("Plate skills", ["BB%", "K%", "O-Swing%", "Contact%"]),
+          ("Statcast", ["xwOBA", "EV", "Barrel%", "HardHit%", "AvgBatSpeed"])],
+    PIT: [("Value", ["WAR", "ERA-", "FIP-", "RA9-Wins"]),
+          ("Run prevention", ["ERA", "FIP", "xFIP", "SIERA", "WHIP"]),
+          ("Strikeouts and walks", ["K%", "BB%", "K-BB%", "SwStr%", "O-Swing%"]),
+          ("Contact", ["GB%", "HR/9", "Barrel%", "HardHit%", "FBv"])],
+}
+
+
+@db.cached
+def percentiles(pid: int, kind: str, season: int) -> dict | None:
+    """His percentile in each stat that season among the majors' qualified players,
+    the way Baseball Savant ranks them (100 = best)."""
+    stats = tuple(s for _g, group in PCT_STATS[kind] for s in group)
+    t = db.table(kind, season, season, stats)
+    idx = next((i for i, r in enumerate(t.ident) if r["pid"] == pid), None)
+    if idx is None:
+        return None
+    _need, _have, ok = qualifying(kind, t)
+    groups = []
+    for title, group in PCT_STATS[kind]:
+        rows_out = []
+        for stat in group:
+            c = column(kind, stat)
+            col = t.cols.get(stat)
+            if c is None or col is None or np.isnan(col[idx]):
+                continue
+            pool = col[ok & ~np.isnan(col)]
+            if len(pool) < 10:
+                continue
+            v = col[idx]
+            below, same = (pool < v).sum(), (pool == v).sum()
+            share = (below + max(same - (1 if ok[idx] else 0), 0) / 2) / max(len(pool) - (1 if ok[idx] else 0), 1)
+            pct = round(100 * (share if c["better"] else 1 - share))
+            rows_out.append({"col": c, "value": float(v), "pct": max(0, min(100, pct))})
+        if rows_out:
+            groups.append({"title": title, "rows": rows_out})
+    return {"season": season, "qualified": bool(ok[idx]), "pool": int(ok.sum()), "groups": groups}
 
 
 @db.cached

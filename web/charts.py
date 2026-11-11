@@ -30,7 +30,7 @@ DEFAULTS = {"team": ("pit:ERA", "bat:wRC+"), "bat": ("wRC+", "WAR"), "pit": ("FI
 def team_colors() -> dict:
     """Team colors, lightened where a dark color would vanish on the dark page."""
     out = {}
-    for code, hexcolor in T.TEAM_COLORS.items():
+    for code, hexcolor in {**T.HISTORIC_COLORS, **T.TEAM_COLORS}.items():
         n = int(hexcolor[1:], 16)
         rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255]
         lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
@@ -174,7 +174,7 @@ def chart_payload(args) -> dict:
         out_axes[a] = {"key": stat, "kind": k, "label": (("Hitting " if k == "bat" else "Pitching ") + stat)
                        if view == "team" else stat, "name": c["name"],
                        "fmt": "pctl" if era else c["fmt"], "better": c["better"], "rule": c["rule"]}
-    fields = ["id", "name", "team", "season", "logo", "x", "y", "z", "w", "first", "last"]
+    fields = ["id", "name", "team", "season", "logo", "x", "y", "z", "w", "first", "last", "lg"]
     return {"view": view, "kind": kind, "lo": lo, "hi": hi, "split": split, "era": era,
             "axes": out_axes, "fields": fields,
             "rows": [[r.get(f) for f in fields] for r in rows], "count": len(rows),
@@ -277,6 +277,7 @@ def _team_rows(axes, seasons_list, args, era):
             if league and T.league(code, season) != league and T.division(code, season) != league:
                 continue
             out.append({"id": key if isinstance(key, int) else code, "name": T.team_name(code, season),
+                        "lg": T.league_name(code, season),
                         "team": code, "season": lo if lo == hi else None, "first": row["first"],
                         "last": row["last"], "logo": queries.logo_url(code, season), "w": row.get("w"),
                         **{a: row.get(a) for a in axes}})
@@ -295,7 +296,7 @@ def _combine_era(rows):
                 g["_d"][a] = g["_d"].get(a, 0.0) + w
         g["_w"] = g.get("_w", 0.0) + (r.get("w") or 0.0)
         if (r["season"] or 0) >= (g["last"] or 0):
-            g.update(team=r["team"], logo=r["logo"], name=r["name"], last=r["season"])
+            g.update(team=r["team"], logo=r["logo"], name=r["name"], last=r["season"], lg=r.get("lg"))
         g["first"] = min(g["first"], r["season"])
     out = []
     for g in groups.values():

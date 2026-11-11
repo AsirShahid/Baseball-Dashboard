@@ -13,5 +13,5 @@
 </section>
 {% endfor %}
 {% if not groups %}<div class="card empty">No records for {{ season }}.</div>{% endif %}
-<p class="sub">Records come from FanGraphs' team pitching lines (wins and losses); ties are not counted. Divisions follow each season's alignment from 1969 on. Before 1969 clubs are grouped by league; clubs outside the AL and NL that season ({{ other }}) are grouped together.</p>
+<p class="sub">Records come from FanGraphs' team pitching lines (wins and losses); ties are not counted. Divisions follow each season's alignment from 1969 on; before that, clubs are grouped by league, including the National Association, American Association, Union Association, Players' League, Federal League and the Negro Leagues (league names from the Lahman database and the Seamheads Negro Leagues Database). Negro League records include games against non-league opponents that FanGraphs counts, so they can differ from league-only standings.</p>
 {% endblock %}

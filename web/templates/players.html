@@ -15,6 +15,7 @@
     <select data-nav="min" title="Qualified: {{ '3.1 plate appearances' if kind == 'bat' else '1 inning' }} per team game in a season (MLB's rule for rate-stat leaders); over several seasons, FanGraphs' {{ '1,000 PA' if kind == 'bat' else '300 IP' }}.">
       <option value="q"{{ ' selected' if min_mode == 'q' }}>Qualified</option>
       {% for n in min_options %}<option value="{{ n }}"{{ ' selected' if min_mode == 'n' and n == min_value }}>{{ '{:,}'.format(n) }}</option>{% endfor %}
+      <option value="__custom" data-prompt="Minimum {{ info.unit }}">Other number&hellip;</option>
     </select></label>
   <label>Team
     <select data-nav="team"><option value="">All</option>{% for code, name in clubs %}<option value="{{ code }}"{{ ' selected' if code == team }}>{{ name }}</option>{% endfor %}</select></label>
@@ -23,6 +24,7 @@
   <input type="search" placeholder="Find a player" data-filter="#players" data-count="#shown" aria-label="Find a player in this table" style="width:170px">
   <span class="count"><span id="shown">{{ lines|length }}</span> players</span>
 </div>
+<p class="sub hint">{% if min_mode == 'q' %}Qualified{% if lo != hi %} over {{ lo }}&ndash;{{ hi }}{% endif %}: {{ '{:,}'.format(info.need|int) }}+ {{ info.unit }}{% if lo == hi %} ({{ '3.1 per team game' if kind == 'bat' else '1 per team game' }}){% else %} total{% endif %}.{% else %}At least {{ '{:,}'.format(min_value) }} {{ info.unit }}{% if lo != hi %} over {{ lo }}&ndash;{{ hi }}{% endif %}.{% endif %} {{ '{:,}'.format(lines|length) }} players.</p>
 <div class="table-wrap">
 <table class="stats sortable" id="players">
 <thead><tr><th class="rank">#</th><th class="t" data-key="name" data-type="text" data-dir="asc">Player</th><th class="t" data-key="team" data-type="text" data-dir="asc">Team</th>{% if lo == hi %}<th data-key="age" data-dir="asc">Age</th>{% else %}<th class="t" title="Seasons in the span">Years</th>{% endif %}{{ m.heads(cols, sort) }}</tr></thead>

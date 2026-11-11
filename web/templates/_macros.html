@@ -1,5 +1,5 @@
 {% macro logo(code, season=None, size=20) -%}
-{% set url = logo_url(code, season) %}{% if url %}<img class="logo" src="{{ url }}" width="{{ size }}" height="{{ size }}" alt="" loading="lazy">{% else %}<span class="chipcode" style="width:{{ size }}px;height:{{ size }}px">{{ code[:3] }}</span>{% endif %}
+{% set url = logo_url(code, season) %}{% if url %}<img class="logo" src="{{ url }}" width="{{ size }}" height="{{ size }}" alt="" loading="lazy">{% else %}<span class="chipcode{{ ' long' if code|length > 3 }}" style="width:{{ size }}px;height:{{ size }}px{% if team_color(code) != '#64748b' %};background:{{ team_color(code) }};color:#fff;border-color:transparent{% endif %}">{{ code[:4] }}</span>{% endif %}
 {%- endmacro %}
 
 {% macro team(code, season, text=None, size=18) -%}

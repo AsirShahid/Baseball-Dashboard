@@ -221,11 +221,53 @@ def recode(code: str, teamid) -> str:
     return code
 
 
+def _historic() -> dict:
+    """Names and leagues of 19th-century, Federal League and Negro League clubs,
+    season by season (tools/team_names/README.md)."""
+    try:
+        raw = json.loads((Path(__file__).resolve().parent / "historic_teams.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return {code: [tuple(r) for r in runs] for code, runs in raw.items()}
+
+
+HISTORIC = _historic()
+LEAGUE_ORDER = ["American League", "National League", "National Association", "American Association",
+                "Union Association", "Players' League", "Federal League", "Negro National League I",
+                "Eastern Colored League", "American Negro League", "East-West League",
+                "Negro Southern League", "Negro National League II", "Negro American League",
+                "Independent Clubs"]
+
+
+def historic(code: str, season):
+    """(name, league) for that season from the historic table, or None."""
+    if season is None:
+        return None
+    for first, last, name, lg in HISTORIC.get(str(code), ()):
+        if first <= int(season) <= last:
+            return name, lg
+    return None
+
+
+def _use_historic(code: str, season) -> bool:
+    if season is None:
+        return False
+    season = int(season)
+    if season <= 1900:
+        return True
+    hit = historic(code, season)
+    return bool(hit) and hit[1] not in ("American League", "National League")
+
+
 def team_name(code: str, season=None) -> str:
     """The club's name in `season` (its last name when None)."""
     code = str(code)
     if code == MULTI_TEAM:
         return "Multiple teams"
+    if _use_historic(code, season):
+        hit = historic(code, season)
+        if hit:
+            return hit[0]
     eras = TEAM_NAME_ERAS.get(code)
     if eras and season is not None:
         pick = None
@@ -234,11 +276,27 @@ def team_name(code: str, season=None) -> str:
                 pick = name
         if pick:
             return pick
+    if code not in TEAM_FULL_NAME:
+        runs = HISTORIC.get(code)
+        if runs:
+            return runs[-1][2]
     return TEAM_FULL_NAME.get(code, code)
+
+
+def league_name(code: str, season: int) -> str:
+    """The league the club played in that season, spelled out."""
+    lg = league(code, season)
+    if lg:
+        return {"AL": "American League", "NL": "National League"}[lg]
+    hit = historic(code, season)
+    return hit[1] if hit else other_leagues(season)
 
 
 def league(code: str, season: int):
     """'AL', 'NL' or None (another league: NA, AA, UA, PL, FL, Negro Leagues)."""
+    hit = historic(code, season) if season is not None and int(season) <= 1900 else None
+    if hit:
+        return {"American League": "AL", "National League": "NL"}.get(hit[1])
     for lo, hi, lg in _LEAGUE_ERAS.get(code, ()):
         if (lo is None or season >= lo) and (hi is None or season <= hi):
             return lg
@@ -334,5 +392,18 @@ def logo(code: str, season=None) -> str | None:
     return f"{name}-resizedmatplotlib.png" if name else None
 
 
+def _historic_colors() -> dict:
+    """Colors stated in the clubs' Wikipedia infoboxes (tools/team_names/README.md)."""
+    try:
+        raw = json.loads((Path(__file__).resolve().parent / "historic_colors.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return {code: v["color"] for code, v in raw.items()}
+
+
+HISTORIC_COLORS = _historic_colors()
+
+
 def color(code: str) -> str:
-    return TEAM_COLORS.get(str(code), "#64748b")
+    code = str(code)
+    return TEAM_COLORS.get(code) or HISTORIC_COLORS.get(code, "#64748b")

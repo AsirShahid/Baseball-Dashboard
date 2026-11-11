@@ -11,8 +11,17 @@
 
   // <select data-nav="season"> and <input type=date data-nav="date"> change the URL.
   document.querySelectorAll("[data-nav]").forEach(function (control) {
+    var before = control.value;
     control.addEventListener("change", function () {
-      var url = setParam(control.dataset.nav, control.value);
+      var value = control.value;
+      if (value === "__custom") {   // "Other number..." in a minimum menu
+        var picked = control.selectedOptions[0];
+        var typed = window.prompt((picked && picked.dataset.prompt) || "Minimum", "");
+        var n = typed == null ? NaN : parseFloat(String(typed).replace(/,/g, ""));
+        if (isNaN(n) || n < 0) { control.value = before; return; }
+        value = String(Math.round(n));
+      }
+      var url = setParam(control.dataset.nav, value);
       (control.dataset.drop || "").split(",").forEach(function (name) {
         if (name) url.searchParams.delete(name);
       });

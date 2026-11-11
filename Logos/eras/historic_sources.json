@@ -1,0 +1,227 @@
+{
+ "eras/bca-1932.png": {
+  "code": "BCA",
+  "seasons": [
+   1932,
+   1932
+  ],
+  "source_page": "https://en.wikipedia.org/wiki/File:AtlantaBlackCrackers1932.png",
+  "image_url": "https://upload.wikimedia.org/wikipedia/en/6/6d/AtlantaBlackCrackers1932.png",
+  "license": "Non-free logo (fair use on Wikipedia)",
+  "author": "not stated (uploaded to English Wikipedia)",
+  "kind": "logo",
+  "recreation": false,
+  "era_evidence": "File page: \"Atlanta Black Crackers 1932 logo\"",
+  "outlined": false
+ },
+ "eras/ac-1923.png": {
+  "code": "AC",
+  "seasons": [
+   1923,
+   1929
+  ],
+  "source_page": "https://commons.wikimedia.org/wiki/File:AtlanticCityBacharachGiantsLogo.png",
+  "image_url": "https://upload.wikimedia.org/wikipedia/commons/8/89/AtlanticCityBacharachGiantsLogo.png",
+  "license": "Public domain (PD-textlogo)",
+  "author": "not stated; Commons source field says \"may be obtained from Bacharach Giants\" and carries a [citation needed]/disputed-accuracy tag",
+  "kind": "logo",
+  "recreation": false,
+  "era_evidence": "none stated",
+  "outlined": false
+ },
+ "eras/beg-1938.png": {
+  "code": "BEG",
+  "seasons": [
+   1938,
+   1948
+  ],
+  "source_page": "https://commons.wikimedia.org/wiki/File:BaltimoreEliteGiantsCapLogo.PNG",
+  "image_url": "https://upload.wikimedia.org/wikipedia/commons/9/99/BaltimoreEliteGiantsCapLogo.PNG",
+  "license": "Public domain (PD-logo)",
+  "author": "not stated (source: Flickr image farm2.static.flickr.com/1399/1242994028_38d1409068_b.jpg)",
+  "kind": "cap insignia",
+  "recreation": false,
+  "era_evidence": "File page: \"Cap logo of the Baltimore Elite Giants baseball team.\"; no dates stated",
+  "outlined": false
+ },
+ "eras/bbb-1924.png": {
+  "code": "BBB",
+  "seasons": [
+   1924,
+   1948
+  ],
+  "source_page": "https://en.wikipedia.org/wiki/File:Birmingham_Black_Barons_logo.png",
+  "image_url": "https://upload.wikimedia.org/wikipedia/en/6/68/Birmingham_Black_Barons_logo.png",
+  "license": "Non-free logo (fair use on Wikipedia)",
+  "author": "not stated (source site listed: logoshak.com)",
+  "kind": "logo",
+  "recreation": false,
+  "era_evidence": "File page: History \"Defunct baseball team (1920-63)\"; no dates for the artwork",
+  "outlined": false
+ },
+ "eras/cbe-1943.png": {
+  "code": "CBE",
+  "seasons": [
+   1943,
+   1948
+  ],
+  "source_page": "https://en.wikipedia.org/wiki/File:ClevelandBuckeyesLogo.png",
+  "image_url": "https://upload.wikimedia.org/wikipedia/en/2/2b/ClevelandBuckeyesLogo.png",
+  "license": "Non-free logo (fair use on Wikipedia)",
+  "author": "not stated (uploaded to English Wikipedia)",
+  "kind": "logo",
+  "recreation": false,
+  "era_evidence": "none stated",
+  "outlined": false
+ },
+ "eras/ds-1920.png": {
+  "code": "DS",
+  "seasons": [
+   1920,
+   1931
+  ],
+  "source_page": "https://en.wikipedia.org/wiki/File:DetroitStars3.png",
+  "image_url": "https://upload.wikimedia.org/wikipedia/en/f/f2/DetroitStars3.png",
+  "license": "Non-free logo (fair use on Wikipedia); tagged \"Maybe free media\"",
+  "author": "Negro League Baseball (owner per file page); source http://www.logoserver.com/Negro.html",
+  "kind": "logo",
+  "recreation": false,
+  "era_evidence": "none stated (article: original Detroit Stars 1919-1931)",
+  "outlined": false
+ },
+ "eras/dw-1932.png": {
+  "code": "DW",
+  "seasons": [
+   1932,
+   1932
+  ],
+  "source_page": "https://en.wikipedia.org/wiki/File:DetroitWolves.jpg",
+  "image_url": "https://upload.wikimedia.org/wikipedia/en/1/1a/DetroitWolves.jpg",
+  "license": "Non-free logo (fair use on Wikipedia)",
+  "author": "not stated (Baseball-Reference Bullpen cited as source)",
+  "kind": "wordmark",
+  "recreation": false,
+  "era_evidence": "none stated (article: Detroit Wolves, 1932 only)",
+  "outlined": false
+ },
+ "eras/hil-1923.png": {
+  "code": "HIL",
+  "seasons": [
+   1923,
+   1932
+  ],
+  "source_page": "https://en.wikipedia.org/wiki/File:Hilldale_uniform.png",
+  "image_url": "https://upload.wikimedia.org/wikipedia/en/5/53/Hilldale_uniform.png",
+  "license": "Non-free logo (fair use on Wikipedia); tagged \"Maybe free media\"",
+  "author": "not stated (uploaded by Smel4727 et al.)",
+  "kind": "wordmark",
+  "recreation": false,
+  "era_evidence": "File page History field: \"1910 - 1932\"; upload note: \"represents the professional baseball team the Hilldale Giants which existed from 1910 to 1932\"",
+  "outlined": false
+ },
+ "eras/hg-1929.png": {
+  "code": "HG",
+  "seasons": [
+   1929,
+   1948
+  ],
+  "source_page": "https://commons.wikimedia.org/wiki/File:HomesteadGrays_CapLogo.svg",
+  "image_url": "https://upload.wikimedia.org/wikipedia/commons/c/cb/HomesteadGrays_CapLogo.svg",
+  "license": "Public domain (PD-textlogo; tagged Trademarked)",
+  "author": "User SixFourThree (created in Adobe Illustrator)",
+  "kind": "cap insignia",
+  "recreation": true,
+  "era_evidence": "Commons description: \"cap logo created in Adobe Illustrator by user SixFourThree ... Discontinued logo, used by defunct baseball team\"; no dates (PNG render 960 px from SVG)",
+  "outlined": false
+ },
+ "eras/cwh-1914.png": {
+  "code": "CWH",
+  "seasons": [
+   1914,
+   1915
+  ],
+  "source_page": "https://commons.wikimedia.org/wiki/File:Chicago_Federals_logo.png",
+  "image_url": "https://upload.wikimedia.org/wikipedia/commons/8/83/Chicago_Federals_logo.png",
+  "license": "Public domain (Commons; tagged \"trademarked\")",
+  "author": "Unknown author (via SportsLogos.net)",
+  "kind": "logo",
+  "recreation": false,
+  "era_evidence": "\"The logo for the Chicago Whales (also known as the Federals) baseball team from 1914 to 1915\" (Commons description; date 1914)",
+  "outlined": true
+ },
+ "eras/kcp-1914.png": {
+  "code": "KCP",
+  "seasons": [
+   1914,
+   1914
+  ],
+  "source_page": "https://commons.wikimedia.org/wiki/File:Kansas_City_Packers_logo.png",
+  "image_url": "https://upload.wikimedia.org/wikipedia/commons/2/27/Kansas_City_Packers_logo.png",
+  "license": "Public domain (Commons; tagged \"trademarked\")",
+  "author": "Kansas City Packers (via SportsLogos.net)",
+  "kind": "logo",
+  "recreation": false,
+  "era_evidence": "\"The logo for the Kansas City Packers baseball team from 1914\" (Commons description; date 1914)",
+  "outlined": true
+ },
+ "eras/nwk-1915.png": {
+  "code": "NWK",
+  "seasons": [
+   1915,
+   1915
+  ],
+  "source_page": "https://commons.wikimedia.org/wiki/File:NewarkPeppers.png",
+  "image_url": "https://upload.wikimedia.org/wikipedia/commons/b/b0/NewarkPeppers.png",
+  "license": "Public domain (Commons; tagged \"trademarked\")",
+  "author": "Newark Peppers (via logoserver.com)",
+  "kind": "logo",
+  "recreation": false,
+  "era_evidence": "Commons date field: 1915; description \"Newark Peppers logo\"",
+  "outlined": false
+ },
+ "eras/slt-1914.png": {
+  "code": "SLT",
+  "seasons": [
+   1914,
+   1915
+  ],
+  "source_page": "https://commons.wikimedia.org/wiki/File:St._Louis_Terriers_(logo).jpg",
+  "image_url": "https://upload.wikimedia.org/wikipedia/commons/a/a2/St._Louis_Terriers_%28logo%29.jpg",
+  "license": "Public domain (Commons; tagged \"trademarked\")",
+  "author": "St. Louis Terriers (credit: baseball-almanac.com 1914 roster page)",
+  "kind": "logo",
+  "recreation": false,
+  "era_evidence": "none stated",
+  "outlined": false
+ },
+ "eras/kcm-1920.png": {
+  "code": "KCM",
+  "seasons": [
+   1920,
+   1948
+  ],
+  "source_page": "https://en.wikipedia.org/wiki/File:KansasCityMonarchs.gif",
+  "image_url": "https://upload.wikimedia.org/wikipedia/en/7/7f/KansasCityMonarchs.gif",
+  "license": "Non-free logo (fair use on Wikipedia)",
+  "author": "Credit: logoserver.com/Negro.html",
+  "kind": "logo",
+  "recreation": false,
+  "era_evidence": "none stated",
+  "outlined": false
+ },
+ "eras/ic-1948.png": {
+  "code": "IC",
+  "seasons": [
+   1948,
+   1948
+  ],
+  "source_page": "https://en.wikipedia.org/wiki/File:Clowns_logo.png",
+  "image_url": "https://upload.wikimedia.org/wikipedia/en/1/1c/Clowns_logo.png",
+  "license": "Non-free logo (fair use on Wikipedia)",
+  "author": "Credit: nlbpa.com/indianapolis_clowns.html",
+  "kind": "logo",
+  "recreation": false,
+  "era_evidence": "none stated",
+  "outlined": false
+ }
+}
