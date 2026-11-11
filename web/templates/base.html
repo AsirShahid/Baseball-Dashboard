@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0e15">
+<title>{% block title %}Baseball{% endblock %} · Baseball</title>
+<link rel="preload" href="{{ asset('fonts/geist-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{ asset('app.css') }}">
+<link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
+{% block head %}{% endblock %}
+</head>
+<body>
+{% set section = {'site.player': 'site.players', 'site.team': 'site.teams'}.get(request.endpoint, request.endpoint) %}
+<header class="top">
+  <a class="brand" href="/">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/><path d="M6.2 5c2.4 1.8 3.8 4.2 3.8 7s-1.4 5.2-3.8 7M17.8 5c-2.4 1.8-3.8 4.2-3.8 7s1.4 5.2 3.8 7"/></svg>
+    Baseball
+  </a>
+  <nav class="nav" aria-label="Sections">
+    {% for endpoint, text in NAV %}{% if has_endpoint(endpoint) %}<a href="{{ url_for(endpoint) }}" class="{{ 'on' if section == endpoint }}">{{ text }}</a>{% endif %}{% endfor %}
+  </nav>
+  <div class="search">
+    <input id="search" type="search" placeholder="Search players and teams" autocomplete="off" data-search="#search-results" aria-label="Search players and teams">
+    <div id="search-results" class="results" hidden></div>
+  </div>
+</header>
+<main class="page">
+{% block main %}{% endblock %}
+</main>
+<footer class="foot">
+  Stats: FanGraphs. Not affiliated with MLB or FanGraphs.
+  <a href="{{ url_for('site.about') }}">About the data</a>
+</footer>
+<script src="{{ asset('app.js') }}" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

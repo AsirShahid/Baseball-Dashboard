@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}About the data{% endblock %}
+{% block main %}
+<div class="card" style="max-width:820px">
+<h1>About the data</h1>
+<p class="sub">Database built {{ meta.built_at|stamp }}. Newest data {{ meta.data_through|stamp }}. Seasons {{ meta.first }} to {{ meta.latest }}.</p>
+<h2 style="margin-top:18px">Source</h2>
+<p>Every number comes from <a href="https://www.fangraphs.com/leaders/major-league" style="text-decoration:underline">FanGraphs' leaderboards</a>: one line per player per season (all players, not only qualified ones), a line per club for traded players, and FanGraphs' own team totals. During the season the current year uses FanGraphs' live split, which includes the day's games, and refreshes every hour. Finished seasons are refetched once a month to pick up FanGraphs' recalculations (WAR, park factors, wOBA constants).</p>
+<p>FanGraphs counts the National Association (1871 to 1875), the American Association, Union Association, Players' League and Federal League, and the Negro Leagues (1920 to 1948) as major leagues, so those seasons are here too.</p>
+<h2 style="margin-top:18px">Qualified</h2>
+<p>MLB ranks rate stats only among players with <b>3.1 plate appearances</b> (hitters) or <b>1 inning pitched</b> (pitchers) per game their team plays: 502 PA and 162 IP over a 162-game season. That is what Qualified means here, for every rate (AVG, OBP, wRC+, K%, ERA, FIP, and so on). Counting stats (home runs, strikeouts, WAR) have no minimum, so the leader boards for those include everyone. Over several seasons the site uses FanGraphs' multi-season cut: 1,000 PA or 300 IP, or the sum of the single-season minimums if that is lower.</p>
+<h2 style="margin-top:18px">Seasons and careers</h2>
+<p>Over a span of seasons, counting stats add up. AVG, OBP, SLG, OPS, ISO, BABIP, K% and BB% for hitters, and ERA, WHIP, K/9, BB/9, HR/9, K%, BB% and K-BB% for pitchers, are rebuilt from the summed parts. Rates that need league constants (wOBA, wRC+, FIP, xFIP, SIERA) are averaged, weighted by plate appearances or innings; plate-discipline and pitch rates by pitches; Statcast rates by batted balls.</p>
+<h2 style="margin-top:18px">Era-adjusted charts</h2>
+<p>On the chart, "Era-adjusted" replaces each value with its percentile among that season's players (or teams), so a 1968 OBP is measured against 1968 pitching. Over a span the percentiles are averaged, weighted by playing time.</p>
+<h2 style="margin-top:18px">Not affiliated</h2>
+<p>This is a personal site, not affiliated with MLB, FanGraphs, or any club. Team logos are trademarks of their clubs. Player photos load from MLB's image service.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ p.name }}{% endblock %}
+{% macro career_table(kind, data, mode, param) %}
+<div class="section-head"><h2>{{ 'Hitting' if kind == 'bat' else 'Pitching' }}</h2>{{ m.mode_seg(modes[kind], mode, param) }}</div>
+<div class="table-wrap">
+<table class="stats sortable">
+<thead><tr><th class="t" data-key="season" data-dir="asc">Season</th><th class="t">Team</th><th data-key="age" data-dir="asc">Age</th>{{ m.heads(data.cols) }}</tr></thead>
+<tbody>
+{% for r in data.rows %}
+<tr class="{{ 'q' if r.qualified }}">
+  <td class="t" data-v="{{ r.season }}"><a href="{{ url_for('site.players', kind=kind, season=r.season, mode=mode, min='q' if r.qualified else 1) }}">{{ r.season }}</a>{% if r.qualified %}<span class="qmark" title="Qualified ({{ '{:,}'.format(r.need|int) }} {{ 'PA' if kind == 'bat' else 'IP' }} needed)">q</span>{% endif %}</td>
+  <td class="t">{{ m.team(r.team, r.season, size=16) }}</td>
+  <td data-v="{{ r.age }}">{{ r.age or '' }}</td>
+  {{ m.cells(r['values'], data.cols, led=r.led) }}
+</tr>
+{% for s in r.stints %}
+<tr class="stint fixed"><td class="t"></td><td class="t">{{ m.team(s.team, r.season, size=14) }}</td><td></td>{{ m.cells(s['values'], data.cols) }}</tr>
+{% endfor %}
+{% endfor %}
+</tbody>
+{% if data.career and data.rows|length > 1 %}
+<tbody><tr class="total fixed"><td class="t">Career</td><td class="t muted">{{ data.rows|length }} seasons</td><td></td>{{ m.cells(data.career, data.cols) }}</tr></tbody>
+{% endif %}
+</table>
+</div>
+{% endmacro %}
+{% block main %}
+<div class="profile">
+  {% if p.mlbam %}<img class="photo" src="{{ headshot(p.mlbam, 96) }}" alt="" onerror="this.remove()">{% endif %}
+  <div>
+    <h1>{{ p.name }}</h1>
+    <div class="line">
+      <span>{{ p.pos or ('P' if p.primary == 'pit' else '') }}</span>
+      {% if p.bats or p.throws %}<span>{% if p.bats %}Bats {{ p.bats }}{% endif %}{% if p.bats and p.throws %} · {% endif %}{% if p.throws %}Throws {{ p.throws }}{% endif %}</span>{% endif %}
+      <span>{{ p.first }}{% if p.last != p.first %}&ndash;{{ p.last }}{% endif %}</span>
+      <span><b>{{ p.war|f('d1') }}</b> career WAR</span>
+      {% if p.two_way %}<span class="chip accent">Two-way</span>{% endif %}
+    </div>
+    <div class="line">{% for t in p.teams %}<span>{{ m.team(t.team, t.b, size=16) }} <span class="muted">{{ t.a }}{% if t.b != t.a %}&ndash;{{ t.b % 100 if t.b // 100 == t.a // 100 else t.b }}{% endif %}</span></span>{% endfor %}</div>
+  </div>
+  <a class="btn" style="margin-left:auto" href="{{ url_for('site.compare', p=p.pid, kind=p.primary) }}">Compare</a>
+</div>
+
+{% if p.war_seasons|length > 1 %}
+<section class="section card">
+  <div class="legend"><b style="margin-right:6px">WAR by season</b>{% if p.war_bat %}<span><i style="background:#f97316"></i>Hitting</span>{% endif %}{% if p.war_pit %}<span><i style="background:#60a5fa"></i>Pitching</span>{% endif %}</div>
+  {% set yrs = p.war_seasons.keys()|list|sort %}
+  <div class="scrollx">{{ svg.season_bars(range(yrs[0], yrs[-1] + 1)|list, [('Hitting', '#f97316', dict(p.war_bat)), ('Pitching', '#60a5fa', dict(p.war_pit))]) }}</div>
+</section>
+{% endif %}
+
+{% for kind in order %}
+{% set data = batting if kind == 'bat' else pitching %}
+{% if data %}<section class="section">{{ career_table(kind, data, bmode if kind == 'bat' else pmode, 'bmode' if kind == 'bat' else 'pmode') }}</section>{% endif %}
+{% endfor %}
+<p class="sub">Bold: led the majors that season (rates among qualified players). <span class="qmark">q</span> marks a qualified season. Seasons with more than one club show the split under the combined line.</p>
+{% endblock %}

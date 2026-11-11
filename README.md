@@ -1,228 +1,64 @@
-# Baseball Dashboard
+# Baseball
 
-An interactive web application for visualizing baseball statistics. Build custom scatter plots — 2D or 3D — across hundreds of FanGraphs batting and pitching metrics for every team and player season from 1871 to present.
+A fast baseball stats site: every MLB (and other major-league) season from 1871 on, from
+FanGraphs' leaderboards. Server-rendered pages, plain CSS and JavaScript, SVG charts; no
+front-end framework. Live at [baseball.asir.dev](https://baseball.asir.dev).
 
-![wRC+ vs Barrel%](https://baseball.asir.dev/media/76f6cdc028d8719192f44385fbb26a5efabe730796a3aa741c7bc351.png)
+## Pages
 
-## Features
+- **Home**: the Yankees at a glance, hitting and pitching leaders, standings.
+- **Standings**: by division (with each season's alignment from 1969), by league before.
+- **Players**: hitting or pitching leaderboards for one season or any span, in six views
+  (standard, advanced, value, batted ball, plate discipline, Statcast), with team, league
+  and position filters and the qualified rule.
+- **Teams**: FanGraphs' team totals in the same six views, with records.
+- **Player** and **team** pages: career tables with the majors' leaders in bold, per-club
+  lines for traded players, a WAR-by-season chart, rosters, franchise history.
+- **Compare**: up to four players side by side over any span.
+- **Charts**: any stat against any other (about 950 to pick from) for teams or players, in a
+  season or a span; season-by-season points and trajectories, era-adjusted percentiles,
+  trend line with r², a rotatable 3D mode, team logos, CSV download and shareable links.
+  Old share links from the Dash site redirect here.
 
-- **Team and player views** — scatter any two (or three) stats against each other
-- **Find player** — type a name to spotlight matching players: they get a bigger, labeled marker while everyone else dims
-- **Composite leaderboards** — a top-10 board for both teams *and* players, ranked by average percentile across the selected axes
-- **Multi-season ranges** — drag the two-handled season slider to span several years (e.g. 2019–2026); counting stats (WAR, HR) are summed and rate stats (wRC+, ERA) are PA/IP-weighted, so the chart and leaderboard show one cumulative point per team/player
-- **Season trajectories** — flip a multi-season range from one aggregate point into a path through stat space, one point per season: team rebuilds and player aging curves at a glance (players show your search matches, or the span's top 10)
-- **Era-adjusted axes** — replace raw values with each season's percentile (PA/IP-weighted across the span), so a 1968 OBP is measured against 1968 pitching, not pooled with the steroid era
-- **Trend line** — toggle an OLS fit with its r², to see how strongly the two stats actually relate
-- **Label modes** — label all players, only the outliers (the ~12 most extreme points), or none
-- **3D scatter plots** — add a Z-axis stat to switch to an interactive 3D chart
-- **Composite rank coloring** — color-code markers by average percentile rank across all selected axes (red → yellow → green)
-- **Mean reference lines / planes** — toggle average lines in 2D or semi-transparent planes in 3D
-- **Team logos or colored markers** — display teams as logos or team-colored dots
-- **Season filtering** — the slider only offers seasons where the chosen stat actually has data (e.g. Exit Velocity only appears from 2015 onward)
-- **CSV export** — download exactly what the chart is plotting (axes, filters, composite ranks) with one click
-- **Shareable URLs** — every control is encoded in the URL so you can copy and share a specific view
-- **Auto-fetch** — if a season's CSV is missing the app fetches it live on first access
+## Qualified
 
-## Quick start
-
-```bash
-git clone https://github.com/AsirShahid/Baseball-Dashboard.git
-cd Baseball-Dashboard
-./launcher.sh
-```
-
-`launcher.sh` creates a `.venv/` virtual environment and installs all dependencies automatically on first run, then starts the dashboard at **http://localhost:8050**.
-
-> **Note:** On Arch Linux and other systems that enforce PEP 668 (`externally-managed-environment`), using a venv is required. `launcher.sh` handles this for you.
-
-## Manual setup
-
-If you prefer to manage things yourself:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python app.py
-```
+MLB's rule for rate stats: 3.1 plate appearances (hitters) or 1 inning (pitchers) per team
+game, rounded to the nearest whole number (502 PA and 162 IP over 162 games). Counting stats
+have no minimum. Over several seasons: FanGraphs' 1,000 PA or 300 IP, capped at the sum of
+the season minimums. Checked against FanGraphs' own qualified lists for every season
+1871-2026: identical in 142 of 156 hitting seasons and 153 of 156 pitching seasons, 18
+player-seasons different in all (FanGraphs edge cases with traded players).
 
 ## Data
 
-Season CSVs are **not** stored in git — they live on the machine that runs the
-dashboard (a `data-refresh` GitHub Action used to commit them monthly, but
-350 MB of CSVs made the repo balloon). The app fetches any missing season from
-FanGraphs on first access, and `launcher.sh` / the Docker entrypoint run the
-generator in `--watch` mode so the current season stays fresh. To backfill the
-full history in one go (recommended on a new install — on-demand fetches are
-slow the first time someone scrubs deep into the past):
+`pipeline/` fetches FanGraphs leaderboards into season CSVs (`all_batting_stats/`,
+`all_pitching_stats/`, `team_batting/`, `team_pitching/`, plus per-club lines for traded
+players in the data volume) and builds `baseball.sqlite`: a column store with one
+compressed float32 array per season and stat, careers precomputed, and a catalog of what
+each stat is (name, group, format, direction, counting or rate).
 
 ```bash
-source .venv/bin/activate
-
-# One-time full-history backfill (~900 polite requests, takes a while)
-python baseball_csv_generator.py --start 1871
-
-# Fetch a specific range (skips seasons already on disk)
-python baseball_csv_generator.py --start 2025 --end 2026
-
-# Re-download a range regardless of what's cached
-python baseball_csv_generator.py --start 2020 --end 2026 --force
-
-# Fetch missing seasons then keep the current season refreshing every 4 h
-python baseball_csv_generator.py --start 2025 --watch
+python -m pipeline.fetch --csv-root . --stints-root data/stints --start 2026 --end 2026
+python -m pipeline.build --csv-root . --stints-root data/stints --output data
+DATA_ROOT=data flask --app app run
 ```
 
-The dashboard re-reads a CSV whenever the file changes on disk, so refreshed
-data shows up without a restart.
+The updater (`python -m pipeline.updater`) refreshes the season in progress hourly
+(FanGraphs' live split), checks daily in the off-season, refetches every season once a
+month for FanGraphs' recalculations, and rebuilds the database when anything changed.
 
-### Live split vs. recalculations
-
-The fetcher uses FanGraphs' **"Live Stats — Full Season"** split (`month=33`) for the in-progress season, so the current year includes the day's games in real time. Completed seasons use the standard full-season split (`month=0`), which is the only one FanGraphs serves for past years; a live-split request for a finished season automatically falls back to it.
-
-Completed seasons are nearly static, but FanGraphs periodically revises them (WAR, wOBA/wRC+ constants, park factors). To pick those recalculations up, run a monthly cron on the server:
-
-```cron
-0 6 1 * *  cd /path/to/Baseball-Dashboard && .venv/bin/python baseball_csv_generator.py --start 1871 --force
-```
-
-(Under Docker: `docker compose exec baseball-dashboard python baseball_csv_generator.py --start 1871 --force`.)
-
-### Migrating an existing deployment
-
-If your checkout predates the CSVs leaving git, **pulling this change deletes
-the tracked CSVs from the working tree** (git removes files deleted upstream).
-Stash the data aside first, then restore it:
+## Deploy
 
 ```bash
-mkdir -p /tmp/bb-data && cp -a team_* qualified_* all_* /tmp/bb-data/
-git pull
-cp -a /tmp/bb-data/* .
+cd ~/vps-infra/stacks/baseball-dashboard
+docker compose build && docker compose up -d --wait
 ```
 
-The directories are gitignored afterwards, so the restored files stay put.
+Two containers from one image: `baseball-dashboard` (gunicorn, read-only data) and
+`baseball-updater`. The Dash site is in `legacy/dash/` with a rollback compose file.
 
-### Tests
+## Tests
 
-`tests/fixtures/` carries a small frozen snapshot of the seasons the test
-suite exercises, so `pytest` (and CI) runs offline and deterministically —
-it's copied into the data directories on first run, never overwriting real
-data.
-
-## Configuration
-
-Edit `config.json` to change:
-
-| Key | Default | Description |
-|---|---|---|
-| `current_year` | `2026` | Forward pin only: the latest season is this or the current calendar year, whichever is later (recomputed per request, so New Year rolls over without an edit or restart) |
-| `update_interval` | `14400` | Seconds between live-data refreshes (watch mode) |
-| `request_delay` | `5` | Seconds between pybaseball requests |
-| `*_dir` keys | various | Directories where CSVs are stored |
-
-Environment variables for `app.py` / `launcher.sh`:
-
-| Variable | Default | Description |
-|---|---|---|
-| `HOST` | `127.0.0.1` | Bind address — set `0.0.0.0` to serve on the network |
-| `PORT` | `8050` | Listen port |
-| `DASH_DEBUG` | off | Set `1` to enable the dev reloader and Werkzeug debugger (never in production — the debugger allows code execution) |
-| `WEB_CONCURRENCY` | `2` | gunicorn workers in Docker. A warm worker holds ~0.5 GB of caches; keep workers × 0.6 GB under the compose `mem_limit` (1.5 GB) |
-
-## Deployment (VPS)
-
-- Operate the stack from `~/vps-infra/stacks/baseball-dashboard` (its
-  `docker-compose.yml` includes this repo's); the compose project name stays
-  `baseball-dashboard`. Build from a clean checkout, then
-  `docker compose up -d --no-build --force-recreate`.
-- The image runs as uid 1001 (`app`), which matches the host `ubuntu` user that
-  owns the bind-mounted CSV directories. Files written by an older root
-  container must be `chown ubuntu:ubuntu` before deploying, or the app and the
-  watcher cannot read or replace them.
-- The container has a `HEALTHCHECK`; `docker inspect baseball-dashboard` shows
-  `healthy` once the Dash server answers.
-- Memory: per-worker CSV cache ≤128 MB and roll-up cache ≤64 MB, stats stored
-  as float32. Player spans with more than 8,000 season rows (all players over
-  decades) are rolled up in chunks, and anything over 2,000 rows is built by
-  one worker at a time behind a file lock. Finished roll-ups and a light
-  per-season index (id, PA/IP, G, team) are pickled to
-  `/tmp/baseball-dashboard-cache` (≤300 MB) so the other worker reuses them.
-  The per-season view refuses more than 40,000 player-seasons. Measured
-  2026-11-10 in the 1.5 GB container: every full-history view (including all
-  22,608 batters at Min PA 0) loads with a 1.11 GB peak and no OOM kills.
-- `atomic_to_csv` skips identical rewrites, so the 4-hourly refresh of a
-  finished season keeps file mtimes and the caches stay valid.
-- Team CSVs come from FanGraphs' native team split. Seasons written before the
-  2026-07-03 fix undercounted (traded players dropped); they were re-fetched on
-  2026-11-10, with the old files in
-  `~/archive/baseball-dashboard/team-csv-before-native-refetch-20261110.tar.zst`.
-- Rollback: earlier images are tagged
-  `baseball-dashboard-baseball-dashboard:pre-<change>-<date>`; retag one as
-  `:latest` and recreate.
-
-## Min playing time (PA / IP)
-
-The control mirrors FanGraphs' "Min Playing Time": Qualified, then 0, 1, 5,
-10–250 by 10s, 300–1,000 by 50s and 1,500–10,000 by 500s. Any other number can
-be typed in and is kept in the share link. How it applies:
-
-| View | Qualified | A number |
-|---|---|---|
-| One season | 3.1 PA / 1 IP per team game (the qualified files) | that season's PA/IP |
-| A range, combined | full totals of players with **1,000 PA / 300 IP** over the range (FanGraphs' multi-season rule, measured against their API: 4,539 batters and 3,572 pitchers for 1871–2026), capped at the summed single-season minimums so 2020–21 is not empty | total PA/IP over the range |
-| A range, per season | each season's own qualification | each season's PA/IP, or the range total when the number is above 700 PA / 300 IP |
-
-A line under the control states the rule in effect and how many players it
-leaves.
-
-## Team identities and logos
-
-FanGraphs reuses some team codes for different franchises and tells them apart
-only by `teamid`. `apply_team_identity` (data.py) recodes those rows at load
-time, so each franchise is its own team, with its own logo and name, in
-single seasons and in ranges:
-
-- `MIL` → `MLN` Milwaukee Braves (1953–65) and `MLA` Milwaukee Brewers (1901);
-  `SEA` → `SEP` Seattle Pilots (1969); `WAS` → `WSH` Senators (1901–60) and
-  `WSA` Senators (1961–71); `BAL` → `BLA` Orioles (1901–02).
-- 19th-century clubs that share a modern code get 4-character codes named by
-  city and years, e.g. `CL87` Cleveland (1887–1899), `SL84` St. Louis
-  (1884–1886).
-
-Logos are dated: `Logos/eras/manifest.json` lists, per team code, each
-primary logo with the seasons it was used (`[first, last or null, file]`), from
-the sportslogos.net franchise histories, about 370 logos across all 30
-franchises and their former names. The chart picks the logo by season:
-
-- a single season shows that season's logo (1999 Devil Rays, 2010 Rays);
-- a range shows each club's logo from its last season inside the range, so
-  1900–2026 shows today's logos and the Expos their 2004 one;
-- the per-season view shows each point's own season;
-- the team panel uses the club's last season in the range (or the clicked
-  season).
-
-A season between two listed eras keeps the earlier logo. A season before a
-club's first documented logo (most 19th-century clubs; the Reds before 1890)
-gets no logo, and the chart draws a chip with the team code, as it does for
-Negro League and Federal League teams.
-
-Processing (`scratch` script, not in the repo): opaque white backgrounds are
-removed, including white trapped inside letters where it was background
-(reviewed logo by logo; white that is part of a design stays). Very dark
-navy/black logos get a thin light outline so they read on the dark theme.
-Every era shows the club's own primary logo as it was, including Cleveland's
-and the Braves' Native American logos. `TEAM_LOGO_MAP` (the original 45 logos) is
-only a fallback for codes missing from the manifest.
-
-Names follow the season the same way (`TEAM_NAME_ERAS`, `team_name`): the
-2021 Cleveland panel says Cleveland Indians, 1963 Houston the Colt .45s, 1938
-Boston the Bees; ranges use the club's name in its last season there. Tooling
-and decisions for the logo build are in `tools/logo_eras/`.
-
-
-## Data sources
-
-Stats are sourced from [FanGraphs](https://www.fangraphs.com/) via [pybaseball](https://pypi.org/project/pybaseball/). Charts are built with [Plotly](https://plotly.com/python/) inside a [Dash](https://dash.plotly.com/) app.
-
-## License
-
-MIT
+`python -m pytest tests -q` builds a database from the 1955 and 2024 fixtures in
+`tests/fixtures/` (real FanGraphs data, gzipped) and checks the build, the qualified rule
+against FanGraphs' lists, spans, every page, the chart API and old-link redirects.

@@ -1,0 +1,28 @@
+# Bring the Dash site back (the image tagged at cutover, 2026-11-11):
+#   docker rm -f baseball-updater baseball-dashboard
+#   docker compose -p baseball-dashboard -f legacy/dash/docker-compose.rollback.yml up -d
+name: baseball-dashboard
+services:
+  baseball-dashboard:
+    image: baseball-dashboard-rollback:dash-final
+    container_name: baseball-dashboard
+    mem_limit: 1536m
+    restart: unless-stopped
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8050
+    volumes:
+      - /home/ubuntu/projects/baseball-dashboard/team_batting:/app/team_batting
+      - /home/ubuntu/projects/baseball-dashboard/team_pitching:/app/team_pitching
+      - /home/ubuntu/projects/baseball-dashboard/qualified_batting_stats:/app/qualified_batting_stats
+      - /home/ubuntu/projects/baseball-dashboard/qualified_pitching_stats:/app/qualified_pitching_stats
+      - /home/ubuntu/projects/baseball-dashboard/all_batting_stats:/app/all_batting_stats
+      - /home/ubuntu/projects/baseball-dashboard/all_pitching_stats:/app/all_pitching_stats
+    expose:
+      - "8050"
+    networks:
+      - npm
+networks:
+  npm:
+    external: true
+    name: nginx-proxy-manager_default

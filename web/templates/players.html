@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ kinds[kind] }} {{ span_label(lo, hi) }}{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Players</h1><div class="sub">{{ kinds[kind] }} · {{ span_label(lo, hi) }}{% if lo != hi %} (one row per player, totals and rates over the span){% endif %}</div></div>
+  <div class="toolbar" style="margin:0">{{ m.span_picker(lo, hi) }}</div>
+</div>
+<div class="toolbar">
+  {{ m.seg('kind', kinds.items(), kind, ('sort', 'mode', 'pos', 'min')) }}
+  {{ m.mode_seg(modes, mode) }}
+</div>
+<div class="toolbar">
+  <label>Min {{ info.unit }}
+    <select data-nav="min" title="Qualified: {{ '3.1 plate appearances' if kind == 'bat' else '1 inning' }} per team game in a season (MLB's rule for rate-stat leaders); over several seasons, FanGraphs' {{ '1,000 PA' if kind == 'bat' else '300 IP' }}.">
+      <option value="q"{{ ' selected' if min_mode == 'q' }}>Qualified</option>
+      {% for n in min_options %}<option value="{{ n }}"{{ ' selected' if min_mode == 'n' and n == min_value }}>{{ '{:,}'.format(n) }}</option>{% endfor %}
+    </select></label>
+  <label>Team
+    <select data-nav="team"><option value="">All</option>{% for code, name in clubs %}<option value="{{ code }}"{{ ' selected' if code == team }}>{{ name }}</option>{% endfor %}</select></label>
+  {{ m.seg('league', [('', 'MLB'), ('AL', 'AL'), ('NL', 'NL')], league) }}
+  {{ m.seg('pos', positions, pos) }}
+  <input type="search" placeholder="Find a player" data-filter="#players" data-count="#shown" aria-label="Find a player in this table" style="width:170px">
+  <span class="count"><span id="shown">{{ lines|length }}</span> players</span>
+</div>
+<div class="table-wrap">
+<table class="stats sortable" id="players">
+<thead><tr><th class="rank">#</th><th class="t" data-key="name" data-type="text" data-dir="asc">Player</th><th class="t" data-key="team" data-type="text" data-dir="asc">Team</th>{% if lo == hi %}<th data-key="age" data-dir="asc">Age</th>{% else %}<th class="t" title="Seasons in the span">Years</th>{% endif %}{{ m.heads(cols, sort) }}</tr></thead>
+<tbody>
+{% for p in lines[:1500] %}
+<tr data-name="{{ p.name }}"{{ ' class="me"'|safe if p.team == favorite }}>
+  <td class="rank">{{ loop.index }}</td>
+  <td class="name" data-v="{{ p.name }}">{{ m.plink(p.pid, p.name) }}<span class="pos">{{ p.pos }}</span></td>
+  <td class="t" data-v="{{ p.team }}">{{ m.team(p.team, p.season, size=16) }}</td>
+  {% if lo == hi %}<td data-v="{{ p.age }}">{{ p.age or '' }}</td>{% else %}<td class="t muted" data-v="{{ p.first }}">{{ p.first }}{% if p.last != p.first %}&ndash;{{ p.last % 100 if p.last // 100 == p.first // 100 else p.last }}{% endif %}</td>{% endif %}
+  {{ m.cells(p, cols, sort, p.fails if min_mode == 'q' else {}) }}
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% if lines|length > 1500 %}<p class="sub">Showing the top 1,500 of {{ lines|length }}. Raise the minimum or pick a team to narrow it.</p>{% endif %}
+{% if not lines %}<div class="card empty">No players match these filters.{% if min_mode == 'q' %} Pick a number under Min {{ info.unit }} to see everyone.{% endif %}</div>{% endif %}
+<p class="sub">Click a column to sort; hover a header for its definition.{% if min_mode == 'q' %} <b>Qualified</b>: rate stats need {{ '3.1 plate appearances' if kind == 'bat' else '1 inning pitched' }} per team game ({{ '{:,}'.format(info.need|int) }} {{ info.unit }}{% if lo != hi %} over these seasons, FanGraphs' multi-season cut{% endif %}). Counting stats have no minimum: pick a number under Min {{ info.unit }} to see everyone.{% endif %}{% if lo != hi %} Over a span, counts add up and AVG, OBP, SLG, K%, BB%, ERA and WHIP are rebuilt from the totals; other rates are averaged by {{ 'plate appearances' if kind == 'bat' else 'innings' }}, pitches or batted balls.{% endif %}</p>
+{% endblock %}

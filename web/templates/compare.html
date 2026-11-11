@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Compare{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Compare</h1><div class="sub">Up to four players side by side · {{ span_label(lo, hi) }}</div></div>
+  <div class="toolbar" style="margin:0">{{ m.span_picker(lo, hi) }}</div>
+</div>
+<div class="toolbar">
+  {{ m.seg('kind', kinds.items(), kind) }}
+  <div class="search picker" style="margin:0">
+    <input type="search" placeholder="Add a player" autocomplete="off" data-search="#pick-results" data-pick="p" aria-label="Add a player">
+    <div id="pick-results" class="results" hidden></div>
+  </div>
+</div>
+{% if data and data.players %}
+<div class="picked">{% for pl in data.players %}<span class="chip">{{ m.plink(pl.pid, pl.name) }}<a href="{{ url_with(p=(pids|reject('equalto', pl.pid)|join(','))) }}" title="Remove">&times;</a></span>{% endfor %}</div>
+<div class="table-wrap">
+<table class="stats">
+<thead><tr><th class="t">Stat</th>{% for pl in data.players %}<th>{{ pl.name }}<div class="muted" style="text-transform:none;font-weight:400">{% if pl.missing %}no {{ 'hitting' if kind == 'bat' else 'pitching' }} in this span{% else %}{{ pl.span }}{% endif %}</div></th>{% endfor %}</tr></thead>
+<tbody>
+{% for row in data.rows %}
+<tr><td class="t" title="{{ row.col.name }}">{{ row.col.head }}</td>
+{% for v in row['values'] %}<td class="{{ 'best' if row.best is not none and v == row.best }}">{{ v|f(row.col.fmt, row.col.key) }}</td>{% endfor %}</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+<p class="sub">Green: best of the group. Totals and rates over the chosen seasons; "All time" compares whole careers.</p>
+{% else %}
+<div class="card empty">Search for a player above to start. Try <a href="{{ url_for('site.compare', p='1011327,1014040') }}">Babe Ruth and Ted Williams</a> or <a href="{{ url_for('site.compare', p='15640,19755') }}">Aaron Judge and Shohei Ohtani</a>.</div>
+{% endif %}
+{% endblock %}

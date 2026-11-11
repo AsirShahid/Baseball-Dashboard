@@ -1,0 +1,29 @@
+services:
+  baseball-dashboard:
+    build: .
+    container_name: baseball-dashboard
+    mem_limit: 1536m
+    restart: unless-stopped
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8050
+    # Season CSVs live on the host, not in the image or the repo. The watcher
+    # inside the container keeps the current season fresh; missing seasons are
+    # fetched on demand. To backfill the full history once:
+    #   docker compose exec baseball-dashboard \
+    #     python baseball_csv_generator.py --start 1871
+    volumes:
+      - ./team_batting:/app/team_batting
+      - ./team_pitching:/app/team_pitching
+      - ./qualified_batting_stats:/app/qualified_batting_stats
+      - ./qualified_pitching_stats:/app/qualified_pitching_stats
+      - ./all_batting_stats:/app/all_batting_stats
+      - ./all_pitching_stats:/app/all_pitching_stats
+    expose:
+      - "8050"
+    networks:
+      - npm
+networks:
+  npm:
+    external: true
+    name: nginx-proxy-manager_default

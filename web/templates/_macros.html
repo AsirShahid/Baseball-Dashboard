@@ -1,0 +1,83 @@
+{% macro logo(code, season=None, size=20) -%}
+{% set url = logo_url(code, season) %}{% if url %}<img class="logo" src="{{ url }}" width="{{ size }}" height="{{ size }}" alt="" loading="lazy">{% else %}<span class="chipcode" style="width:{{ size }}px;height:{{ size }}px">{{ code[:3] }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro team(code, season, text=None, size=18) -%}
+{% if code == MULTI_TEAM %}<span class="muted" title="Played for more than one club">2+ teams</span>{% elif code %}<a class="tlink" href="{{ url_for('site.team', code=code, season=season) }}" title="{{ team_name(code, season) }}">{{ logo(code, season, size) }}<span>{{ text or code }}</span></a>{% endif %}
+{%- endmacro %}
+
+{% macro plink(pid, name) -%}
+<a class="plink" href="{{ url_for('site.player', pid=pid) }}"><span>{{ name }}</span></a>
+{%- endmacro %}
+
+{% macro seg(param, options, current, drop=('sort',)) -%}
+<div class="seg">{% for value, text in options %}<a class="{{ 'on' if value|string == current|string }}" href="{{ url_with(**dict({param: value}, **dict.fromkeys(drop))) }}">{{ text }}</a>{% endfor %}</div>
+{%- endmacro %}
+
+{% macro season_select(current, param='season', blank=None) -%}
+<select data-nav="{{ param }}" aria-label="Season">
+{% if blank %}<option value=""{{ ' selected' if not current }}>{{ blank }}</option>{% endif %}
+{% for s in seasons %}<option value="{{ s }}"{{ ' selected' if s == current }}>{{ s }}</option>{% endfor %}
+</select>
+{%- endmacro %}
+
+{% macro span_picker(lo, hi) -%}
+<span class="spanpick">{{ season_select(lo, 'season') }}<span class="muted">to</span>
+<select data-nav="to" aria-label="Through season">{% for s in seasons %}<option value="{{ s }}"{{ ' selected' if s == hi }}>{{ s }}</option>{% endfor %}</select></span>
+<div class="seg">
+  <a class="{{ 'on' if lo == hi and hi == latest }}" href="{{ url_with(season=latest, to=None, span=None) }}">{{ latest }}</a>
+  <a class="{{ 'on' if lo == latest - 4 and hi == latest }}" href="{{ url_with(season=latest - 4, to=latest, span=None) }}">Last 5</a>
+  <a class="{{ 'on' if lo == seasons[-1] and hi == latest }}" href="{{ url_with(season=seasons[-1], to=latest, span=None) }}">All time</a>
+</div>
+{%- endmacro %}
+
+{% macro mode_seg(modes, mode, param='mode') -%}
+<div class="seg">{% for key, pair in modes.items() %}<a class="{{ 'on' if key == mode }}" href="{{ url_with(**{param: key, 'sort': None}) }}">{{ pair[0] }}</a>{% endfor %}</div>
+{%- endmacro %}
+
+{% macro heads(columns, sort=None) -%}
+{% for c in columns %}<th data-key="{{ c.key }}" data-dir="{{ 'desc' if c.better else 'asc' }}" title="{{ c.name }}" class="{{ 'sorted' if c.key == sort }}{{ ' asc' if c.key == sort and not c.better }}">{{ c.head }}</th>{% endfor %}
+{%- endmacro %}
+
+{% macro cells(line, columns, sort=None, fails={}, led=()) -%}
+{% for c in columns %}{% set v = line[c.key] %}{% if c.rule and c.rule in fails %}<td data-v="" class="muted{{ ' sorted' if c.key == sort }}" title="{{ fails[c.rule] }}">{{ v|f(c.fmt, c.key) }}</td>{% else %}<td data-v="{{ v|sv }}" class="{{ 'sorted' if c.key == sort }}{{ ' lead' if c.key in led }}">{{ v|f(c.fmt, c.key) }}</td>{% endif %}{% endfor %}
+{%- endmacro %}
+
+{% macro standings_table(rows, season, compact=False) -%}
+<div class="table-wrap">
+<table class="stats sortable{{ ' compact' if compact }}">
+<thead><tr>
+  <th class="rank">#</th><th class="t" data-key="team" data-type="text" data-dir="asc">Team</th>
+  <th data-key="w">W</th><th data-key="l" data-dir="asc">L</th><th data-key="pct" title="Winning percentage">PCT</th>
+  <th data-key="gb" data-dir="asc" title="Games behind the leader">GB</th>
+  {% if not compact %}
+  <th data-key="rs" title="Runs scored">RS</th><th data-key="ra" data-dir="asc" title="Runs allowed">RA</th>
+  <th data-key="diff" title="Run difference">Diff</th>
+  <th data-key="pyth" title="Expected record from runs scored and allowed (Pythagorean, exponent 1.83)">X-W-L</th>
+  <th data-key="war" title="Team WAR: hitters plus pitchers (FanGraphs)">WAR</th>
+  {% else %}
+  <th data-key="diff" title="Run difference">Diff</th>
+  {% endif %}
+</tr></thead>
+<tbody>
+{% for r in rows %}
+<tr class="{{ 'me' if r.team == favorite }}">
+  <td class="rank">{{ loop.index }}</td>
+  <td class="name" data-v="{{ r.name }}">{{ team(r.team, season, r.name if not compact else r.team) }}</td>
+  <td data-v="{{ r.w }}">{{ r.w }}</td><td data-v="{{ r.l }}">{{ r.l }}</td>
+  <td data-v="{{ r.pct|sv }}">{{ r.pct|f('p3') }}</td>
+  <td data-v="{{ r.gb }}">{{ '-' if not r.gb else (r.gb|f('d1')).replace('.0', '') }}</td>
+  {% if not compact %}
+  <td data-v="{{ r.rs }}">{{ r.rs }}</td><td data-v="{{ r.ra }}">{{ r.ra }}</td>
+  {% endif %}
+  <td data-v="{{ r.diff }}" class="{{ 'good' if r.diff > 0 else 'bad' if r.diff < 0 }}">{{ r.diff|f('s0') }}</td>
+  {% if not compact %}
+  <td data-v="{{ r.pyth_w }}">{% if r.pyth_w is not none %}{{ r.pyth_w }}-{{ r.games - r.pyth_w }}{% endif %}</td>
+  <td data-v="{{ r.war|sv }}">{{ r.war|f('d1') }}</td>
+  {% endif %}
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{%- endmacro %}

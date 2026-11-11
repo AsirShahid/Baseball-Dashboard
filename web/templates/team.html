@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ t.info.name }} {{ season }}{% endblock %}
+{% macro roster(kind, data, mode, param) %}
+<div class="section-head"><h2>{{ 'Hitters' if kind == 'bat' else 'Pitchers' }}</h2>{{ m.mode_seg(modes[kind], mode, param) }}</div>
+<div class="table-wrap">
+<table class="stats sortable">
+<thead><tr><th class="t" data-key="name" data-type="text" data-dir="asc">Player</th><th data-key="age" data-dir="asc">Age</th>{{ m.heads(data.cols) }}</tr></thead>
+<tbody>
+{% for p in data.lines %}
+<tr data-name="{{ p.name }}">
+  <td class="name" data-v="{{ p.name }}">{{ m.plink(p.pid, p.name) }}<span class="pos">{{ p.pos }}</span>{% if p.traded %}<span class="pos" title="Also played for another club this season">traded</span>{% endif %}</td>
+  <td data-v="{{ p.age }}">{{ p.age or '' }}</td>
+  {{ m.cells(p, data.cols) }}
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endmacro %}
+{% block main %}
+{% set r = t.record %}
+<div class="profile">
+  {{ m.logo(t.code, season, 84) }}
+  <div>
+    <h1>{{ t.info.name }}</h1>
+    <div class="line">
+      <span>{{ season }}</span>
+      {% if r %}<span><b>{{ r.w }}-{{ r.l }}</b> ({{ r.pct|f('p3') }})</span><span>{{ t.place|ordinal }} in the {{ t.group }}{% if r.gb %}, {{ (r.gb|f('d1')).replace('.0', '') }} GB{% endif %}</span>
+      <span>{{ r.rs }} RS · {{ r.ra }} RA · <span class="{{ 'good' if r.diff > 0 else 'bad' if r.diff < 0 }}">{{ r.diff|f('s0') }}</span></span>{% endif %}
+    </div>
+  </div>
+  <div class="toolbar" style="margin:0 0 0 auto"><select data-nav="season" aria-label="Season">{% for s in seasons_here %}<option value="{{ s }}"{{ ' selected' if s == season }}>{{ s }}</option>{% endfor %}</select></div>
+</div>
+
+<section class="section">
+  <div class="tiles">
+    {% for kind in ('bat', 'pit') %}{% for s in t.summary.get(kind, []) %}
+    <div class="tile" title="{{ s.col.name }}"><span>{{ 'Hitting' if kind == 'bat' else 'Pitching' }} {{ s.col.head }}</span><b>{{ s.value|f(s.col.fmt, s.col.key) }}</b><small>{{ s.rank|ordinal }} of {{ s.of }}</small></div>
+    {% endfor %}{% endfor %}
+  </div>
+</section>
+
+<section class="section">{{ roster('bat', t.rosters.bat, bmode, 'bmode') }}</section>
+<section class="section">{{ roster('pit', t.rosters.pit, pmode, 'pmode') }}</section>
+
+<section class="section">
+  <div class="section-head"><h2>Franchise history</h2><span class="more">{{ t.history|length }} seasons</span></div>
+  <div class="table-wrap">
+  <table class="stats sortable compact">
+  <thead><tr><th class="t" data-key="season" data-dir="desc">Season</th><th class="t" data-key="name" data-type="text" data-dir="asc">Club</th><th data-key="w">W</th><th data-key="l" data-dir="asc">L</th><th data-key="pct">PCT</th><th data-key="rs">RS</th><th data-key="ra" data-dir="asc">RA</th><th data-key="war">WAR</th><th class="t">League</th></tr></thead>
+  <tbody>
+  {% for h in t.history %}
+  <tr class="{{ 'me' if h.season == season }}">
+    <td class="t" data-v="{{ h.season }}"><a href="{{ url_for('site.team', code=h.team, season=h.season) }}">{{ h.season }}</a></td>
+    <td class="name" data-v="{{ h.name }}">{{ m.team(h.team, h.season, h.name, 16) }}</td>
+    <td data-v="{{ h.w }}">{{ h.w if h.w is not none }}</td><td data-v="{{ h.l }}">{{ h.l if h.l is not none }}</td><td data-v="{{ h.pct|sv }}">{{ h.pct|f('p3') }}</td>
+    <td data-v="{{ h.rs }}">{{ h.rs if h.rs is not none }}</td><td data-v="{{ h.ra }}">{{ h.ra if h.ra is not none }}</td>
+    <td data-v="{{ h.war|sv }}">{{ h.war|f('d1') }}</td><td class="t muted">{{ h.division or h.league or '' }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}

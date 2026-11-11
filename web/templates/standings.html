@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Standings {{ season }}{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Standings</h1><div class="sub">{{ season }} final records{% if season == latest %} (or to date){% endif %}</div></div>
+  <div class="toolbar" style="margin:0">{{ m.season_select(season) }}</div>
+</div>
+{% for g in groups %}
+<section class="section">
+  <h2 style="margin-bottom:10px">{{ g.title }}</h2>
+  {{ m.standings_table(g.rows, season) }}
+</section>
+{% endfor %}
+{% if not groups %}<div class="card empty">No records for {{ season }}.</div>{% endif %}
+<p class="sub">Records come from FanGraphs' team pitching lines (wins and losses); ties are not counted. Divisions follow each season's alignment from 1969 on. Before 1969 clubs are grouped by league; clubs outside the AL and NL that season ({{ other }}) are grouped together.</p>
+{% endblock %}

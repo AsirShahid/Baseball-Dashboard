@@ -1,5 +1,4 @@
-# Keep the image slim: season data is bind-mounted at runtime (see
-# docker-compose.yml), never baked into the image.
+# Season data is mounted at runtime, never baked into the image.
 /team_batting/
 /team_pitching/
 /team_fielding/
@@ -7,11 +6,13 @@
 /qualified_pitching_stats/
 /all_batting_stats/
 /all_pitching_stats/
+/data/
+/legacy/
+/tools/
 
 .git/
 .github/
 .venv/
-baseball_env/
 __pycache__/
 *.pyc
 tests/

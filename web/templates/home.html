@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Home{% endblock %}
+{% block main %}
+{% if fav and fav.record %}
+{% set r = fav.record %}
+<section class="card hero" style="--team: {{ '#0C2340' if fav.code == 'NYY' else '#f97316' }}">
+  <div>
+    <div class="hero-id">
+      <a href="{{ url_for('site.team', code=fav.code, season=season) }}">{{ m.logo(fav.code, season, 72) }}</a>
+      <div>
+        <h3>{{ fav.info.name }} · {{ season }}</h3>
+        <div class="big">{{ r.w }}-{{ r.l }}</div>
+        <div class="hero-meta">
+          <span><b>{{ fav.place|ordinal }}</b> in the {{ fav.group }}{% if r.gb %} · {{ (r.gb|f('d1')).replace('.0', '') }} GB{% endif %}</span>
+          <span>{{ r.rs }} runs scored, {{ r.ra }} allowed</span>
+          <span class="{{ 'w' if r.diff > 0 else 'l' }}">{{ r.diff|f('s0') }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="tiles" style="margin-top:14px">
+      {% for kind in ('bat', 'pit') %}{% for s in fav.summary.get(kind, []) if s.col.key in ('wRC+', 'HR', 'OBP', 'ERA', 'FIP', 'K%') %}
+      <div class="tile"><span>{{ 'Hitting' if kind == 'bat' else 'Pitching' }} {{ s.col.head }}</span><b>{{ s.value|f(s.col.fmt, s.col.key) }}</b><small>{{ s.rank|ordinal }} of {{ s.of }}</small></div>
+      {% endfor %}{% endfor %}
+    </div>
+  </div>
+  <div class="hero-side">
+    {% for kind in ('bat', 'pit') %}{% for p in (fav.rosters[kind].lines|sort(attribute='WAR', reverse=True))[:3] if p.WAR is not none %}
+    <a class="mini" href="{{ url_for('site.player', pid=p.pid) }}"><span class="k">{{ p.pos or ('P' if kind == 'pit' else '') }}</span>
+      <span><b>{{ p.name }}</b> <span class="muted">· {{ p.WAR|f('d1') }} WAR{% if kind == 'bat' %}, {{ p.HR|f('d0') }} HR, {{ p.AVG|f('avg') }}/{{ p.OBP|f('avg') }}/{{ p.SLG|f('avg') }}{% else %}, {{ p.ERA|f('d2') }} ERA, {{ p.IP|ip }} IP{% endif %}</span></span></a>
+    {% endfor %}{% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="section">
+  <div class="section-head"><h2>Leaders · {{ season }}</h2>
+    <span class="toolbar" style="margin:0">{{ m.season_select(season) }}<a class="more" href="{{ url_for('site.players', season=season) }}">All players</a></span></div>
+  {% for kind, title in (('bat', 'Hitting'), ('pit', 'Pitching')) %}
+  <h3 style="margin:14px 0 8px">{{ title }}</h3>
+  <div class="board">
+    {% for b in leaders[kind] %}
+    <div class="card"><h3 title="{{ b.col.name }}{{ ' · qualified players' if b.qualified }}"><a href="{{ url_for('site.players', kind=kind, season=season, sort=b.stat, mode=('advanced' if b.stat in ('wRC+', 'FIP', 'K-BB%') else 'standard'), min=('q' if b.qualified else 1)) }}">{{ b.title }}</a></h3>
+      <ol>{% for p in b.rows %}<li><i>{{ loop.index }}</i>{{ m.logo(p.team, season, 16) if p.team != MULTI_TEAM }}<a href="{{ url_for('site.player', pid=p.pid) }}">{{ p.name }}</a><b>{{ p[b.stat]|f(b.col.fmt, b.stat) }}</b></li>{% endfor %}</ol>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  <p class="sub">Rates (AVG, OBP, wRC+, ERA, FIP, K-BB%) need a qualified player: 3.1 plate appearances or 1 inning per team game. Counts have no minimum.</p>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Standings · {{ season }}</h2><a class="more" href="{{ url_for('site.standings', season=season) }}">Full standings</a></div>
+  <div class="cols-3">
+    {% for g in standings %}
+    <div><h3 style="margin-bottom:8px">{{ g.title }}</h3>{{ m.standings_table(g.rows, season, compact=True) }}</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

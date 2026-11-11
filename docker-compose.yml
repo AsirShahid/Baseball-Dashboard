@@ -1,28 +1,46 @@
+# Operate from ~/vps-infra/stacks/baseball-dashboard (it includes this file).
+#   docker compose build && docker compose up -d --wait
+# The site reads /data/baseball.sqlite (read-only). The updater fetches from
+# FanGraphs into the season CSV folders and rebuilds the database into the
+# same volume. Rollback to the Dash site: legacy/dash/docker-compose.rollback.yml.
 services:
   baseball-dashboard:
     build: .
+    image: baseball-site:latest
     container_name: baseball-dashboard
-    mem_limit: 1536m
+    mem_limit: 512m
     restart: unless-stopped
     environment:
-      - HOST=0.0.0.0
-      - PORT=8050
-    # Season CSVs live on the host, not in the image or the repo. The watcher
-    # inside the container keeps the current season fresh; missing seasons are
-    # fetched on demand. To backfill the full history once:
-    #   docker compose exec baseball-dashboard \
-    #     python baseball_csv_generator.py --start 1871
+      - DATA_ROOT=/data
+      - FAVORITE_TEAM=NYY
     volumes:
-      - ./team_batting:/app/team_batting
-      - ./team_pitching:/app/team_pitching
-      - ./qualified_batting_stats:/app/qualified_batting_stats
-      - ./qualified_pitching_stats:/app/qualified_pitching_stats
-      - ./all_batting_stats:/app/all_batting_stats
-      - ./all_pitching_stats:/app/all_pitching_stats
+      - baseball-data:/data:ro
     expose:
       - "8050"
     networks:
       - npm
+
+  baseball-updater:
+    build: .
+    image: baseball-site:latest
+    container_name: baseball-updater
+    command: ["python", "-m", "pipeline.updater", "--csv-root", "/csv", "--stints-root", "/data/stints", "--output", "/data"]
+    mem_limit: 768m
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    volumes:
+      - baseball-data:/data
+      - ./all_batting_stats:/csv/all_batting_stats
+      - ./all_pitching_stats:/csv/all_pitching_stats
+      - ./team_batting:/csv/team_batting
+      - ./team_pitching:/csv/team_pitching
+
+volumes:
+  baseball-data:
+    name: baseball-dashboard_baseball-data
+    external: true
+
 networks:
   npm:
     external: true

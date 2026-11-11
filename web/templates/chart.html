@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Charts{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Charts</h1><div class="sub" id="c-sub">Any two stats against each other, for every team or player, in a season or over many.</div></div>
+  <div class="toolbar" style="margin:0">
+    <div class="seg" id="c-view"><button type="button" data-v="team">Teams</button><button type="button" data-v="player">Players</button></div>
+    <div class="seg" id="c-kind"><button type="button" data-v="bat">Hitters</button><button type="button" data-v="pit">Pitchers</button></div>
+    <span class="spanpick"><select id="c-season" aria-label="First season">{% for s in seasons %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select><span class="muted">to</span><select id="c-to" aria-label="Last season">{% for s in seasons %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></span>
+  </div>
+</div>
+<div class="explorer" id="explorer" data-latest="{{ latest }}" data-colors="{{ colors|tojson|forceescape }}">
+  <div class="controls">
+    <div class="card wide">
+      <label class="field"><span>Across (X)</span><select id="c-x"></select></label>
+      <label class="field"><span>Up (Y)</span><select id="c-y"></select></label>
+      <label class="field" title="A third stat turns the chart 3D: drag to rotate."><span>Depth (Z, optional)</span><select id="c-z"></select></label>
+      <div class="presets" id="c-presets"></div>
+    </div>
+    <div class="card">
+      <div class="pair" id="c-player-filters">
+        <label class="field" title="Qualified: 3.1 plate appearances or 1 inning per team game in a season (MLB's rule for rate stats); over several seasons, FanGraphs' 1,000 PA or 300 IP. Applies when either axis is a rate; counts alone have no minimum."><span id="c-min-label">Min PA</span><select id="c-min"></select></label>
+        <label class="field"><span>Position</span><select id="c-pos"></select></label>
+      </div>
+      <div class="pair">
+        <label class="field" id="c-team-field"><span>Team</span><select id="c-team"><option value="">All</option>{% for code, name in teams_now %}<option value="{{ code }}">{{ name }}</option>{% endfor %}</select></label>
+        <label class="field"><span>League</span><select id="c-league"><option value="">MLB</option><option>AL</option><option>NL</option><option>AL East</option><option>AL Central</option><option>AL West</option><option>NL East</option><option>NL Central</option><option>NL West</option></select></label>
+      </div>
+      <label class="check" title="One point per season instead of one per span"><input type="checkbox" id="c-split"> Season by season</label>
+      <label class="check" title="Connect each one's seasons in order: aging curves and rebuilds"><input type="checkbox" id="c-path"> Trajectories</label>
+      <label class="check" title="Each value becomes its percentile among that season's players or teams, so eras compare fairly"><input type="checkbox" id="c-era"> Era-adjusted (percentiles)</label>
+    </div>
+    <div class="card">
+      <label class="field"><span>Find and highlight</span><input type="search" id="c-find" placeholder="Name or team" autocomplete="off"></label>
+      <div class="pair">
+        <label class="field"><span>Color</span><select id="c-color"><option value="rank">Percentile</option><option value="team">Team colors</option><option value="plain">Plain</option></select></label>
+        <label class="field"><span>Labels</span><select id="c-labels"><option value="standouts">Standouts</option><option value="more">More</option><option value="all">All</option><option value="none">None</option></select></label>
+      </div>
+      <label class="check"><input type="checkbox" id="c-mean" checked> Average lines</label>
+      <label class="check"><input type="checkbox" id="c-trend"> Trend line</label>
+      <label class="check" id="c-logos-row"><input type="checkbox" id="c-logos" checked> Team logos</label>
+      <div class="pair"><button type="button" class="btn" id="c-copy">Copy link</button><button type="button" class="btn" id="c-csv">Download CSV</button></div>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="plot" id="plot">
+      <div class="title"><span><b id="c-title"></b></span><span id="c-count"></span></div>
+      <svg id="c-svg" role="img" aria-label="Scatter chart"></svg>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin-bottom:8px" id="c-board-title">Best on both axes</h3>
+      <div class="board" style="grid-template-columns:1fr"><ol id="c-board" class="wide"></ol></div>
+      <div class="sub">Average of the percentiles on each axis, counting "lower is better" stats (ERA, K% for hitters) the right way round.</div>
+    </div>
+  </div>
+</div>
+<script type="application/json" id="c-menus">{{ menus|tojson }}</script>
+<script type="application/json" id="c-presets-data">{{ presets|tojson }}</script>
+<script type="application/json" id="c-state">{{ state|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('chart.js') }}" defer></script>{% endblock %}

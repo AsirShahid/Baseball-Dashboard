@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Teams {{ span_label(lo, hi) }}{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Teams</h1><div class="sub">{{ kinds[kind] }} · {{ span_label(lo, hi) }}{% if lo != hi %} (franchises over the span){% endif %}</div></div>
+  <div class="toolbar" style="margin:0">{{ m.span_picker(lo, hi) }}</div>
+</div>
+<div class="toolbar">
+  {{ m.seg('kind', kinds.items(), kind, ('sort', 'mode')) }}
+  {{ m.mode_seg(modes, mode) }}
+  {{ m.seg('league', [('', 'MLB'), ('AL', 'AL'), ('NL', 'NL')], league) }}
+  <span class="count">{{ lines|length }} teams</span>
+</div>
+<div class="table-wrap">
+<table class="stats sortable" id="teams">
+<thead><tr><th class="rank">#</th><th class="t" data-key="name" data-type="text" data-dir="asc">Team</th><th data-key="w">W</th><th data-key="l" data-dir="asc">L</th><th data-key="pct">PCT</th>{{ m.heads(cols, sort) }}</tr></thead>
+<tbody>
+{% for t in lines %}
+<tr data-name="{{ t.name }}"{{ ' class="me"'|safe if t.team == favorite }}>
+  <td class="rank">{{ loop.index }}</td>
+  <td class="name" data-v="{{ t.name }}">{{ m.team(t.team, t.season, t.name) }}</td>
+  <td data-v="{{ t.w }}">{{ t.w if t.w is not none }}</td><td data-v="{{ t.l }}">{{ t.l if t.l is not none }}</td><td data-v="{{ t.pct|sv }}">{{ t.pct|f('p3') }}</td>
+  {{ m.cells(t, cols, sort) }}
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+<p class="sub">Team lines are FanGraphs' own team totals, so traded players count for each club they played for.</p>
+{% endblock %}

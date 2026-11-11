@@ -1,30 +1,18 @@
-# Build stage: a toolchain is available here to compile any wheels that need
-# it, but none of it reaches the runtime image.
-FROM python:3.12-slim AS build
-# NOTE: a bare tag is still mutable. Pin by digest once the deploy host can
-# resolve one:  FROM python:3.12-slim@sha256:<digest> AS build
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt gunicorn
-
-# Runtime stage: no build toolchain, no curl, runs as a non-root user.
+# The site and its updater share this image (see docker-compose.yml).
 FROM python:3.12-slim
 WORKDIR /app
-# uid 1001 matches the host user that owns the bind-mounted CSV directories, so
-# the watcher and the live-fetch path can still write them as a non-root user.
+# uid 1001 matches the host user that owns the bind-mounted CSV folders.
 RUN useradd -m -u 1001 -s /usr/sbin/nologin app
-COPY --from=build /install /usr/local
-COPY . .
-RUN chown -R app:app /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app.py ./
+COPY pipeline pipeline
+COPY web web
+COPY Logos Logos
 USER app
-ENV HOST=0.0.0.0 PORT=8050
-# Fewer malloc arenas: pandas-heavy gunicorn workers otherwise fragment memory
-# across one arena per thread and RSS drifts toward the container limit.
-ENV MALLOC_ARENA_MAX=2
+ENV DATA_ROOT=/data PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 EXPOSE 8050
-# Report unhealthy if the Dash server stops answering (hung worker, crashed
-# import). Uses python so the image needs no curl.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8050/', timeout=4).status==200 else 1)"
-CMD ["bash", "/app/entrypoint.sh"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8050/healthz', timeout=4).status==200 else 1)"
+CMD ["gunicorn", "app:app", "-b", "0.0.0.0:8050", "--workers", "2", "--threads", "4", "--timeout", "60", \
+     "--graceful-timeout", "20", "--max-requests", "3000", "--max-requests-jitter", "300"]
