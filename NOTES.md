@@ -224,3 +224,22 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
   stat and a note giving the pool. Career and span rows mark those cells with a dagger and a
   footnote under the table, and the league row under Career fills them over the same seasons
   (it was blank, because the league line dropped stats missing from its first seasons).
+
+## Team bWAR (2026-11-11)
+
+- The teams table had an empty bWAR column (hidden since the Savant change, which drops empty
+  team columns). Team bWAR is now the sum of the club's players' bWAR, one-club players from season
+  rows and traded players from their per-club rows, which is how Baseball-Reference totals a team.
+  Checked against BR's daily files summed by club: 2024 hitting 589.9 and pitching 409.9 both equal
+  BR, every club; all 2,021 team-seasons since 1947 within 0.22 (hitting) and 0.12 (pitching).
+- Blank when matched players cover under 95% of the club's PA (IP): 73 of 6,960 team-seasons, all
+  Negro League clubs except 1875 BKA and WSO and 1884 St. Paul. Over a span a club with any blank
+  season has a blank total (`queries.team_gaps`, keyed like `db.table` by franchise id), on the
+  table and the team chart, so a franchise total never silently leaves a season out.
+- Matching: `BWar.clubs()` pairs each season's FanGraphs club codes with BR's from players matched
+  by MLB id (1890s Chicago CHI = BR CHC, CL87 = CLE), so the same-club checks work; and a fallback on
+  BR's player-id stem (`stem("George Pearce") == "pearcge"`, BR's pearcge01 "George Pierce"), only
+  for a unique player on that club with agreeing PA/IP. 82 player-seasons gained bWAR, none lost or
+  changed; players with career bWAR 23,590 -> 23,627. All 82 pairings checked (renamed players such
+  as Bill Banks = BR banksbi01 "Bill Yerrick"; Willie Wells Jr. = BR wellswi01, Memphis 1945-46).
+- Schema 6 (rebuild after deploy). New code serves a schema-5 database: the column is simply absent.

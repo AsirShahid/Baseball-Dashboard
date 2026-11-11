@@ -26,6 +26,7 @@ import csv
 import gzip
 import json
 import logging
+import re
 import unicodedata
 from email.utils import formatdate
 from pathlib import Path
@@ -104,6 +105,22 @@ def norm(name: str) -> str:
     return " ".join("".join(ch for ch in text.lower() if ch.isalnum() or ch == " ").split())
 
 
+def stem(name: str) -> str:
+    """Baseball-Reference's player id without its number: the first five letters
+    of the surname and two of the first name ("George Pearce" -> "pearcge", BR's
+    pearcge01, listed as "George Pierce"). Ids keep the spelling a player was first
+    entered under, so they still match where the two sources now spell him apart."""
+    words = [re.sub(r"[^a-z]", "", w) for w in norm(name.replace("(Unknown)", "")).split()]
+    words = [w for w in words if w and w not in ("jr", "sr", "ii", "iii")]
+    if len(words) < 2:
+        return ""
+    return words[-1][:5] + words[0][:2]
+
+
+def _agree(theirs: float, mine: float) -> bool:
+    return abs(theirs - mine) <= max(3.0, 0.35 * max(theirs, mine))
+
+
 class BWar:
     """Baseball-Reference WAR, looked up for FanGraphs rows."""
 
@@ -111,6 +128,7 @@ class BWar:
         self.stints = {"bat": {}, "pit": {}}     # (kind) -> {(mlbam|name key, year): {player: [(team, weight, war)]}}
         self.rosters = {"bat": {}, "pit": {}}    # (kind) -> {(year, team): {surname: {player}}}
         self.by_player = {"bat": {}, "pit": {}}  # (kind) -> {(player, year): [stint]}
+        self.stems = {"bat": {}, "pit": {}}      # (kind) -> {(year, id stem): {player}}
         self.loaded = False
         if root is None:
             return
@@ -141,12 +159,31 @@ class BWar:
             stint = (r["team_ID"], weight, *values)
             name = norm(fix_text(r["name_common"]))
             self.by_player[kind].setdefault((r["player_ID"], year), []).append(stint)
+            self.stems[kind].setdefault((year, r["player_ID"][:-2]), set()).add(r["player_ID"])
             if name:
                 self.rosters[kind].setdefault((year, r["team_ID"]), {}).setdefault(name.split()[-1], set()).add(r["player_ID"])
             mlbam = r.get("mlb_ID")
             if mlbam and mlbam != "NULL":
                 by.setdefault(("id", mlbam, year), {}).setdefault(r["player_ID"], []).append(stint)
             by.setdefault(("name", norm(fix_text(r["name_common"])), year), {}).setdefault(r["player_ID"], []).append(stint)
+
+    def clubs(self, kind: str, year: int, ident: list) -> dict:
+        """FanGraphs club code -> Baseball-Reference's for one season ("CHI" is BR's
+        "CHC" in the 1890s, "CL87" its "CLE"), learned from the players both list
+        under one MLB id and one club."""
+        votes: dict = {}
+        by = self.stints[kind]
+        for r in ident:
+            team, mlbam = r.get("team"), r.get("mlbam")
+            if not mlbam or not team or team == "- - -":
+                continue
+            hit = by.get(("id", str(mlbam), year))
+            if hit and len(hit) == 1:
+                stints = next(iter(hit.values()))
+                if len(stints) == 1:
+                    votes.setdefault(team, {}).setdefault(stints[0][0], 0)
+                    votes[team][stints[0][0]] += 1
+        return {team: max(counts, key=counts.get) for team, counts in votes.items()}
 
     def _find(self, kind, year, mlbam, name, team, weight=None):
         by = self.stints[kind]
@@ -158,18 +195,22 @@ class BWar:
         hit = by.get(("name", norm(name), year)) if not name.startswith("(Unknown)") else None
         if not hit:
             # Spellings differ between the sources for some early and Negro League
-            # players ("(Unknown) Latimer" / "Latimer", "Lewis" / "Lucius Hampton"):
-            # accept the only pitcher (or hitter) with his surname on that club that
-            # year, and only when his PA (IP) agree, so a namesake is not taken.
+            # players ("(Unknown) Latimer" / "Latimer", "Lewis" / "Lucius Hampton",
+            # "George Pearce" / "George Pierce"). Accept the only player on that club
+            # that year with his surname, or else with his Baseball-Reference id stem,
+            # and only when his PA (IP) agree, so a namesake is not taken.
             words = norm(name.replace("(Unknown)", "")).split()
             if not words or not team or team == "- - -" or weight is None or weight != weight:
                 return None
-            same = self.rosters[kind].get((year, team), {}).get(words[-1], set())
-            if len(same) != 1:
-                return None
-            stints = self.by_player[kind].get((next(iter(same)), year)) or []
-            theirs = sum(st[1] for st in stints)
-            return stints if stints and abs(theirs - weight) <= max(3.0, 0.35 * max(theirs, weight)) else None
+            for same in (self.rosters[kind].get((year, team), {}).get(words[-1], set()),
+                         {p for p in self.stems[kind].get((year, stem(name)), set())
+                          if any(st[0] == team for st in self.by_player[kind].get((p, year), []))}):
+                if len(same) != 1:
+                    continue
+                stints = self.by_player[kind].get((next(iter(same)), year)) or []
+                if stints and _agree(sum(st[1] for st in stints), weight):
+                    return stints
+            return None
         if len(hit) == 1:
             return next(iter(hit.values()))
         same_team = [s for s in hit.values() if any(st[0] == team for st in s)]
@@ -182,9 +223,11 @@ class BWar:
             return {}
         fields = FIELDS[kind]
         out = {f: np.full(len(ident), np.nan, dtype=np.float32) for f in fields}
+        clubs = self.clubs(kind, year, ident)
         for i, r in enumerate(ident):
             w = None if weights is None else float(weights[i])
-            stints = self._find(kind, year, r.get("mlbam"), r.get("name"), r.get("team"), w)
+            team = clubs.get(r.get("team"), r.get("team"))
+            stints = self._find(kind, year, r.get("mlbam"), r.get("name"), team, w)
             if not stints:
                 continue
             for k, f in enumerate(fields):
@@ -211,9 +254,14 @@ class BWar:
         rows_by_pid: dict = {}
         for i, r in enumerate(ident):
             rows_by_pid.setdefault(r.get("pid"), []).append(i)
+        clubs = self.clubs(base, year, ident)
         for _pid, idx in rows_by_pid.items():
             first = ident[idx[0]]
             stints = self._find(base, year, first.get("mlbam"), first.get("name"), None)
+            if not stints and len(idx) == 1:          # one club: the name fallbacks can use it
+                w = None if np.isnan(weights[idx[0]]) else float(weights[idx[0]])
+                stints = self._find(base, year, None, first.get("name"),
+                                    clubs.get(first.get("team"), first.get("team")), w)
             if not stints:
                 continue
             if len(idx) == 1 and len(stints) == 1:
@@ -223,7 +271,8 @@ class BWar:
             for i in idx:
                 w = 0.0 if np.isnan(weights[i]) else float(weights[i])
                 for k, stint in enumerate(stints):
-                    pairs.append(((0 if stint[0] == ident[i].get("team") else 1), abs(w - stint[1]), i, k))
+                    club = clubs.get(ident[i].get("team"), ident[i].get("team"))
+                    pairs.append(((0 if stint[0] == club else 1), abs(w - stint[1]), i, k))
             pairs.sort()
             used_i, used_k = set(), set()
             for _same, _gap, i, k in pairs:

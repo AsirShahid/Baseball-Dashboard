@@ -580,3 +580,31 @@ def test_partial_coverage_labels_and_ranks(app):
         # The league line over 1955 and 2024 keeps EV (2024's) instead of dropping it.
         lg = queries.league_over("bat", ((1955, "MLB"), (2024, "MLB")), ("EV", "AVG"))
         assert lg["EV"] == queries.league_season("bat", 2024, "MLB", ("EV",))["EV"] and lg["AVG"]
+
+
+def test_team_bwar_adds_up_its_players(app, client):
+    """Team bWAR = its players' bWAR (traded players by club), as Baseball-Reference
+    totals it; 2024 Dodgers hitting 38.2 and Braves pitching 26.1 on BR."""
+    from web import db
+    with app.app_context():
+        for kind in ("bat", "pit"):
+            t = db.table("t" + kind, 2024, 2024, ("bWAR",))
+            by = {r["team"]: float(t.cols["bWAR"][k]) for k, r in enumerate(t.ident)}
+            assert len(by) == 30 and not any(np.isnan(v) for v in by.values())
+            p = db.table(kind, 2024, 2024, ("bWAR",))
+            assert math.isclose(sum(by.values()), float(np.nansum(p.cols["bWAR"])), abs_tol=0.5)
+        hit = db.table("tbat", 2024, 2024, ("bWAR",))
+        lad = [float(hit.cols["bWAR"][k]) for k, r in enumerate(hit.ident) if r["team"] == "LAD"][0]
+        assert math.isclose(lad, 38.2, abs_tol=0.15)
+    html = page(client, "/teams?kind=bat&season=2024")
+    assert ">bWAR<" in html
+
+
+def test_bwar_id_stem_and_club_codes():
+    from pipeline import bwar
+    assert bwar.stem("George Pearce") == "pearcge"        # BR pearcge01, listed as "George Pierce"
+    assert bwar.stem("Ken Griffey Jr.") == "griffke" and bwar.stem("(Unknown) Latimer") == ""
+    b = bwar.BWar(None)
+    b.stints["pit"] = {("id", "1", 1899): {"x01": [("CHC", 300.0, 2.0, 100.0, 90.0)]}}
+    clubs = b.clubs("pit", 1899, [{"team": "CHI", "mlbam": 1}, {"team": "- - -", "mlbam": 1}])
+    assert clubs == {"CHI": "CHC"}

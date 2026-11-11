@@ -460,6 +460,28 @@ def _team_war(season: int) -> dict:
 
 
 TEAM_ALWAYS = ("G", "PA", "IP")
+
+
+@db.cached
+def team_gaps(kind: str, lo: int, hi: int, stat: str = "bWAR") -> frozenset:
+    """Clubs with a season in lo..hi that has no team bWAR (its players matched to
+    Baseball-Reference cover under 95% of its PA or IP: some Negro League clubs,
+    two 1875 clubs, 1884 St. Paul). Their total over the span would leave those
+    seasons out, so it is shown blank instead."""
+    gaps = set()
+    tkind = TEAM_KIND[kind]
+    for season in range(lo, hi + 1):
+        col = db.column(tkind, season, stat)
+        rows = db.rows("SELECT team, teamid, i FROM rows WHERE kind = ? AND season = ?", tkind, season)
+        for r in rows:
+            if col is False or np.isnan(col[r["i"]]):
+                gaps.add(team_key(r))
+    return frozenset(gaps)
+
+
+def team_key(r) -> object:
+    """How a span groups a club's seasons (db.table): its franchise id, else its code."""
+    return r.get("teamid") or r.get("team")
 TEAM_MODES = {kind: {k: v for k, v in modes.items() if k != "savant"} for kind, modes in MODES.items()}
 
 
@@ -470,6 +492,7 @@ def team_table(kind, lo, hi, mode, league, sort):
     # Baseball Savant's stats are per player (a traded player's season is not split
     # by club), so team tables have none: keep only columns with team data.
     cols = [c for c in cols if c["key"] in TEAM_ALWAYS or (c["key"] in t.cols and not np.isnan(t.cols[c["key"]]).all())]
+    gaps = team_gaps(kind, lo, hi) if hi > lo and "bWAR" in t.cols else frozenset()
     lines = []
     for i, r in enumerate(t.ident):
         code = r["team"]
@@ -481,6 +504,8 @@ def team_table(kind, lo, hi, mode, league, sort):
         for s in t.cols:
             v = t.cols[s][i]
             line[s] = None if np.isnan(v) else float(v)
+        if team_key(r) in gaps:
+            line["bWAR"] = None
         rec = _record(r.get("teamid"), code, lo, hi)
         line.update(rec)
         lines.append(line)

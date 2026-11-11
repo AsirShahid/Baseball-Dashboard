@@ -268,6 +268,9 @@ def _team_rows(axes, seasons_list, args, era):
         for a, (k, stat, c) in axes.items():
             t = db.table(queries.TEAM_KIND[k], lo, hi, (stat, "PA" if k == "bat" else "IP"))
             col = t.cols[stat]
+            if stat == "bWAR" and hi > lo:   # a club missing a season's bWAR has no total
+                gaps = queries.team_gaps(k, lo, hi)
+                col = np.array([np.nan if queries.team_key(r) in gaps else v for r, v in zip(t.ident, col)])
             pct = None
             if era:   # each club against the clubs of its league group that season
                 pct = np.full(len(col), np.nan)

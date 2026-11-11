@@ -34,7 +34,7 @@ from . import aggregate, bwar, catalog, savant, teams
 from .text import search_key
 
 log = logging.getLogger("build")
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 SOURCES = {
     "bat": "all_batting_stats", "pit": "all_pitching_stats",
     "tbat": "team_batting", "tpit": "team_pitching",
@@ -181,6 +181,54 @@ def _collect_era_parts(kind, season, ident, columns, era_parts, traded, stint_pa
                                                         float(ip[i])))
 
 
+def _collect_team_bwar(kind, season, ident, columns, war_parts, war_traded, war_stints) -> None:
+    """Team bWAR adds up its players' (Baseball-Reference's team totals are the
+    same sum): one-club players from the season rows, traded ones from their
+    per-club rows, with the PA (IP) each covers."""
+    base = "pit" if kind in ("pit", "spit") else "bat"
+    war, weight = columns.get("bWAR"), columns.get("IP" if base == "pit" else "PA")
+    if war is None or weight is None:
+        return
+    for i, r in enumerate(ident):
+        if kind in ("bat", "pit") and r["team"] == "- - -":
+            war_traded.setdefault((base, season), set()).add(r.get("pid"))
+            continue
+        if np.isnan(war[i]) or np.isnan(weight[i]):
+            continue
+        if kind in ("bat", "pit"):
+            acc = war_parts.setdefault((base, season, r["team"]), [0.0, 0.0])
+            acc[0] += float(war[i]); acc[1] += float(weight[i])
+        else:
+            war_stints.setdefault((base, season), []).append((r.get("pid"), r["team"], float(war[i]), float(weight[i])))
+
+
+def _team_bwar(con, war_parts, war_traded, war_stints, cover: float = 0.95) -> None:
+    """bWAR for each team season (hitting and pitching), blank when the players
+    matched to Baseball-Reference cover under 95% of its PA (IP)."""
+    for (base, season), rows in war_stints.items():
+        moved = war_traded.get((base, season), set())
+        for pid, team, war, weight in rows:
+            if pid in moved:
+                acc = war_parts.setdefault((base, season, team), [0.0, 0.0])
+                acc[0] += war; acc[1] += weight
+    for base, tkind, unit in (("bat", "tbat", "PA"), ("pit", "tpit", "IP")):
+        for (season,) in con.execute("SELECT DISTINCT season FROM rows WHERE kind = ? AND season > 0", (tkind,)).fetchall():
+            clubs = [t for (t,) in con.execute("SELECT team FROM rows WHERE kind = ? AND season = ? ORDER BY i",
+                                               (tkind, season))]
+            blob = con.execute("SELECT data FROM cols WHERE kind = ? AND season = ? AND stat = ?",
+                               (tkind, season, unit)).fetchone()
+            if not blob:
+                continue
+            total = unpack(blob[0])
+            values = np.full(len(clubs), np.nan, dtype=np.float32)
+            for i, club in enumerate(clubs):
+                acc = war_parts.get((base, season, club))
+                if acc and total[i] > 0 and acc[1] >= cover * float(total[i]):
+                    values[i] = acc[0]
+            if not np.isnan(values).all():
+                con.execute("INSERT OR REPLACE INTO cols VALUES (?,?,?,?)", (tkind, season, "bWAR", pack(values)))
+
+
 def _team_era_plus(con, era_parts, traded, stint_parts, cover: float = 0.95) -> None:
     """ERA+ for each team season, from its pitchers' Baseball-Reference parts.
     Left blank when the matched pitchers threw under 95% of the team's innings."""
@@ -298,6 +346,9 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
     era_parts: dict = {}     # (season, team) -> [ERlg, bER, IP covered]
     traded: dict = {}        # season -> pids on more than one club (FanGraphs team "- - -")
     stint_parts: dict = {}   # season -> [(pid, team, ERlg, bER, IP)]
+    war_parts: dict = {}     # (bat|pit, season, team) -> [bWAR, PA or IP covered]
+    war_traded: dict = {}    # (bat|pit, season) -> pids on more than one club
+    war_stints: dict = {}    # (bat|pit, season) -> [(pid, team, bWAR, PA or IP)]
     games: dict = {}
     hundred = set()
     newest = 0.0
@@ -336,6 +387,8 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
                 with np.errstate(invalid="ignore", divide="ignore"):
                     columns["Barrel/PA"] = np.where(denominator > 0, columns["Barrels"] / np.where(denominator > 0, denominator, 1),
                                                     np.nan).astype(np.float32)
+            if kind in ("bat", "pit", "sbat", "spit") and "bWAR" in columns:
+                _collect_team_bwar(kind, season, ident, columns, war_parts, war_traded, war_stints)
             if "ERlg" in columns and "bER" in columns:
                 columns["ERA+"] = bwar.era_plus(columns["ERlg"], columns["bER"]).astype(np.float32)
                 _collect_era_parts(kind, season, ident, columns, era_parts, traded, stint_parts)
@@ -394,6 +447,7 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
                             t[(kind, stat)] = int(round(columns[stat][i]))
             del ident, columns
     _team_era_plus(con, era_parts, traded, stint_parts)
+    _team_bwar(con, war_parts, war_traded, war_stints)
     league_rows = _league_rows(con, sv if sv.loaded else None)
     if hundred:
         log.info("percent columns stored as 0-100: %s", sorted(s for _, s in hundred))
