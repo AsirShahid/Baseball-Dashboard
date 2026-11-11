@@ -12,9 +12,9 @@
 <div class="explorer" id="explorer" data-latest="{{ latest }}" data-colors="{{ colors|tojson|forceescape }}">
   <div class="controls">
     <div class="card wide">
-      <label class="field"><span>Across (X)</span><select id="c-x"></select></label>
-      <label class="field"><span>Up (Y)</span><select id="c-y"></select></label>
-      <label class="field" title="A third stat turns the chart 3D: drag to rotate."><span>Depth (Z, optional)</span><select id="c-z"></select></label>
+      <label class="field"><span>Across (X)</span><select id="c-x" data-statpick></select></label>
+      <label class="field"><span>Up (Y)</span><select id="c-y" data-statpick></select></label>
+      <label class="field" title="A third stat turns the chart 3D: drag to rotate."><span>Depth (Z, optional)</span><select id="c-z" data-statpick data-clear></select></label>
       <div class="presets" id="c-presets"></div>
     </div>
     <div class="card">
@@ -66,4 +66,4 @@
 <script type="application/json" id="c-presets-data">{{ presets|tojson }}</script>
 <script type="application/json" id="c-state">{{ state|tojson }}</script>
 {% endblock %}
-{% block scripts %}<script src="{{ asset('chart.js') }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ asset('statpick.js') }}" defer></script><script src="{{ asset('chart.js') }}" defer></script>{% endblock %}

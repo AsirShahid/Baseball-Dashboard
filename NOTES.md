@@ -194,3 +194,17 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
 - Schema 5. New code serves a schema-4 database (checked: player, board, team, chart pages all
   200), so the rebuild after deploy is safe. Build: ~102 s, peak 499 MB (updater limit 768 MB).
   Rollback: tag `baseball-site:pre-savant-20261111` as `baseball-site:latest`, `docker compose up -d`.
+
+## Searchable stat pickers on the chart (2026-11-11)
+
+- The Flask rewrite replaced the Dash explorer's searchable, clearable dropdowns with native
+  selects: no "x" to drop the Depth stat, and no typing to find a stat (iPad shows a scroll wheel).
+- `web/static/statpick.js` (same file on both sites) puts a button over each `<select
+  data-statpick>`: tap opens a panel with a focused "Type to search stats" box over the grouped
+  list; typing filters by abbreviation, key, full name and group (every word must match; exact
+  and prefix matches first); arrows and Enter, or tap a row. `data-clear` adds an "x" that picks
+  the "" option in one tap. The select stays in the page, hidden, and keeps the value; setting
+  `.value` from code or rebuilding the options re-renders the button, so chart.js is unchanged.
+- The search box is 16px so iOS does not zoom when it focuses; the list refits when the on-screen
+  keyboard resizes the visual viewport. Checked with simulated touch in Chromium at iPad and
+  phone sizes, not on a real iPad.

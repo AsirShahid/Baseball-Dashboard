@@ -550,3 +550,10 @@ def test_team_tables_have_no_savant_columns(client):
     html = page(client, "/teams?kind=bat&season=2024&mode=statcast")
     assert "mode=savant" not in html and "xwOBAcon" not in html and ">Barrel%<" in html
     assert "Chase%" not in page(client, "/teams?kind=bat&season=2024&mode=savant")      # falls back to standard
+
+
+def test_chart_stat_pickers_are_searchable(client):
+    html = page(client, "/chart")
+    assert "statpick.js" in html and html.index("statpick.js") < html.index("chart.js")
+    assert '<select id="c-x" data-statpick>' in html and '<select id="c-z" data-statpick data-clear>' in html
+    assert client.get("/static/statpick.js").status_code == 200
