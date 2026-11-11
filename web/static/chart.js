@@ -173,7 +173,14 @@
     fillSelect($("pos"), pos, state.pos);
     $("team").value = state.team; $("league").value = state.league;
     $("split").checked = state.split; $("path").checked = state.path; $("era").checked = state.era;
-    $("split").disabled = !span; $("path").disabled = !span;
+    $("split").disabled = !span; $("path").disabled = !span || !!state.z;
+    // Trend line, logos and trajectories are drawn on 2D charts only.
+    ["trend", "logos", "path"].forEach(function (id) {
+      var label = $(id).parentNode;
+      if (label.dataset.title === undefined) label.dataset.title = label.title || "";
+      if (state.z) $(id).disabled = true; else if (id !== "path") $(id).disabled = false;
+      label.title = state.z ? "2D charts only (clear Depth to use it)" : label.dataset.title;
+    });
     $("find").value = state.find; $("labels").value = state.labels; $("color").value = state.color;
     $("mean").checked = state.mean; $("trend").checked = state.trend; $("logos").checked = state.logos;
   }
@@ -525,9 +532,9 @@
       if (hi === lo) { hi += 1; lo -= 1; }
       ext[k] = [lo, hi];
     });
-    function unit(r, k) { var t = (r[k] - ext[k][0]) / (ext[k][1] - ext[k][0]); return (axes[k].better ? t : 1 - t) * 2 - 1; }
+    function unit(r, k, field) { var t = (r[field || k] - ext[k][0]) / (ext[k][1] - ext[k][0]); return (axes[k].better ? t : 1 - t) * 2 - 1; }
     var cy = Math.cos(rot.yaw), sy = Math.sin(rot.yaw), cp = Math.cos(rot.pitch), sp = Math.sin(rot.pitch);
-    var scale = Math.min(width, height) * 0.3 * rot.zoom, ox = width / 2, oy = height / 2 + 10;
+    var scale = Math.min(width, height) * (narrow ? 0.26 : 0.3) * rot.zoom, ox = width / 2, oy = height / 2 + 10;
     function project(x, y, z) {   // x right, y up, z depth
       var x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
       var y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
@@ -544,6 +551,16 @@
         make("line", { class: "gridline", x1: a[0], y1: a[1], x2: b[0], y2: b[1] }, svg);
       });
     });
+    // Text boxes already used (ticks, titles, averages, names), so labels do not collide.
+    var boxes3 = [];
+    function inside(b) { return b.x >= 2 && b.x + b.w <= width - 2 && b.y >= 2 && b.y + b.h <= height - 2; }
+    function clear3(b) { return inside(b) && !boxes3.some(function (o) { return b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y; }); }
+    // Shift a text's x so its box stays on the chart.
+    function fitX(x, b) { return x + Math.max(0, 4 - b.x) - Math.max(0, b.x + b.w - (width - 4)); }
+    function textBox(x, y, text, anchor, size) {
+      var w = String(text).length * (size || 6.1) + 4;
+      return { x: anchor === "middle" ? x - w / 2 : anchor === "end" ? x - w : x, y: y - 10, w: w, h: 13 };
+    }
     // Tick values along the three labelled edges, pushed away from the centre.
     var centre = project(0, 0, 0);
     var edges = { x: function (u) { return [u, -1, -1]; }, y: function (u) { return [-1, u, -1]; }, z: function (u) { return [-1, -1, u]; } };
@@ -555,14 +572,53 @@
         var p = project(e[0], e[1], e[2]);
         var dx = p[0] - centre[0], dy = p[1] - centre[1], len = Math.hypot(dx, dy) || 1;
         make("circle", { class: "tick3d", cx: p[0], cy: p[1], r: 1.8 }, svg);
-        make("text", { class: "axis", x: p[0] + dx / len * 15, y: p[1] + dy / len * 15 + 3.5, "text-anchor": "middle" }, svg)
-          .textContent = tickText(v, data.era ? "pctl" : axes[k].fmt, t.step);
+        var label = tickText(v, data.era ? "pctl" : axes[k].fmt, t.step);
+        var tx = p[0] + dx / len * 15, ty = p[1] + dy / len * 15 + 3.5;
+        make("text", { class: "axis", x: tx, y: ty, "text-anchor": "middle" }, svg).textContent = label;
+        boxes3.push(textBox(tx, ty, label, "middle", 6));
       });
     });
+    // Axis titles first, so the average labels keep clear of them.
     [["x", [1.25, -1, -1]], ["y", [-1, 1.2, -1]], ["z", [-1, -1, 1.3]]].forEach(function (e) {
       var p = project(e[1][0], e[1][1], e[1][2]);
-      make("text", { class: "axis-title", x: p[0], y: p[1], "text-anchor": "middle" }, svg).textContent = axes[e[0]].label;
+      var b = textBox(p[0], p[1], axes[e[0]].label, "middle", 7), x = fitX(p[0], b);
+      b.x += x - p[0];
+      // Nudge the title up or down off any tick value it would sit on.
+      var dy = [0, 13, -13, 26, -26].filter(function (d) { return clear3({ x: b.x, y: b.y + d, w: b.w, h: b.h }); })[0] || 0;
+      b.y += dy;
+      make("text", { class: "axis-title", x: x, y: p[1] + dy, "text-anchor": "middle" }, svg).textContent = axes[e[0]].label;
+      boxes3.push(b);
     });
+    // Average lines: in 3D an axis's average is a plane through the cube. Each
+    // plane's outline is dashed; its value sits at the middle of one of its
+    // edges, the outermost one on screen that is clear of other text.
+    if (state.mean && shown.length) {
+      var square = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+      ["x", "y", "z"].forEach(function (k) {
+        var mean = 0;
+        shown.forEach(function (r) { mean += r[k]; });
+        mean /= shown.length;
+        var u = unit({ v: mean }, k, "v");
+        var pts = square.map(function (c) {
+          return k === "x" ? project(u, c[0], c[1]) : k === "y" ? project(c[0], u, c[1]) : project(c[0], c[1], u);
+        });
+        make("polygon", { class: "mean mean3d", points: pts.map(function (p) { return p[0] + "," + p[1]; }).join(" ") }, svg);
+        var text = "avg " + axes[k].label + " " + show(mean, data.era ? "pctl" : axes[k].fmt);
+        var mid = project(0, 0, 0);
+        var spots = pts.map(function (a, i) {
+          var b = pts[(i + 1) % 4], x = (a[0] + b[0]) / 2, y = (a[1] + b[1]) / 2;
+          var dx = x - mid[0], dy = y - mid[1], len = Math.hypot(dx, dy) || 1;
+          var anchor = Math.abs(dx) < 0.3 * len ? "middle" : dx > 0 ? "start" : "end";
+          var lx = x + dx / len * 8, ly = y + dy / len * 8 + 3.5;
+          return { x: lx, y: ly, anchor: anchor, far: len, box: textBox(lx, ly, text, anchor, 5.6) };
+        }).sort(function (a, b) { return b.far - a.far; });
+        var spot = spots.filter(function (c) { return clear3(c.box); })[0] || spots[0];
+        var shifted = fitX(spot.x, spot.box);
+        spot.box.x += shifted - spot.x; spot.x = shifted;
+        boxes3.push(spot.box);
+        make("text", { class: "axis mean3d-label", x: spot.x, y: spot.y, "text-anchor": spot.anchor }, svg).textContent = text;
+      });
+    }
     shown.forEach(function (r) {
       var p = project(unit(r, "x"), unit(r, "y"), unit(r, "z"));
       r._x = p[0]; r._y = p[1]; r._d = p[2]; r._r = data.view === "player" ? 4 : 6;
@@ -571,7 +627,8 @@
     shown.slice().sort(function (a, b) { return a._d - b._d; }).forEach(function (r) {
       var g = make("g", { class: "pt" + (faded && !r._hit ? " faded" : "") + (r._hit ? " hit" : "") }, svg);
       var depth = 0.55 + 0.45 * (r._d + 1.8) / 3.6;
-      make("circle", { cx: r._x, cy: r._y, r: r._r * depth + 1, fill: state.color === "team" ? teamColor(r.team) : ramp(r._score), "fill-opacity": 0.9 }, g);
+      var fill = state.color === "team" ? teamColor(r.team) : state.color === "plain" ? "#7fa3d9" : ramp(r._score);
+      make("circle", { cx: r._x, cy: r._y, r: r._r * depth + 1, fill: fill, "fill-opacity": 0.9 }, g);
     });
     // Labels: the best overall and each axis's leaders, in turn.
     var named = [], seen = {};
@@ -585,9 +642,22 @@
         });
       }
     }
-    shown.filter(function (r) { return r._hit; }).slice(0, 20).concat(named.filter(function (r) { return !r._hit; })).forEach(function (r) {
-      make("text", { class: "lbl" + (r._hit ? " hit" : ""), x: r._x + r._r + 3, y: r._y + 4 }, svg)
-        .textContent = (data.view === "player" ? shortName(r.name, narrow) : r.team) + (data.split ? seasonTag(r) : "");
+    // Each label goes right of its dot, else left; a standout whose label would
+    // overlap another is skipped (searched names are always drawn).
+    var toName = shown.filter(function (r) { return r._hit; }).slice(0, 20).concat(named.filter(function (r) { return !r._hit; }));
+    toName.forEach(function (r) {     // a name must not cover another named dot
+      var d = r._r + 1;
+      boxes3.push({ x: r._x - d, y: r._y - d, w: 2 * d, h: 2 * d });
+    });
+    toName.forEach(function (r) {
+      var text = (data.view === "player" ? shortName(r.name, narrow) : r.team) + (data.split ? seasonTag(r) : "");
+      var w = text.length * 6.1 + 4, h = 13, gap = r._r + 3;
+      var spots = [{ x: r._x + gap, y: r._y - h / 2 }, { x: r._x - gap - w, y: r._y - h / 2 },
+                   { x: r._x - w / 2, y: r._y - gap - h }, { x: r._x - w / 2, y: r._y + gap }];
+      var spot = spots.filter(function (b) { return clear3({ x: b.x - 1, y: b.y, w: w + 2, h: h }); })[0] || (r._hit ? spots[0] : null);
+      if (!spot) return;
+      boxes3.push({ x: spot.x, y: spot.y, w: w, h: h });
+      make("text", { class: "lbl" + (r._hit ? " hit" : ""), x: spot.x + 2, y: spot.y + h - 3 }, svg).textContent = text;
     });
     make("text", { class: "axis", x: 8, y: height - 8 }, svg).textContent = "Better is right, up and toward you.";
   }
@@ -892,7 +962,7 @@
     });
   });
   ["x", "y", "z", "pos", "team", "league"].forEach(function (id) {
-    $(id).addEventListener("change", function () { state[id] = this.value; load(); });
+    $(id).addEventListener("change", function () { state[id] = this.value; if (id === "z") syncControls(); load(); });
   });
   $("min").addEventListener("change", function () {
     if (this.value === "__custom") {

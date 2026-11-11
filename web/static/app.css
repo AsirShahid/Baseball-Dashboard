@@ -259,6 +259,8 @@ a.game:hover { border-color: #3a475d; color: inherit; }
 .plot .axis-title { fill: var(--dim); font-size: 12px; font-weight: 600; }
 .plot .gridline { stroke: var(--line-soft); }
 .plot .mean { stroke: var(--muted); stroke-dasharray: 4 4; opacity: 0.7; }
+.plot polygon.mean3d { fill: rgba(148, 163, 184, 0.05); stroke-width: 1; }
+.plot .mean3d-label { fill: var(--muted); font-size: 10px; }
 .plot .pt { cursor: pointer; }
 .plot .pt circle { stroke: rgba(10, 14, 21, 0.9); stroke-width: 1; }
 .plot .pt.faded { opacity: 0.16; }

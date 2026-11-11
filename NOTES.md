@@ -149,3 +149,14 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
   database (checked), so the 2-minute rebuild after deploy is safe. Rollback: tag
   `baseball-site:pre-eraplus-20261111` as `baseball-site:latest` and `docker compose up -d`; its
   updater sees schema 4 and rebuilds the database to schema 3 by itself.
+
+## Average lines on 3D charts (2026-11-11)
+
+- The 3D view ignored "Average lines" (never implemented). Now each axis's average is a plane
+  through the cube: dashed outline, faint fill, "avg <stat> <value>" at the middle of its
+  outermost edge that is clear of other text. Rotates with the cube.
+- Also ignored in 3D before: Plain color (now plain), and Trend line, Team logos and
+  Trajectories, which are now greyed out in 3D with the note "2D charts only".
+- 3D text no longer collides: tick values, axis titles and average labels reserve space; names
+  go right, left, above or below their dot and never cover another named dot; text is kept
+  inside the chart (phones were cutting off axis titles). The cube is a bit smaller on phones.
