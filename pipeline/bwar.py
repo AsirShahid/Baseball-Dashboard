@@ -74,6 +74,31 @@ def fetch(root: Path, session=None) -> bool:
     return changed
 
 
+def _num(text) -> float:
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return float("nan")
+
+
+# What each Baseball-Reference stint carries, after (team, weight):
+#   bWAR, ERlg (earned runs a park- and league-average pitcher allows in the
+#   same innings) and bER (earned runs, as ERA+ = 100 * ER_lg / ER).
+FIELDS = {"bat": ("bWAR",), "pit": ("bWAR", "ERlg", "bER")}
+
+
+def fix_text(name: str) -> str:
+    """Baseball-Reference's files store accented names encoded twice
+    ("GÃ³mez" for "Gómez"); undo it, or those players never match by name."""
+    if name and ("\u00c3" in name or "\u00c2" in name):
+        for enc in ("latin-1", "cp1252"):
+            try:
+                return name.encode(enc).decode("utf-8")
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                pass
+    return name
+
+
 def norm(name: str) -> str:
     text = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode()
     return " ".join("".join(ch for ch in text.lower() if ch.isalnum() or ch == " ").split())
@@ -84,6 +109,8 @@ class BWar:
 
     def __init__(self, root: Path | None):
         self.stints = {"bat": {}, "pit": {}}     # (kind) -> {(mlbam|name key, year): {player: [(team, weight, war)]}}
+        self.rosters = {"bat": {}, "pit": {}}    # (kind) -> {(year, team): {surname: {player}}}
+        self.by_player = {"bat": {}, "pit": {}}  # (kind) -> {(player, year): [stint]}
         self.loaded = False
         if root is None:
             return
@@ -98,53 +125,89 @@ class BWar:
     def _load(self, kind, reader):
         by = self.stints[kind]
         for r in reader:
-            war = r.get("WAR")
-            if war in (None, "", "NULL"):
-                continue
             try:
-                year, value = int(r["year_ID"]), float(war)
+                year = int(r["year_ID"])
                 weight = float(r["PA"]) if kind == "bat" else float(r["IPouts"]) / 3
             except (TypeError, ValueError):
                 continue
-            stint = (r["team_ID"], weight, value)
+            values = [_num(r.get("WAR"))]
+            if kind == "pit":
+                erlg, plus = _num(r.get("ER_lg")), _num(r.get("ERA_plus"))
+                # ERA+ is blank for a stint with no earned runs (it would be infinite).
+                ber = 100 * erlg / plus if plus > 0 else (0.0 if weight > 0 and erlg == erlg else float("nan"))
+                values += [erlg, ber]
+            if all(v != v for v in values):
+                continue
+            stint = (r["team_ID"], weight, *values)
+            name = norm(fix_text(r["name_common"]))
+            self.by_player[kind].setdefault((r["player_ID"], year), []).append(stint)
+            if name:
+                self.rosters[kind].setdefault((year, r["team_ID"]), {}).setdefault(name.split()[-1], set()).add(r["player_ID"])
             mlbam = r.get("mlb_ID")
             if mlbam and mlbam != "NULL":
                 by.setdefault(("id", mlbam, year), {}).setdefault(r["player_ID"], []).append(stint)
-            by.setdefault(("name", norm(r["name_common"]), year), {}).setdefault(r["player_ID"], []).append(stint)
+            by.setdefault(("name", norm(fix_text(r["name_common"])), year), {}).setdefault(r["player_ID"], []).append(stint)
 
-    def _find(self, kind, year, mlbam, name, team):
+    def _find(self, kind, year, mlbam, name, team, weight=None):
         by = self.stints[kind]
         if mlbam:
             hit = by.get(("id", str(mlbam), year))
             return next(iter(hit.values())) if hit else None     # an MLBAM id with no row: no bWAR
-        if not name or name.startswith("(Unknown)"):
+        if not name:
             return None
-        hit = by.get(("name", norm(name), year))
+        hit = by.get(("name", norm(name), year)) if not name.startswith("(Unknown)") else None
         if not hit:
-            return None
+            # Spellings differ between the sources for some early and Negro League
+            # players ("(Unknown) Latimer" / "Latimer", "Lewis" / "Lucius Hampton"):
+            # accept the only pitcher (or hitter) with his surname on that club that
+            # year, and only when his PA (IP) agree, so a namesake is not taken.
+            words = norm(name.replace("(Unknown)", "")).split()
+            if not words or not team or team == "- - -" or weight is None or weight != weight:
+                return None
+            same = self.rosters[kind].get((year, team), {}).get(words[-1], set())
+            if len(same) != 1:
+                return None
+            stints = self.by_player[kind].get((next(iter(same)), year)) or []
+            theirs = sum(st[1] for st in stints)
+            return stints if stints and abs(theirs - weight) <= max(3.0, 0.35 * max(theirs, weight)) else None
         if len(hit) == 1:
             return next(iter(hit.values()))
-        same_team = [s for s in hit.values() if any(t == team for t, _w, _v in s)]
+        same_team = [s for s in hit.values() if any(st[0] == team for st in s)]
         return same_team[0] if len(same_team) == 1 else None
 
-    def season_column(self, kind: str, year: int, ident: list) -> np.ndarray | None:
-        """bWAR for each row of a FanGraphs season file (bat or pit)."""
+    def season_columns(self, kind: str, year: int, ident: list, weights=None) -> dict:
+        """bWAR (and for pitchers ERlg and bER) for each row of a FanGraphs season
+        file; weights (PA, or IP for pitchers) let a surname-only match be checked."""
         if not self.loaded:
-            return None
-        out = np.full(len(ident), np.nan, dtype=np.float32)
+            return {}
+        fields = FIELDS[kind]
+        out = {f: np.full(len(ident), np.nan, dtype=np.float32) for f in fields}
         for i, r in enumerate(ident):
-            stints = self._find(kind, year, r.get("mlbam"), r.get("name"), r.get("team"))
-            if stints:
-                out[i] = sum(v for _t, _w, v in stints)
+            w = None if weights is None else float(weights[i])
+            stints = self._find(kind, year, r.get("mlbam"), r.get("name"), r.get("team"), w)
+            if not stints:
+                continue
+            for k, f in enumerate(fields):
+                vals = [st[2 + k] for st in stints if st[2 + k] == st[2 + k]]
+                if vals:
+                    out[f][i] = sum(vals)
         return out
 
-    def stint_column(self, kind: str, year: int, ident: list, weights: np.ndarray) -> np.ndarray | None:
-        """bWAR for each row of a FanGraphs stints file: the Baseball-Reference
+    def season_column(self, kind: str, year: int, ident: list) -> np.ndarray | None:
+        return self.season_columns(kind, year, ident).get("bWAR")
+
+    def stint_columns(self, kind: str, year: int, ident: list, weights: np.ndarray) -> dict:
+        """The same for each row of a FanGraphs stints file: the Baseball-Reference
         stint for the same club, else the nearest in PA (IP for pitchers)."""
         if not self.loaded:
-            return None
+            return {}
         base = "pit" if kind == "spit" else "bat"
-        out = np.full(len(ident), np.nan, dtype=np.float32)
+        fields = FIELDS[base]
+        out = {f: np.full(len(ident), np.nan, dtype=np.float32) for f in fields}
+
+        def put(i, stint):
+            for k, f in enumerate(fields):
+                out[f][i] = stint[2 + k]
         rows_by_pid: dict = {}
         for i, r in enumerate(ident):
             rows_by_pid.setdefault(r.get("pid"), []).append(i)
@@ -154,21 +217,31 @@ class BWar:
             if not stints:
                 continue
             if len(idx) == 1 and len(stints) == 1:
-                out[idx[0]] = stints[0][2]
+                put(idx[0], stints[0])
                 continue
             pairs = []
             for i in idx:
                 w = 0.0 if np.isnan(weights[i]) else float(weights[i])
-                for k, (team, bw, value) in enumerate(stints):
-                    pairs.append(((0 if team == ident[i].get("team") else 1), abs(w - bw), i, k))
+                for k, stint in enumerate(stints):
+                    pairs.append(((0 if stint[0] == ident[i].get("team") else 1), abs(w - stint[1]), i, k))
             pairs.sort()
             used_i, used_k = set(), set()
             for _same, _gap, i, k in pairs:
                 if i in used_i or k in used_k:
                     continue
                 used_i.add(i); used_k.add(k)
-                out[i] = stints[k][2]
+                put(i, stints[k])
         return out
+
+    def stint_column(self, kind: str, year: int, ident: list, weights: np.ndarray) -> np.ndarray | None:
+        return self.stint_columns(kind, year, ident, weights).get("bWAR")
+
+
+def era_plus(erlg, ber):
+    """ERA+ from its parts: 100 * league-average earned runs / earned runs."""
+    erlg, ber = np.asarray(erlg, dtype=np.float64), np.asarray(ber, dtype=np.float64)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(ber > 0, 100 * erlg / np.where(ber > 0, ber, 1), np.nan)
 
 
 def main(argv=None):

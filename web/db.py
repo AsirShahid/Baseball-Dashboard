@@ -219,7 +219,7 @@ def table(kind: str, lo: int, hi: int, stats: tuple) -> Table:
 
 _PARTS = {
     False: ("AB", "H", "1B", "2B", "3B", "HR", "BB", "HBP", "SF", "SO", "Events", "Pitches"),
-    True: ("TBF", "ER", "H", "HR", "BB", "SO", "Events", "Pitches"),
+    True: ("TBF", "ER", "H", "HR", "BB", "SO", "Events", "Pitches", "ERlg", "bER"),
 }
 
 

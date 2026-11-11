@@ -13,7 +13,7 @@
   var MENUS = JSON.parse(document.getElementById("c-menus").textContent);
   var PRESETS = JSON.parse(document.getElementById("c-presets-data").textContent);
   var init = JSON.parse(document.getElementById("c-state").textContent);
-  var DEFAULTS = { team: ["pit:ERA-", "bat:wRC+"], bat: ["wRC+", "WAR"], pit: ["FIP", "ERA"] };
+  var DEFAULTS = { team: ["pit:ERA+", "bat:wRC+"], bat: ["wRC+", "WAR"], pit: ["FIP", "ERA"] };
   var LATEST = root.dataset.latest;
   var LADDER = [0, 1, 5, 10];
   (function () {

@@ -123,3 +123,29 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
 - Stat descriptions now come from `pipeline/catalog.NAMES` at run time when present, so wording
   fixes show without a rebuild.
 - Rollback image `baseball-site:pre-labels-20261111`.
+
+## ERA+ from Baseball-Reference; accented names; surname fallback (2026-11-11)
+
+- ERA+ is Baseball-Reference's stat; FanGraphs does not publish it. Its parts are in the
+  war_daily_pitch file we already fetch for bWAR: `ER_lg` (earned runs a park- and
+  league-average pitcher allows in the same innings) and `ERA_plus`. ER = 100 * ER_lg / ERA+
+  (a blank ERA+ is a stint with 0 ER). Hidden columns `ERlg` and `bER` (INTERNAL) are stored on
+  pitcher season, stint and career rows; ERA+ = 100 * sum(ERlg) / sum(bER) for any span or
+  career, as Baseball-Reference computes careers. Checked against Baseball-Reference: Rivera
+  career 205, Pedro 154, Walter Johnson 147, Grove 148, Skubal career 138; Pedro 2000 291,
+  Gibson 1968 258, Maddux 1994 271 and 1995 260, Gooden 1985 229, Skubal 2024 174. BR's ER
+  equals FanGraphs ER for every pitcher in 1955, 1999 and 2024 (half of 1873 differs).
+- Team ERA+ adds up the team's pitchers (one-club pitchers from season rows, traded ones from
+  their per-club rows); blank when matched pitchers threw under 95% of the team's innings.
+  Coverage 3,437 of 3,480 team-seasons (all of 1949+; 774 of 809 in 1920-48).
+- Team chart default and "Offense vs pitching" now use ERA+ (higher is better, like wRC+).
+  ERA+ is in pitcher Standard and Advanced tables, the leaders boards and the percentile panel.
+- BR's files encode accented names twice ("GÃ³mez"); `bwar.fix_text` repairs them (9,893 rows).
+- Name fallback for players without an MLBAM id whose full name does not match: the only
+  player with his surname on that club that season, and only if PA (IP) agree within 35% (or 3).
+  Catches "(Unknown) Latimer"/"Latimer", "Lewis"/"Lucius Hampton". Without the PA check it took
+  namesakes (a 4-PA "(Unknown) Day" matched a 287-PA player).
+- Players with bWAR: 23,590 of 23,767 (was 23,118). Schema 4; new code also serves a schema-3
+  database (checked), so the 2-minute rebuild after deploy is safe. Rollback: tag
+  `baseball-site:pre-eraplus-20261111` as `baseball-site:latest` and `docker compose up -d`; its
+  updater sees schema 4 and rebuilds the database to schema 3 by itself.

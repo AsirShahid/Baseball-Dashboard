@@ -19,7 +19,7 @@ NOT_STATS = {
 # values). Everything else is a rate and is averaged or rebuilt. From the Dash
 # site's fangraphs_api.COUNTING_STATS, plus the pitching value splits.
 COUNTING = frozenset({
-    "G", "GS", "WAR", "bWAR", "WPA", "RE24", "REW", "Clutch", "Events", "Pitches", "Balls", "Strikes",
+    "G", "GS", "WAR", "bWAR", "ERlg", "bER", "WPA", "RE24", "REW", "Clutch", "Events", "Pitches", "Balls", "Strikes",
     "Barrels", "PA", "AB", "H", "1B", "2B", "3B", "HR", "R", "RBI", "BB", "IBB", "SO", "HBP",
     "SF", "SH", "GDP", "SB", "CS", "TB", "IP", "W", "L", "SV", "BS", "HLD", "ER", "TBF", "GB",
     "FB", "LD", "IFFB", "IFH", "BU", "BUH", "Pull", "Cent", "Oppo", "Soft", "Med", "Hard",
@@ -87,6 +87,7 @@ NAMES = {
     "SIERA": "Skill-interactive ERA", "kwERA": "Strikeout-walk ERA", "tERA": "True ERA",
     "xERA": "Expected ERA (Statcast)", "ERA-": "ERA minus: ERA adjusted for park and league (100 is league average, lower is better)",
     "FIP-": "FIP minus: FIP adjusted for park and league (100 is league average, lower is better)",
+    "ERA+": "ERA+: Baseball-Reference's ERA adjusted for park and league (100 is league average, higher is better)",
     "xFIP-": "xFIP minus (100 is league average, lower is better)", "K-BB%": "Strikeout rate minus walk rate",
     "E-F": "ERA minus FIP", "RS": "Run support", "RS/9": "Run support per 9 innings",
     "RA9-Wins": "FanGraphs WAR from runs allowed instead of FIP (RA9-WAR)", "LOB-Wins": "Strand-rate wins",
@@ -128,10 +129,10 @@ BAT_GROUPS = [
                               "xAVG", "xSLG", "xwOBA", "AvgBatSpeed", "SquaredUpSwing%"]),
 ]
 PIT_GROUPS = [
-    ("standard", "Standard", ["W", "L", "ERA", "G", "GS", "SV", "HLD", "IP", "H", "R", "ER",
+    ("standard", "Standard", ["W", "L", "ERA", "ERA+", "G", "GS", "SV", "HLD", "IP", "H", "R", "ER",
                               "HR", "BB", "SO", "WHIP", "FIP", "WAR", "bWAR"]),
     ("advanced", "Advanced", ["IP", "K/9", "BB/9", "HR/9", "K%", "BB%", "K-BB%", "AVG", "BABIP",
-                              "LOB%", "ERA-", "FIP-", "FIP", "xFIP", "SIERA"]),
+                              "LOB%", "ERA+", "ERA-", "FIP-", "FIP", "xFIP", "SIERA"]),
     ("value", "Value", ["IP", "RA9-Wins", "LOB-Wins", "BIP-Wins", "RAR", "WAR", "bWAR", "WPA", "RE24",
                         "gmLI", "SD", "MD"]),
     ("battedball", "Batted ball", ["IP", "GB/FB", "LD%", "GB%", "FB%", "IFFB%", "HR/FB",

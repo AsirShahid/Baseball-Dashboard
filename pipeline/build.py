@@ -34,14 +34,14 @@ from . import aggregate, bwar, catalog, teams
 from .text import search_key
 
 log = logging.getLogger("build")
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 SOURCES = {
     "bat": "all_batting_stats", "pit": "all_pitching_stats",
     "tbat": "team_batting", "tpit": "team_pitching",
     "sbat": "stints_batting", "spit": "stints_pitching",
 }
 NOTATION_IP = ("IP", "Start-IP", "Relief-IP")
-INTERNAL = ("TG",)   # stored but not offered as a stat
+INTERNAL = ("TG", "ERlg", "bER")   # stored but not offered as a stat (ERlg, bER: ERA+'s parts)
 
 
 def pack(values: np.ndarray) -> bytes:
@@ -117,7 +117,7 @@ _REBUILD_PARTS = {
     False: ("PA", "AB", "H", "1B", "2B", "3B", "HR", "BB", "HBP", "SF", "SO",
             "AVG", "OBP", "SLG", "OPS", "ISO", "BABIP", "K%", "BB%", "BB/K"),
     True: ("IP", "TBF", "ER", "H", "HR", "BB", "SO", "ERA", "WHIP", "K/9", "BB/9", "HR/9", "H/9",
-           "K%", "BB%", "K-BB%", "K/BB"),
+           "K%", "BB%", "K-BB%", "K/BB", "ERlg", "bER", "ERA+"),
 }
 
 
@@ -147,11 +147,64 @@ def _careers(con, kind: str, parts, stats) -> None:
         if values is not None and not np.isnan(values).all():
             con.execute("INSERT INTO cols VALUES (?,?,?,?)", (kind, 0, stat, pack(values)))
     # Ratios rebuilt from the summed parts replace the weighted averages.
-    cols = {s: (weights[s] if s in weights else load(s)) for s in _REBUILD_PARTS[pitching] if s in stats}
+    cols = {s: (weights[s] if s in weights else load(s)) for s in _REBUILD_PARTS[pitching]
+            if s in stats or s in INTERNAL}
     _u, _f, agg = aggregate.group_rows(pids, cols, pitching)
     for stat, values in agg.items():
         if stat in cols and not np.isnan(values).all():
             con.execute("INSERT OR REPLACE INTO cols VALUES (?,?,?,?)", (kind, 0, stat, pack(values)))
+
+
+def _collect_era_parts(kind, season, ident, columns, era_parts, traded, stint_parts) -> None:
+    """Team ERA+ adds up its pitchers' parts: one-club pitchers from the season
+    rows, traded ones from their per-club rows."""
+    erlg, ber, ip = columns["ERlg"], columns["bER"], columns.get("IP")
+    if ip is None:
+        return
+    for i, r in enumerate(ident):
+        if np.isnan(erlg[i]) or np.isnan(ber[i]) or np.isnan(ip[i]):
+            if kind == "pit" and r["team"] == "- - -":
+                traded.setdefault(season, set()).add(r.get("pid"))
+            continue
+        if kind == "pit":
+            if r["team"] == "- - -":
+                traded.setdefault(season, set()).add(r.get("pid"))
+                continue
+            acc = era_parts.setdefault((season, r["team"]), [0.0, 0.0, 0.0])
+            acc[0] += float(erlg[i]); acc[1] += float(ber[i]); acc[2] += float(ip[i])
+        elif kind == "spit":
+            stint_parts.setdefault(season, []).append((r.get("pid"), r["team"], float(erlg[i]), float(ber[i]),
+                                                        float(ip[i])))
+
+
+def _team_era_plus(con, era_parts, traded, stint_parts, cover: float = 0.95) -> None:
+    """ERA+ for each team season, from its pitchers' Baseball-Reference parts.
+    Left blank when the matched pitchers threw under 95% of the team's innings."""
+    for season, rows in stint_parts.items():
+        moved = traded.get(season, set())
+        for pid, team, erlg, ber, ip in rows:
+            if pid in moved:
+                acc = era_parts.setdefault((season, team), [0.0, 0.0, 0.0])
+                acc[0] += erlg; acc[1] += ber; acc[2] += ip
+    seasons = [s for (s,) in con.execute("SELECT DISTINCT season FROM rows WHERE kind = 'tpit'")]
+    for season in seasons:
+        teams_ = [t for (t,) in con.execute("SELECT team FROM rows WHERE kind = 'tpit' AND season = ? ORDER BY i",
+                                            (season,))]
+        blob = con.execute("SELECT data FROM cols WHERE kind = 'tpit' AND season = ? AND stat = 'IP'",
+                           (season,)).fetchone()
+        if not blob:
+            continue
+        team_ip = unpack(blob[0])
+        erlg = np.full(len(teams_), np.nan, dtype=np.float32)
+        ber = np.full(len(teams_), np.nan, dtype=np.float32)
+        for i, team in enumerate(teams_):
+            acc = era_parts.get((season, team))
+            if acc and team_ip[i] > 0 and acc[2] >= cover * float(team_ip[i]):
+                erlg[i], ber[i] = acc[0], acc[1]
+        if np.isnan(erlg).all():
+            continue
+        for stat, values in (("ERlg", erlg), ("bER", ber), ("ERA+", bwar.era_plus(erlg, ber).astype(np.float32))):
+            con.execute("INSERT OR REPLACE INTO cols VALUES (?,?,?,?)", ("tpit", season, stat, pack(values)))
 
 
 def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | None = None) -> dict:
@@ -184,6 +237,9 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
     people: dict = {}
     career_pids: dict = {"bat": [], "pit": []}     # (season, pid array) in insertion order
     team_rows: dict = {}
+    era_parts: dict = {}     # (season, team) -> [ERlg, bER, IP covered]
+    traded: dict = {}        # season -> pids on more than one club (FanGraphs team "- - -")
+    stint_parts: dict = {}   # season -> [(pid, team, ERlg, bER, IP)]
     games: dict = {}
     hundred = set()
     newest = 0.0
@@ -203,14 +259,18 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
                 continue
             seasons_seen.setdefault(kind, set()).add(season)
             if kind in ("bat", "pit"):
-                extra = bw.season_column(kind, season, ident)
+                extra = bw.season_columns(kind, season, ident, columns.get("PA" if kind == "bat" else "IP"))
             elif kind in ("sbat", "spit"):
-                extra = bw.stint_column(kind, season, ident, columns.get("PA" if kind == "sbat" else "IP",
-                                                                       np.full(len(ident), np.nan)))
+                extra = bw.stint_columns(kind, season, ident, columns.get("PA" if kind == "sbat" else "IP",
+                                                                         np.full(len(ident), np.nan)))
             else:
-                extra = None
-            if extra is not None and not np.isnan(extra).all():
-                columns["bWAR"] = extra
+                extra = {}
+            for stat, values in extra.items():
+                if not np.isnan(values).all():
+                    columns[stat] = values
+            if "ERlg" in columns and "bER" in columns:
+                columns["ERA+"] = bwar.era_plus(columns["ERlg"], columns["bER"]).astype(np.float32)
+                _collect_era_parts(kind, season, ident, columns, era_parts, traded, stint_parts)
             for stat in list(columns):
                 # FanGraphs stores percentages as fractions; guard against a column in 0-100.
                 if catalog.fmt(stat) == "pct1":
@@ -265,6 +325,7 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
                         if stat in columns and not np.isnan(columns[stat][i]):
                             t[(kind, stat)] = int(round(columns[stat][i]))
             del ident, columns
+    _team_era_plus(con, era_parts, traded, stint_parts)
     if hundred:
         log.info("percent columns stored as 0-100: %s", sorted(s for _, s in hundred))
     # Careers (season 0), one stat at a time from the stored columns.

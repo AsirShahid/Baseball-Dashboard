@@ -272,7 +272,7 @@ def _sort_key(value, better, short=False):
 BOARDS = {
     BAT: [("WAR", "fWAR (FanGraphs)"), ("bWAR", "bWAR (Baseball-Reference)"), ("wRC+", "wRC+"), ("HR", "Home runs"), ("AVG", "Batting average"),
           ("OBP", "On-base percentage"), ("SB", "Stolen bases")],
-    PIT: [("WAR", "fWAR (FanGraphs)"), ("bWAR", "bWAR (Baseball-Reference)"), ("ERA", "ERA"), ("SO", "Strikeouts"), ("FIP", "FIP"),
+    PIT: [("WAR", "fWAR (FanGraphs)"), ("bWAR", "bWAR (Baseball-Reference)"), ("ERA", "ERA"), ("ERA+", "ERA+"), ("SO", "Strikeouts"), ("FIP", "FIP"),
           ("K-BB%", "K-BB%"), ("SV", "Saves")],
 }
 
@@ -539,7 +539,7 @@ PCT_STATS = {
           ("Hitting", ["OBP", "SLG", "ISO", "AVG", "BABIP"]),
           ("Plate skills", ["BB%", "K%", "O-Swing%", "Contact%"]),
           ("Statcast", ["xwOBA", "EV", "Barrel%", "HardHit%", "AvgBatSpeed"])],
-    PIT: [("Value", ["WAR", "bWAR", "ERA-", "FIP-", "RA9-Wins"]),
+    PIT: [("Value", ["WAR", "bWAR", "ERA+", "FIP-", "RA9-Wins"]),
           ("Run prevention", ["ERA", "FIP", "xFIP", "SIERA", "WHIP"]),
           ("Strikeouts and walks", ["K%", "BB%", "K-BB%", "SwStr%", "O-Swing%"]),
           ("Contact", ["GB%", "HR/9", "Barrel%", "HardHit%", "FBv"])],

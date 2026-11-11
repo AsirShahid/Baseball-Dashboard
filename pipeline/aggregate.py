@@ -90,6 +90,8 @@ def rebuild_rates(c: dict, pitching: bool) -> None:
                 put("K-BB%", c["K%"] - c["BB%"])
         if g("SO") is not None and g("BB") is not None:
             put("K/BB", div(g("SO"), g("BB")))
+        if g("ERlg") is not None and g("bER") is not None:
+            put("ERA+", div(100 * g("ERlg"), g("bER")))      # Baseball-Reference's career ERA+
         return
     ab, pa = g("AB"), g("PA")
     parts = {k: g(k) for k in ("H", "1B", "2B", "3B", "HR", "BB", "HBP", "SF", "SO")}

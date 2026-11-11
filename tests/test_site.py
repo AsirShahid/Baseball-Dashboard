@@ -433,6 +433,54 @@ def test_player_summary_counts_games_in_every_mode(client):
 
 def test_team_chart_defaults_to_adjusted_pitching(client):
     from web import charts
-    assert charts.DEFAULTS["team"] == ("pit:ERA-", "bat:wRC+")       # both park and league adjusted, 100 = average
-    data = client.get("/api/chart?view=team&x=pit:ERA-&y=bat:wRC%2B&season=2024").get_json()
-    assert data["axes"]["x"]["better"] is False
+    assert charts.DEFAULTS["team"] == ("pit:ERA+", "bat:wRC+")       # both park and league adjusted, 100 = average
+    data = client.get("/api/chart?view=team&x=pit:ERA%2B&y=bat:wRC%2B&season=2024").get_json()
+    assert data["axes"]["x"]["better"] is True
+
+
+def test_era_plus_from_baseball_reference(app, con):
+    """ERA+ = 100 * ER_lg / ER from Baseball-Reference's WAR file; teams add up
+    their pitchers' parts. Skubal 2024 is 174 on his Baseball-Reference page."""
+    from web import db
+    with app.app_context():
+        p = db.table("pit", 2024, 2024, ("ERA+", "ERA"))
+        i = [r["pid"] for r in p.ident].index(SKUBAL)
+        assert math.isclose(p.cols["ERA+"][i], 173.52, abs_tol=0.01)
+        career = db.table("pit", 1871, 2026, ("ERA+",))
+        j = [r["pid"] for r in career.ident].index(SKUBAL)
+        assert math.isclose(career.cols["ERA+"][j], 173.52, abs_tol=0.01)    # one season in the fixtures
+        t = db.table("tpit", 2024, 2024, ("ERA+", "ERA-"))
+        by = {r["team"]: k for k, r in enumerate(t.ident)}
+        assert math.isclose(t.cols["ERA+"][by["DET"]], 114.9, abs_tol=0.1)
+        both = [(t.cols["ERA+"][k], t.cols["ERA-"][k]) for k in range(len(t.ident)) if not np.isnan(t.cols["ERA+"][k])]
+        assert len(both) == 30
+        assert all(abs(plus - 10000 / minus) < 12 for plus, minus in both)    # close to FanGraphs, different park factors
+    assert con.execute("SELECT name, lower FROM catalog WHERE kind='pit' AND stat='ERA+'").fetchone()[1] == 0
+    assert con.execute("SELECT COUNT(*) FROM catalog WHERE stat IN ('ERlg', 'bER')").fetchone()[0] == 0
+
+
+def test_bwar_names_with_accents_are_repaired():
+    from pipeline import bwar
+    assert bwar.fix_text("David G\u00c3\u00b3mez") == "David G\u00f3mez"
+    assert bwar.fix_text("Ra\u00c3\u00bal \u00c3\u0081lvarez") == "Ra\u00fal \u00c1lvarez"
+    assert bwar.fix_text("Jos\u00e9 Abreu") == "Jos\u00e9 Abreu"           # already right: unchanged
+    assert bwar.norm(bwar.fix_text("Juan Padr\u00c3\u00b3n")) == bwar.norm("Juan Padr\u00f3n")
+
+
+def test_bwar_surname_fallback_stays_within_the_club():
+    from pipeline import bwar
+    b = bwar.BWar(None)
+    b.loaded = True
+    rows = [{"name_common": "Latimer", "year_ID": "1921", "team_ID": "ABC", "player_ID": "lat01", "mlb_ID": "818555",
+             "IPouts": "173", "WAR": "0.4", "ER_lg": "30.0", "ERA_plus": "120"},
+            {"name_common": "John Smith", "year_ID": "1921", "team_ID": "ABC", "player_ID": "smi01", "mlb_ID": "1",
+             "IPouts": "30", "WAR": "0.1", "ER_lg": "5.0", "ERA_plus": "100"},
+            {"name_common": "Joe Smith", "year_ID": "1921", "team_ID": "ABC", "player_ID": "smi02", "mlb_ID": "2",
+             "IPouts": "30", "WAR": "0.1", "ER_lg": "5.0", "ERA_plus": "100"}]
+    b._load("pit", rows)
+    hit = b._find("pit", 1921, None, "(Unknown) Latimer", "ABC", 57.0)
+    assert hit and abs(hit[0][2] - 0.4) < 1e-9 and abs(hit[0][4] - 25.0) < 1e-9     # bER = 100 * 30 / 120
+    assert b._find("pit", 1921, None, "(Unknown) Latimer", "COB", 57.0) is None      # another club: no match
+    assert b._find("pit", 1921, None, "(Unknown) Latimer", "ABC", 5.0) is None       # 5 IP vs 57.2: a namesake
+    assert b._find("pit", 1921, None, "(Unknown) Latimer", "ABC") is None            # no innings to check
+    assert b._find("pit", 1921, None, "(Unknown) Smith", "ABC", 10.0) is None        # two Smiths: ambiguous
