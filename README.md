@@ -209,10 +209,8 @@ Processing (`scratch` script, not in the repo): opaque white backgrounds are
 removed, including white trapped inside letters where it was background
 (reviewed logo by logo; white that is part of a design stays). Very dark
 navy/black logos get a thin light outline so they read on the dark theme.
-Where a club's primary was a Native American caricature (Cleveland 1928–2013,
-Atlanta 1966–86, the Milwaukee Braves, the Boston Braves' head logos), the
-chart shows the cap logo the club wore those seasons instead; for Boston
-1912–20 that is the previous "B". `TEAM_LOGO_MAP` (the original 45 logos) is
+Every era shows the club's own primary logo as it was, including Cleveland's
+and the Braves' Native American logos. `TEAM_LOGO_MAP` (the original 45 logos) is
 only a fallback for codes missing from the manifest.
 
 Names follow the season the same way (`TEAM_NAME_ERAS`, `team_name`): the

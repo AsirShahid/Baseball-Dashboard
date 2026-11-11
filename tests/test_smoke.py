@@ -1586,19 +1586,17 @@ def test_logo_manifest_files_load():
             assert 0.2 < logo_aspect(code, first) < 5, (code, first)
 
 
-def test_caricature_eras_use_cap_logos():
-    """Cleveland 1928–2013, Atlanta 1966–86, the Milwaukee Braves and the
-    Boston Braves' Native American head logos are replaced by the cap logo the
-    club wore those seasons (or the previous logo carried forward)."""
+def test_eras_use_period_primaries():
+    """Every era shows the club's own primary logo of the time: Cleveland's,
+    Atlanta's and the Boston/Milwaukee Braves' too (no cap-letter stand-ins)."""
     from data import TEAM_LOGO_ERAS, logo_path
-
-    def started(code, lo, hi):
-        return [fn for a, _b, fn in TEAM_LOGO_ERAS[code] if lo <= a <= hi]
-    for code, lo, hi in (("CLE", 1928, 2013), ("ATL", 1966, 1986), ("MLN", 1953, 1965),
-                         ("BSN", 1912, 1920), ("BSN", 1929, 1935), ("BSN", 1945, 1952)):
-        assert all(fn.endswith("-cap.png") for fn in started(code, lo, hi)), (code, lo)
-    assert logo_path("BSN", 1915) == logo_path("BSN", 1911)
-    assert logo_path("CLE", 1990).name.endswith("-cap.png")
+    assert not [fn for eras in TEAM_LOGO_ERAS.values() for _a, _b, fn in eras
+                if fn.endswith("-cap.png")]
+    assert logo_path("CLE", 1990).name == "cle-1986.png"
+    assert logo_path("CLE", 1950).name == "cle-1949.png"
+    assert logo_path("MLN", 1957).name == "mln-1956.png"
+    assert logo_path("ATL", 1970).name == "atl-1968.png"
+    assert logo_path("BSN", 1915).name == "bsn-1912.png"
 
 
 def test_team_last_seasons():

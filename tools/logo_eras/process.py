@@ -2,12 +2,13 @@
 per-club review sheets.
 
 - Primary logos come from sportslogos.net franchise histories (eras_raw.json).
-- Eras whose primary is a Native American caricature are replaced by the cap
-  logo the club wore those seasons (SUB below); a caricature cap carries the
-  previous cap forward. Caps are letters on a cap-colour swatch, so the swatch
-  is flooded out.
+  Every era uses the club's own primary logo as it was, including Cleveland's
+  and the Braves' Native American logos (decision 2026-11-11; an earlier
+  version swapped in cap letters). SUB can still swap an era for a cap logo
+  (caps are letters on a cap-colour swatch, which is flooded out).
 - Very dark logos (navy/black, unreadable on the dark theme) get a thin light
   outline.
+- Output: 256 px palette PNGs (no visible loss, ~4 MB for all logos).
 """
 import json, os
 from PIL import Image, ImageDraw, ImageFilter, ImageChops
@@ -24,17 +25,9 @@ MAX = 320
 
 WHITE_BG = set(json.load(open("white_bg.json")))
 caps = {code: sorted(rows, key=lambda c: (c["y0"], c["y1"])) for code, rows in E["caps"].items()}
-# Index numbers refer to caps_<CODE>.png (sorted by first season).
-SUB = {
-    "CLE": dict(drop=[1928, 1929, 1933, 1939, 1946, 1948, 1949, 1973, 1979, 1986],
-                add=[(1928, 14), (1933, 15), (1939, 18), (1958, 21), (1963, 23), (1965, 24),
-                     (1970, 25), (1972, 26), (1973, 27), (1978, 28), (2002, 30), (2008, 34)]),
-    # 1912-20 carry the 1911 Rustlers "B" (no Braves cap before 1915 except pinstripes).
-    "BSN": dict(drop=[1912, 1916, 1929, 1945],
-                add=[(1929, 4), (1932, 5), (1933, 7), (1934, 8), (1945, 18), (1946, 19)]),
-    "MLN": dict(drop=[1953, 1956], add=[(1953, 0)]),
-    "ATL": dict(drop=[1966, 1968, 1985], add=[(1966, 0), (1972, 1), (1981, 3)]),
-}
+# Era -> cap logo swaps: {code: dict(drop=[era first seasons], add=[(first, cap index)])}.
+# Index numbers refer to caps_<CODE>.png (sorted by first season). None in use.
+SUB = {}
 
 
 def _lin(c):
@@ -156,6 +149,15 @@ def clean(fn, is_cap=False, white_bg=False):
     return im, boxed, outlined
 
 
+def save_final(im, path, size=256):
+    """Scale to `size` px on the long side and save as a palette PNG."""
+    im = im.convert("RGBA")
+    if max(im.size) > size:
+        k = size / max(im.size)
+        im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
+    im.quantize(colors=256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE).save(path, optimize=True)
+
+
 manifest, review = {}, []
 for code, rows in E["eras"].items():
     sub = SUB.get(code, {})
@@ -180,7 +182,7 @@ for code, rows in E["eras"].items():
         nxt = items[i + 1]["y0"] - 1 if i + 1 < len(items) else None
         y1 = nxt if nxt is not None else (None if last == 2026 else last)
         name = f"eras/{code.lower()}-{y0}{'-cap' if it['cap'] else ''}.png"
-        im.save(f"wt/Logos/{name}", optimize=True)
+        save_final(im, f"wt/Logos/{name}")
         out.append([y0, y1, name])
         review.append(dict(code=code, y0=y0, y1=y1, title=it["title"], file=name, boxed=boxed,
                            cap=it["cap"], outlined=outlined, src=info["url"]))
@@ -208,7 +210,7 @@ for si in range(0, len(codes), per_sheet):
                     if i:
                         row += 1
                     d.text((4, row * (cell + lab) + cell // 2), c, fill=(128, 128, 128))
-                im = Image.open(f"wt/Logos/{r['file']}"); im.thumbnail((cell - 16, cell - 16))
+                im = Image.open(f"wt/Logos/{r['file']}").convert("RGBA"); im.thumbnail((cell - 16, cell - 16))
                 x = 60 + (i % ncol) * cell; y = row * (cell + lab)
                 sheet.paste(im, (x + (cell - im.width) // 2, y + (cell - im.height) // 2), im)
                 d.text((x + 4, y + cell + 2), f"{r['y0']}-{r['y1'] or ''}{' CAP' if r['cap'] else ''}", fill=(128, 128, 128))

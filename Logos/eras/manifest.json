@@ -43,18 +43,18 @@
  "ATL": [
   [
    1966,
-   1971,
-   "eras/atl-1966-cap.png"
+   1967,
+   "eras/atl-1966.png"
   ],
   [
-   1972,
-   1980,
-   "eras/atl-1972-cap.png"
+   1968,
+   1984,
+   "eras/atl-1968.png"
   ],
   [
-   1981,
+   1985,
    1986,
-   "eras/atl-1981-cap.png"
+   "eras/atl-1985.png"
   ],
   [
    1987,
@@ -308,8 +308,18 @@
   ],
   [
    1911,
-   1920,
+   1911,
    "eras/bsn-1911.png"
+  ],
+  [
+   1912,
+   1915,
+   "eras/bsn-1912.png"
+  ],
+  [
+   1916,
+   1920,
+   "eras/bsn-1916.png"
   ],
   [
    1921,
@@ -323,23 +333,8 @@
   ],
   [
    1929,
-   1931,
-   "eras/bsn-1929-cap.png"
-  ],
-  [
-   1932,
-   1932,
-   "eras/bsn-1932-cap.png"
-  ],
-  [
-   1933,
-   1933,
-   "eras/bsn-1933-cap.png"
-  ],
-  [
-   1934,
    1935,
-   "eras/bsn-1934-cap.png"
+   "eras/bsn-1929.png"
   ],
   [
    1936,
@@ -368,13 +363,8 @@
   ],
   [
    1945,
-   1945,
-   "eras/bsn-1945-cap.png"
-  ],
-  [
-   1946,
    1952,
-   "eras/bsn-1946-cap.png"
+   "eras/bsn-1945.png"
   ]
  ],
  "CAL": [
@@ -730,63 +720,53 @@
   ],
   [
    1928,
+   1928,
+   "eras/cle-1928.png"
+  ],
+  [
+   1929,
    1932,
-   "eras/cle-1928-cap.png"
+   "eras/cle-1929.png"
   ],
   [
    1933,
    1938,
-   "eras/cle-1933-cap.png"
+   "eras/cle-1933.png"
   ],
   [
    1939,
-   1957,
-   "eras/cle-1939-cap.png"
+   1945,
+   "eras/cle-1939.png"
   ],
   [
-   1958,
-   1962,
-   "eras/cle-1958-cap.png"
+   1946,
+   1947,
+   "eras/cle-1946.png"
   ],
   [
-   1963,
-   1964,
-   "eras/cle-1963-cap.png"
+   1948,
+   1948,
+   "eras/cle-1948.png"
   ],
   [
-   1965,
-   1969,
-   "eras/cle-1965-cap.png"
-  ],
-  [
-   1970,
-   1971,
-   "eras/cle-1970-cap.png"
-  ],
-  [
+   1949,
    1972,
-   1972,
-   "eras/cle-1972-cap.png"
+   "eras/cle-1949.png"
   ],
   [
    1973,
-   1977,
-   "eras/cle-1973-cap.png"
-  ],
-  [
    1978,
-   2001,
-   "eras/cle-1978-cap.png"
+   "eras/cle-1973.png"
   ],
   [
-   2002,
-   2007,
-   "eras/cle-2002-cap.png"
+   1979,
+   1985,
+   "eras/cle-1979.png"
   ],
   [
-   2008,
+   1986,
    2013,
-   "eras/cle-2008-cap.png"
+   "eras/cle-1986.png"
   ],
   [
    2014,
@@ -1146,8 +1126,13 @@
  "MLN": [
   [
    1953,
+   1955,
+   "eras/mln-1953.png"
+  ],
+  [
+   1956,
    1965,
-   "eras/mln-1953-cap.png"
+   "eras/mln-1956.png"
   ]
  ],
  "MON": [

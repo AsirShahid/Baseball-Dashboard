@@ -249,8 +249,8 @@ TEAM_LOGO_MAP = {
     "SDP": "padres",   "SFG": "giants",   "ATH": "athletics",
     # Former identities: period logos from Wikipedia's club articles, the
     # Florida Marlins (1993) and Devil Rays (2001) primaries from
-    # sportslogos.net. Boston/Milwaukee Braves use their cap insignia, not the
-    # Native American caricature primaries.
+    # sportslogos.net. Fallback only: Logos/eras/manifest.json (dated
+    # primaries, TEAM_LOGO_ERAS) covers every one of these codes.
     "MON": "expos",     "FLA": "flmarlins", "TBD": "devilrays",
     "CAL": "calangels", "ANA": "anaangels", "KCA": "kcathletics",
     "PHA": "phathletics","SLB": "browns",   "SEP": "pilots",
@@ -1504,8 +1504,7 @@ _LOGO_SIZE = 160  # all logos normalised to this square (px) before encoding
 # Dated logos. Logos/eras/manifest.json maps a team code to the primary logos
 # it used, oldest first: [[first season, last season or null, file], ...]
 # (files relative to Logos/). Sources: sportslogos.net primary-logo
-# histories; eras whose primary is a Native American caricature (Cleveland,
-# the Braves) use that era's cap logo instead. A season before a club's first
+# histories, each era's own primary as the club used it. A season before a club's first
 # documented logo gets no logo (the chart draws its code chip); a season in a
 # gap between eras keeps the previous logo. Codes missing from the manifest
 # fall back to TEAM_LOGO_MAP.
