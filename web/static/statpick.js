@@ -40,10 +40,15 @@
     });
   }
 
-  // Lower is better; -1 = no match. Every typed word must appear somewhere.
+  // Lower is better; -1 = no match. Every typed word must appear in the
+  // abbreviation or key, or start a word of the description or group ("era"
+  // finds ERA, not "average").
   function score(item, query, words) {
-    var hay = fold(item.head + " " + item.key + " " + item.name + " " + item.group);
-    for (var i = 0; i < words.length; i++) if (hay.indexOf(words[i]) === -1) return -1;
+    var short = fold(item.head + " " + item.key);
+    var text = fold(item.name + " " + item.group);
+    for (var i = 0; i < words.length; i++) {
+      if (short.indexOf(words[i]) === -1 && !new RegExp("(^|[^a-z0-9])" + escapeRe(words[i])).test(text)) return -1;
+    }
     var head = fold(item.head);
     if (head === query || fold(item.key) === query) return 0;
     if (head.indexOf(query) === 0) return 1;
