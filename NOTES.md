@@ -305,3 +305,13 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
   container IP; a real phone install was not tested. iOS keeps a home-screen app's cookies
   apart from Safari's, so the installed app asks for the passkey once.
 - Rollback image: `baseball-site:pre-pwa-20261111` (retag as baseball-site:latest and `docker compose up -d --no-build baseball-dashboard`).
+
+## Site mark redrawn (2026-11-11)
+
+- The old mark (a circle with two plain curves) read as a tennis ball. New mark: the same
+  circle and line weight as basketball's, seams as circular arcs, 4 square-ended stitches per
+  seam, tilted 45 degrees. `tools/make_mark.py` prints the favicon and the header `<svg>`;
+  `tools/make_icons.py` renders the app icons from the favicon.
+- Chosen from ~20 variants rendered at 16, 32, 64 and 160 px beside the basketball mark: short
+  round-capped stitches looked like beads, V-chains like wheat, slanted ones like cracks.
+- Rollback image: `baseball-site:pre-logo-20261111`.
