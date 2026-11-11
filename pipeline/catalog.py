@@ -19,7 +19,11 @@ NOT_STATS = {
 # values). Everything else is a rate and is averaged or rebuilt. From the Dash
 # site's fangraphs_api.COUNTING_STATS, plus the pitching value splits.
 COUNTING = frozenset({
-    "G", "GS", "WAR", "bWAR", "ERlg", "bER", "WPA", "RE24", "REW", "Clutch", "Events", "Pitches", "Balls", "Strikes",
+    "G", "GS", "WAR", "bWAR", "ERlg", "bER",
+    # Baseball Savant counts (pipeline/savant.PARTS)
+    "svPA", "svAB", "svPit", "svIZ", "svOZ", "svIZSw", "svOZSw", "svIZCon", "svOZCon", "svWhiff", "svEdge",
+    "svMB", "svMBSw", "svBBE", "svSweet", "svXWcon", "svXH", "svXTB", "svXW", "svSpW", "svSpSum",
+    "WPA", "RE24", "REW", "Clutch", "Events", "Pitches", "Balls", "Strikes",
     "Barrels", "PA", "AB", "H", "1B", "2B", "3B", "HR", "R", "RBI", "BB", "IBB", "SO", "HBP",
     "SF", "SH", "GDP", "SB", "CS", "TB", "IP", "W", "L", "SV", "BS", "HLD", "ER", "TBF", "GB",
     "FB", "LD", "IFFB", "IFH", "BU", "BUH", "Pull", "Cent", "Oppo", "Soft", "Med", "Hard",
@@ -88,6 +92,20 @@ NAMES = {
     "xERA": "Expected ERA (Statcast)", "ERA-": "ERA minus: ERA adjusted for park and league (100 is league average, lower is better)",
     "FIP-": "FIP minus: FIP adjusted for park and league (100 is league average, lower is better)",
     "ERA+": "ERA+: Baseball-Reference's ERA adjusted for park and league (100 is league average, higher is better)",
+    "Barrel/PA": "Barrels per plate appearance (Statcast)",
+    "Sweet-Spot%": "Launch angle sweet-spot rate: batted balls at 8 to 32 degrees (Baseball Savant)",
+    "xwOBAcon": "Expected wOBA on contact: batted balls only (Baseball Savant)",
+    "svZone%": "Zone%: pitches in the strike zone, Statcast's zone (Baseball Savant)",
+    "svZ-Swing%": "Zone swing rate: swings at pitches in the zone (Baseball Savant)",
+    "svZ-Contact%": "Zone contact rate: contact on swings at pitches in the zone (Baseball Savant)",
+    "Chase%": "Chase rate: swings at pitches outside the zone (Baseball Savant)",
+    "ChaseContact%": "Chase contact rate: contact on swings outside the zone (Baseball Savant)",
+    "Edge%": "Edge rate: pitches on the edges of the zone (Baseball Savant)",
+    "svSwing%": "Swing rate: swings per pitch (Baseball Savant)",
+    "Whiff%": "Whiff rate: misses per swing (Baseball Savant)",
+    "Meatball%": "Meatball rate: pitches down the middle (Baseball Savant)",
+    "MeatballSwing%": "Meatball swing rate: swings at pitches down the middle (Baseball Savant)",
+    "Sprint": "Sprint speed: feet per second in the fastest one-second window of a run (Baseball Savant)",
     "xFIP-": "xFIP minus (100 is league average, lower is better)", "K-BB%": "Strikeout rate minus walk rate",
     "E-F": "ERA minus FIP", "RS": "Run support", "RS/9": "Run support per 9 innings",
     "RA9-Wins": "FanGraphs WAR from runs allowed instead of FIP (RA9-WAR)", "LOB-Wins": "Strand-rate wins",
@@ -125,8 +143,12 @@ BAT_GROUPS = [
     ("discipline", "Plate discipline", ["PA", "O-Swing%", "Z-Swing%", "Swing%", "O-Contact%",
                                         "Z-Contact%", "Contact%", "Zone%", "F-Strike%", "SwStr%",
                                         "CStr%"]),
-    ("statcast", "Statcast", ["PA", "Events", "EV", "EV90", "maxEV", "LA", "Barrel%", "HardHit%",
-                              "xAVG", "xSLG", "xwOBA", "AvgBatSpeed", "SquaredUpSwing%"]),
+    ("statcast", "Statcast", ["PA", "Events", "Barrel%", "Barrel/PA", "EV", "EV90", "maxEV", "LA",
+                              "Sweet-Spot%", "HardHit%", "xAVG", "xSLG", "xwOBA", "xwOBAcon",
+                              "AvgBatSpeed", "SquaredUpSwing%", "Sprint"]),
+    ("savant", "Savant discipline", ["PA", "Pitches", "svZone%", "svZ-Swing%", "svZ-Contact%", "Chase%",
+                                     "ChaseContact%", "Edge%", "svSwing%", "Whiff%", "Meatball%",
+                                     "MeatballSwing%"]),
 ]
 PIT_GROUPS = [
     ("standard", "Standard", ["W", "L", "ERA", "ERA+", "G", "GS", "SV", "HLD", "IP", "H", "R", "ER",
@@ -140,8 +162,12 @@ PIT_GROUPS = [
     ("discipline", "Plate discipline", ["IP", "O-Swing%", "Z-Swing%", "Swing%", "O-Contact%",
                                         "Z-Contact%", "Contact%", "Zone%", "F-Strike%", "SwStr%",
                                         "CStr%"]),
-    ("statcast", "Statcast", ["IP", "Events", "EV", "maxEV", "LA", "Barrel%", "HardHit%", "xERA",
-                              "FBv", "pb_stuff", "pb_command", "pb_overall"]),
+    ("statcast", "Statcast", ["IP", "Events", "Barrel%", "Barrel/PA", "EV", "maxEV", "LA", "Sweet-Spot%",
+                              "HardHit%", "xAVG", "xSLG", "xwOBA", "xwOBAcon", "xERA", "FBv",
+                              "pb_stuff", "pb_command", "pb_overall"]),
+    ("savant", "Savant discipline", ["IP", "Pitches", "svZone%", "svZ-Swing%", "svZ-Contact%", "Chase%",
+                                     "ChaseContact%", "Edge%", "svSwing%", "Whiff%", "Meatball%",
+                                     "MeatballSwing%"]),
 ]
 
 _LOWER_ALWAYS = frozenset({
@@ -153,13 +179,14 @@ _LOWER_FOR_PITCHERS = frozenset({
     "HR", "R", "ER", "H", "BB", "1B", "2B", "3B", "RBI", "TB", "HR/FB", "Barrel%", "HardHit%",
     "EV", "EV90", "maxEV", "Barrels", "HardHit", "LD%", "HBP", "Hard%", "xAVG", "xSLG", "IBB",
     "Contact%", "Z-Contact%", "O-Contact%",
+    "Barrel/PA", "Sweet-Spot%", "xwOBAcon", "svZ-Contact%", "ChaseContact%", "Meatball%", "MeatballSwing%",
 })
 _LOWER_FOR_BATTERS = frozenset({"K%", "SO", "SwStr%", "O-Swing%", "CStr%", "C+SwStr%", "Soft%",
-                                "IFFB%", "GDP"})
+                                "IFFB%", "GDP", "Chase%", "Whiff%"})
 
-_DEC3 = frozenset({"AVG", "OBP", "SLG", "OPS", "ISO", "BABIP", "wOBA", "xwOBA", "xAVG", "xSLG"})
+_DEC3 = frozenset({"AVG", "OBP", "SLG", "OPS", "ISO", "BABIP", "wOBA", "xwOBA", "xAVG", "xSLG", "xwOBAcon"})
 _DEC1 = frozenset({
-    "WAR", "bWAR", "RAR", "Off", "Def", "BsR", "Batting", "Fielding", "Positional", "Replacement",
+    "WAR", "bWAR", "RAR", "Off", "Def", "BsR", "Sprint", "Batting", "Fielding", "Positional", "Replacement",
     "Offense", "Defense", "BaseRunning", "wRAA", "UBR", "wSB", "wGDP", "Spd", "EV", "EV90", "LA",
     "maxEV", "IP", "CFraming", "wBsR", "GDPRuns", "wLeague", "RA9-Wins", "LOB-Wins", "BIP-Wins",
     "BS-Wins", "Starting", "Relieving", "Start-IP", "Relief-IP", "AvgBatSpeed", "SwingLength",
@@ -178,7 +205,7 @@ def fmt(stat: str) -> str:
     """'pct1' (fraction shown as a 1-decimal percent), 'avg' (.263), 'd0'..'d2'."""
     if stat.endswith(("+", "-")) and stat not in ("+WPA", "-WPA"):
         return "d0"                     # index stats: wRC+, ERA-, K%+
-    if "%" in stat or stat == "HR/FB":
+    if "%" in stat or stat in ("HR/FB", "Barrel/PA"):
         return "pct1"
     if stat in _DEC3:
         return "avg"
@@ -199,8 +226,12 @@ def lower_is_better(stat: str, pitching: bool) -> bool:
 
 def weight(stat: str, pitching: bool) -> str:
     """What a rate is averaged by over a range of seasons or a roster."""
-    if stat in ("EV", "LA", "Barrel%", "HardHit%", "EV90", "xAVG", "xSLG", "xwOBA", "xERA"):
+    if stat in ("EV", "LA", "Barrel%", "HardHit%", "EV90", "xAVG", "xSLG", "xwOBA", "xERA", "Sweet-Spot%",
+                "xwOBAcon"):
         return "Events"
+    if stat in ("svZone%", "svZ-Swing%", "svZ-Contact%", "Chase%", "ChaseContact%", "Edge%", "svSwing%",
+                "Whiff%", "Meatball%", "MeatballSwing%"):
+        return "Pitches"
     if (stat.startswith(("pfx", "pi", "sc", "sp_", "pb_")) or stat.endswith(("v", "/C"))
             or stat in ("O-Swing%", "Z-Swing%", "Swing%", "O-Contact%", "Z-Contact%", "Contact%",
                         "Zone%", "F-Strike%", "SwStr%", "CStr%", "C+SwStr%", "FB%1", "SL%", "CT%",
@@ -247,7 +278,8 @@ def group(stat: str, pitching: bool) -> str:
 
 GROUP_TITLES = {
     "standard": "Standard", "advanced": "Advanced", "value": "Value", "battedball": "Batted ball",
-    "discipline": "Plate discipline", "statcast": "Statcast", "plus": "Plus stats (100 = average)",
+    "discipline": "Plate discipline", "statcast": "Statcast", "savant": "Savant discipline",
+    "plus": "Plus stats (100 = average)",
     "pitchtypes": "Pitch types", "stuff": "Stuff+ and PitchingBot", "pitchfx": "PITCHf/x",
     "pitchinfo": "Pitch Info", "umpire": "Umpires and replay",
 }
@@ -256,7 +288,8 @@ GROUP_ORDER = list(GROUP_TITLES)
 
 # Column heads that differ from the stat key. The key stays "WAR" so old links
 # keep working; on screen it is always fWAR, next to Baseball-Reference's bWAR.
-HEADS = {"WAR": "fWAR"}
+HEADS = {"WAR": "fWAR", "svZone%": "Zone%", "svZ-Swing%": "Z-Swing%", "svZ-Contact%": "Z-Contact%",
+         "ChaseContact%": "Chase Con%", "svSwing%": "Swing%", "MeatballSwing%": "Meatball Sw%"}
 
 
 def head(stat: str) -> str:

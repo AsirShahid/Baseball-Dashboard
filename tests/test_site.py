@@ -25,7 +25,7 @@ JUDGE, OHTANI, SOTO, CHISHOLM, SKUBAL = 15640, 19755, 20123, 20454, 22267
 def data_root(tmp_path_factory):
     from pipeline import build
     out = tmp_path_factory.mktemp("data")
-    build.build(FIXTURES, FIXTURES, out, FIXTURES / "bwar")
+    build.build(FIXTURES, FIXTURES, out, FIXTURES / "bwar", FIXTURES / "savant")
     return out
 
 
@@ -63,7 +63,8 @@ def rows(html):
 
 def test_build_stores_every_season_and_stat(con):
     kinds = dict(con.execute("SELECT kind, COUNT(DISTINCT season) FROM rows GROUP BY kind").fetchall())
-    assert kinds == {"bat": 3, "pit": 3, "tbat": 2, "tpit": 2, "sbat": 2, "spit": 2}   # 3 = 1955, 2024, career
+    assert kinds == {"bat": 3, "pit": 3, "tbat": 2, "tpit": 2, "sbat": 2, "spit": 2,   # 3 = 1955, 2024, career
+                     "lbat": 2, "lpit": 2}                                           # league averages
     stats = {r[0] for r in con.execute("SELECT stat FROM catalog WHERE kind = 'bat'")}
     assert {"wRC+", "WAR", "Barrel%", "O-Swing%", "AVG"} <= stats and "playerid" not in stats
     assert con.execute("SELECT fmt FROM catalog WHERE kind='bat' AND stat='K%'").fetchone()[0] == "pct1"
@@ -183,7 +184,7 @@ def test_players_default_is_qualified(client, app):
 
 def test_traded_player_shows_both_clubs(client):
     html = page(client, f"/player/{CHISHOLM}")
-    assert "2+ teams" in html and 'class="stint fixed"' in html
+    assert "2+ teams" in html and 'class="stint child' in html
     assert html.count('/team/NYY?season=2024') >= 1 and html.count('/team/MIA?season=2024') >= 1
     roster = page(client, "/team/NYY?season=2024")
     assert 'data-name="Jazz Chisholm Jr."' in roster and "traded" in roster
@@ -484,3 +485,68 @@ def test_bwar_surname_fallback_stays_within_the_club():
     assert b._find("pit", 1921, None, "(Unknown) Latimer", "ABC", 5.0) is None       # 5 IP vs 57.2: a namesake
     assert b._find("pit", 1921, None, "(Unknown) Latimer", "ABC") is None            # no innings to check
     assert b._find("pit", 1921, None, "(Unknown) Smith", "ABC", 10.0) is None        # two Smiths: ambiguous
+
+
+# ---------- Baseball Savant and league averages ----------
+
+def test_savant_stats_match_savant(app):
+    """Judge 2024 on baseballsavant.com: Chase% 22.0... values come straight from
+    Savant's CSV; spans are rebuilt from counts, so one season equals itself."""
+    from web import db
+    with app.app_context():
+        t = db.table("bat", 2024, 2024, ("Chase%", "Whiff%", "Sweet-Spot%", "xwOBAcon", "svZone%", "Sprint", "Barrel/PA"))
+        i = [r["pid"] for r in t.ident].index(JUDGE)
+        assert t.cols["Chase%"][i] > 0 and abs(t.cols["Chase%"][i] - 0.2) < 0.06
+        assert 0.25 < t.cols["Whiff%"][i] < 0.40 and t.cols["xwOBAcon"][i] > 0.5 and 26 < t.cols["Sprint"][i] < 29
+        span = db.table("bat", 1955, 2024, ("Chase%", "Whiff%", "xwOBAcon"))
+        j = [r["pid"] for r in span.ident].index(JUDGE)
+        for stat in ("Chase%", "Whiff%", "xwOBAcon"):
+            assert abs(span.cols[stat][j] - t.cols[stat][i]) < 1e-4      # rebuilt from counts: same season, same value
+        p = db.table("pit", 2024, 2024, ("xwOBA", "Whiff%", "Chase%"))
+        k = [r["pid"] for r in p.ident].index(SKUBAL)
+        assert 0.2 < p.cols["xwOBA"][k] < 0.3 and p.cols["Whiff%"][k] > 0.25
+
+
+def test_league_rows(app, con):
+    from web import queries
+    with app.app_context():
+        lg = queries.league_season("bat", 2024, "MLB", ("AVG", "K%", "wRC+", "HR", "Chase%", "Whiff%", "EV"))
+        assert lg["wRC+"] == 100 and "HR" not in lg                         # index stats are 100; counts are not shown
+        assert 0.23 < lg["AVG"] < 0.26 and 0.20 < lg["K%"] < 0.25
+        assert 0.26 < lg["Chase%"] < 0.31 and 0.23 < lg["Whiff%"] < 0.28 and 87 < lg["EV"] < 90
+        al = queries.league_season("bat", 2024, "AL", ("AVG",))
+        assert al and abs(al["AVG"] - lg["AVG"]) < 0.01
+        assert queries.league_season("bat", 1955, "MLB", ("AVG",))["AVG"] > 0.24
+        pit = queries.league_season("pit", 2024, "MLB", ("ERA", "ERA+", "xwOBA"))
+        assert 3.5 < pit["ERA"] < 4.5 and pit["ERA+"] == 100 and 0.29 < pit["xwOBA"] < 0.34
+        both = queries.league_over("bat", ((1955, "MLB"), (2024, "MLB")), ("AVG", "K%", "wRC+"))
+        assert both["wRC+"] == 100
+        assert lg["K%"] > both["K%"] > queries.league_season("bat", 1955, "MLB", ("K%",))["K%"]
+        assert queries.league_label("Negro National League II") == "NN2" and queries.league_label("Negro Leagues") != "NL"
+    hidden = [r[0] for r in con.execute("SELECT stat FROM catalog WHERE stat GLOB 'sv[A-Z]*'")]
+    assert hidden and all(stat.endswith("%") for stat in hidden)            # the counts are never offered
+
+
+def test_league_rows_on_pages(client):
+    html = page(client, f"/player/{JUDGE}?bmode=savant")          # one season in the fixtures: one MLB row
+    assert html.count('class="lgrow fixed"') == 1 and 'lgrow child every' not in html
+    assert ">Chase%<" in html and ">Whiff%<" in html and ">28.5%<" in html      # 2024 MLB chase rate
+    board = page(client, "/players?kind=bat&season=2024&mode=statcast")
+    assert 'class="lgrow fixed"' in board and "MLB average" in board
+    teams = page(client, "/teams?kind=pit&season=2024")
+    assert "MLB average" in teams
+
+
+def test_savant_percentiles_only_in_statcast_era(app):
+    from web import queries
+    with app.app_context():
+        now = queries.percentiles(JUDGE, "bat", 2024)
+        keys = {r["col"]["key"] for g in now["groups"] for r in g["rows"]}
+        assert "Chase%" in keys and "O-Swing%" not in keys
+        assert queries._pct_pick(("Chase%", "O-Swing%"), 2014) == "O-Swing%"
+
+
+def test_team_tables_have_no_savant_columns(client):
+    html = page(client, "/teams?kind=bat&season=2024&mode=statcast")
+    assert "mode=savant" not in html and "xwOBAcon" not in html and ">Barrel%<" in html
+    assert "Chase%" not in page(client, "/teams?kind=bat&season=2024&mode=savant")      # falls back to standard

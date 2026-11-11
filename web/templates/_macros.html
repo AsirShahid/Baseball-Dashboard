@@ -43,6 +43,11 @@
 {% for c in columns %}{% set v = line[c.key] %}{% if c.rule and c.rule in fails %}<td data-v="" class="muted{{ ' sorted' if c.key == sort }}" title="{{ fails[c.rule] }}">{{ v|f(c.fmt, c.key) }}</td>{% else %}<td data-v="{{ v|sv }}" class="{{ 'sorted' if c.key == sort }}{{ ' lead' if c.key in led }}">{{ v|f(c.fmt, c.key) }}</td>{% endif %}{% endfor %}
 {%- endmacro %}
 
+{# A league-average row: rates only (a league's home run total means nothing beside a player's). #}
+{% macro lg_cells(line, columns, sort=None) -%}
+{% for c in columns %}{% set v = (line or {}).get(c.key) %}<td data-v="" class="{{ 'sorted' if c.key == sort }}">{% if c.rule and v is not none %}{{ v|f(c.fmt, c.key) }}{% endif %}</td>{% endfor %}
+{%- endmacro %}
+
 {% macro standings_table(rows, season, compact=False) -%}
 <div class="table-wrap">
 <table class="stats sortable{{ ' compact' if compact }}">

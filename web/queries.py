@@ -6,6 +6,7 @@ import re
 
 import numpy as np
 
+from pipeline import aggregate
 from pipeline import catalog as cat
 from pipeline import teams as T
 from pipeline.text import search_key
@@ -267,6 +268,97 @@ def _sort_key(value, better, short=False):
     return (0, -value if better else value)
 
 
+# ---------- league averages ----------
+
+LEAGUE_KIND = {BAT: "lbat", PIT: "lpit"}
+
+
+def _is_index(stat: str) -> bool:
+    return stat.endswith(("+", "-")) and stat not in ("+WPA", "-WPA")
+
+
+LEAGUE_ABBR = {
+    "National Association": "NA", "American Association": "AA", "Union Association": "UA",
+    "Players' League": "PL", "Federal League": "FL", "Negro National League I": "NNL",
+    "Negro National League II": "NN2", "Eastern Colored League": "ECL", "American Negro League": "ANL",
+    "East-West League": "EWL", "Negro Southern League": "NSL", "Negro American League": "NAL",
+    "Negro Leagues": "NeL", "Independent Clubs": "Ind",
+}
+
+
+def league_label(group: str) -> str:
+    """'MLB', 'AL', 'NL', or a league's usual abbreviation ('Negro National League II' -> 'NN2')."""
+    if group in ("MLB", "AL", "NL"):
+        return group
+    if group in LEAGUE_ABBR:
+        return LEAGUE_ABBR[group]
+    words = [w for w in re.split(r"[\s-]+", group) if w and w[0].isalpha()]
+    return "".join(w[0].upper() for w in words) or group
+
+
+def _league_values(cols: dict, idx: int, kind: str, stats) -> dict:
+    """Rates only: a league total of home runs means nothing beside a player's."""
+    out = {}
+    for s in stats:
+        c = column(kind, s)
+        if c is None or not c["rule"]:
+            continue
+        col = cols.get(s)
+        v = None if col is None or np.isnan(col[idx]) else float(col[idx])
+        out[s] = 100.0 if v is not None and _is_index(s) else v
+    return out
+
+
+@db.cached
+def league_season(kind: str, season: int, group: str, stats: tuple) -> dict | None:
+    t = db.table(LEAGUE_KIND[kind], season, season, stats)
+    idx = next((i for i, r in enumerate(t.ident) if r["team"] == group), None)
+    return None if idx is None else _league_values(t.cols, idx, kind, stats)
+
+
+def league_over(kind: str, pairs, stats: tuple) -> dict | None:
+    """The league over several (season, league group) pairs, added up like a
+    career: a player's league line over the seasons he played."""
+    lk = LEAGUE_KIND[kind]
+    chunks = []
+    for season, group in pairs:
+        t = db.table(lk, season, season, stats)
+        idx = next((i for i, r in enumerate(t.ident) if r["team"] == group), None)
+        if idx is not None:
+            chunks.append({s: np.asarray(v[idx:idx + 1], dtype=np.float64) for s, v in t.cols.items()})
+    if not chunks:
+        return None
+    keys = set(chunks[0])
+    for chunk in chunks[1:]:
+        keys &= set(chunk)
+    cols = {s: np.concatenate([c[s] for c in chunks]) for s in keys}
+    _u, _f, agg = aggregate.group_rows(np.zeros(len(chunks), dtype=int), cols, db.PITCHING[lk])
+    # An index stat (wRC+, ERA+, ...) is 100 for the league in any season that has it.
+    for s in stats:
+        if _is_index(s) and s in cols and not np.isnan(cols[s]).all():
+            agg[s] = np.array([100.0])
+    return _league_values(agg, 0, kind, stats)
+
+
+@db.cached
+def league_range(kind: str, lo: int, hi: int, stats: tuple, league: str = "") -> dict | None:
+    """The league line over seasons lo..hi for a leaderboard: AL or NL when one is
+    picked, else MLB (AL and NL), else the league with the most playing time."""
+    t = db.table(LEAGUE_KIND[kind], lo, hi, stats + ("PA" if kind == BAT else "IP",))
+    labels = [r["team"] for r in t.ident]
+    want = league or ("MLB" if "MLB" in labels else None)
+    if want is None and labels:
+        weight = t.cols.get("PA" if kind == BAT else "IP")
+        want = labels[int(np.nanargmax(weight))] if weight is not None and len(weight) else labels[0]
+    if want not in labels:
+        return None
+    idx = labels.index(want)
+    values = _league_values(t.cols, idx, kind, stats)
+    values["_label"] = league_label(want)
+    values["_name"] = want
+    return values
+
+
 # ---------- leaders ----------
 
 BOARDS = {
@@ -350,10 +442,17 @@ def _team_war(season: int) -> dict:
     return out
 
 
+TEAM_ALWAYS = ("G", "PA", "IP")
+TEAM_MODES = {kind: {k: v for k, v in modes.items() if k != "savant"} for kind, modes in MODES.items()}
+
+
 def team_table(kind, lo, hi, mode, league, sort):
     cols = columns(kind, mode)
     stats = tuple(c["key"] for c in cols) + ("WAR",)
     t = db.table(TEAM_KIND[kind], lo, hi, tuple(dict.fromkeys(stats)))
+    # Baseball Savant's stats are per player (a traded player's season is not split
+    # by club), so team tables have none: keep only columns with team data.
+    cols = [c for c in cols if c["key"] in TEAM_ALWAYS or (c["key"] in t.cols and not np.isnan(t.cols[c["key"]]).all())]
     lines = []
     for i, r in enumerate(t.ident):
         code = r["team"]
@@ -438,8 +537,8 @@ def logo_url(code, season=None):
 
 # ---------- player page ----------
 
-PLAYER_MODES = {BAT: ["standard", "advanced", "value", "battedball", "discipline", "statcast"],
-                PIT: ["standard", "advanced", "value", "battedball", "discipline", "statcast"]}
+PLAYER_MODES = {BAT: ["standard", "advanced", "value", "battedball", "discipline", "statcast", "savant"],
+                PIT: ["standard", "advanced", "value", "battedball", "discipline", "statcast", "savant"]}
 
 
 def _row_values(kind, season, i, stats):
@@ -506,6 +605,15 @@ def player(pid: int, kind: str, mode: str) -> dict | None:
             row["stints"].append({"team": s["team"], "values": _row_values("s" + kind, s["season"], s["i"], stats)})
         seasons_rows.append(row)
         del t
+    # League averages (rates only): each season's, and the league over his seasons.
+    shown = tuple(c["key"] for c in cols)
+    pairs = []
+    for row in seasons_rows:
+        group = player_groups(kind, row["season"]).get(pid, "MLB")
+        row["league"] = league_season(kind, row["season"], group, shown)
+        row["lg_label"], row["lg_name"] = league_label(group), group
+        pairs.append((row["season"], group))
+    league_career = league_over(kind, tuple(pairs), shown) if pairs else None
     ages = [r["age"] for r in seasons_rows if r["age"]]
     weight = "PA" if kind == BAT else "IP"
     facts = {"seasons": len(seasons_rows), "qualified": sum(r["qualified"] for r in seasons_rows),
@@ -514,7 +622,9 @@ def player(pid: int, kind: str, mode: str) -> dict | None:
              "games": (career or {}).get("G") if career else sum((r["values"].get("G") or 0) for r in seasons_rows)}
     if facts["games"] is None:
         facts["games"] = sum((r["values"].get("G") or 0) for r in seasons_rows)
-    return {"cols": cols, "rows": seasons_rows, "career": career, "facts": facts}
+    labels = {row["lg_label"] for row in seasons_rows}
+    return {"cols": cols, "rows": seasons_rows, "career": career, "facts": facts, "league": league_career,
+            "lg_label": labels.pop() if len(labels) == 1 else "League", "pairs": pairs}
 
 
 def player_span(pid: int, kind: str, mode: str, lo: int, hi: int) -> dict | None:
@@ -537,12 +647,12 @@ def player_span(pid: int, kind: str, mode: str, lo: int, hi: int) -> dict | None
 PCT_STATS = {
     BAT: [("Value", ["WAR", "bWAR", "wRC+", "Offense", "BaseRunning", "Defense"]),
           ("Hitting", ["OBP", "SLG", "ISO", "AVG", "BABIP"]),
-          ("Plate skills", ["BB%", "K%", "O-Swing%", "Contact%"]),
-          ("Statcast", ["xwOBA", "EV", "Barrel%", "HardHit%", "AvgBatSpeed"])],
+          ("Plate skills", ["BB%", "K%", ("Chase%", "O-Swing%"), ("Whiff%", "Contact%")]),
+          ("Statcast", ["xwOBA", "EV", "Barrel%", "HardHit%", "Sweet-Spot%", "AvgBatSpeed", "Sprint"])],
     PIT: [("Value", ["WAR", "bWAR", "ERA+", "FIP-", "RA9-Wins"]),
           ("Run prevention", ["ERA", "FIP", "xFIP", "SIERA", "WHIP"]),
-          ("Strikeouts and walks", ["K%", "BB%", "K-BB%", "SwStr%", "O-Swing%"]),
-          ("Contact", ["GB%", "HR/9", "Barrel%", "HardHit%", "FBv"])],
+          ("Strikeouts and walks", ["K%", "BB%", "K-BB%", ("Whiff%", "SwStr%"), ("Chase%", "O-Swing%")]),
+          ("Contact", [("xwOBA", None), "GB%", "HR/9", "Barrel%", "HardHit%", "FBv"])],
 }
 
 
@@ -565,6 +675,14 @@ def range_groups(kind: str, lo: int, hi: int) -> dict:
     return {pid: max(by, key=by.get) for pid, by in tally.items()}
 
 
+def _pct_pick(stat, lo: int) -> str:
+    """A (Savant stat, FanGraphs stat) pair takes Savant's when the seasons are all
+    in the Statcast era (2015 on), so everyone is measured the same way."""
+    if isinstance(stat, tuple):
+        return stat[0] if lo >= 2015 else stat[1]
+    return stat
+
+
 @db.cached
 def percentiles(pid: int, kind: str, lo: int, hi: int | None = None) -> dict | None:
     """His percentile in each stat among the qualified players of his league group
@@ -573,7 +691,8 @@ def percentiles(pid: int, kind: str, lo: int, hi: int | None = None) -> dict | N
     everyone's line for the same seasons, qualified by FanGraphs' multi-season
     cut, so every player is measured over the same years."""
     hi = lo if hi is None else hi
-    stats = tuple(s for _g, group in PCT_STATS[kind] for s in group)
+    plan = [(title, [p for p in (_pct_pick(stat, lo) for stat in group) if p]) for title, group in PCT_STATS[kind]]
+    stats = tuple(s for _g, group in plan for s in group)
     t = db.table(kind, lo, hi, stats)
     idx = next((i for i, r in enumerate(t.ident) if r["pid"] == pid), None)
     if idx is None:
@@ -584,7 +703,7 @@ def percentiles(pid: int, kind: str, lo: int, hi: int | None = None) -> dict | N
     same = np.array([group_of.get(r["pid"], "MLB") == mine for r in t.ident])
     ok = ok & same
     groups = []
-    for title, group in PCT_STATS[kind]:
+    for title, group in plan:
         rows_out = []
         for stat in group:
             c = column(kind, stat)

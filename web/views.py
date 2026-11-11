@@ -115,18 +115,19 @@ def players():
                            lines=lines, cols=cols, sort=sort, info=info, min_mode=min_mode,
                            min_value=min_value, min_options=options, team=team, league=league, pos=pos,
                            positions=queries.POSITIONS if kind == "bat" else queries.ROLES, clubs=clubs,
-                           kinds=KINDS)
+                           kinds=KINDS, lg=queries.league_range(kind, lo, hi, tuple(c["key"] for c in cols), league))
 
 
 @bp.route("/teams")
 def teams():
     kind = _kind()
     lo, hi = _span()
-    mode = _choice("mode", queries.MODES[kind], "standard")
+    mode = _choice("mode", queries.TEAM_MODES[kind], "standard")
     league = _choice("league", ("", "AL", "NL"), "")
     lines, cols, sort = queries.team_table(kind, lo, hi, mode, league, request.args.get("sort", ""))
-    return render_template("teams.html", kind=kind, lo=lo, hi=hi, mode=mode, modes=queries.MODES[kind],
-                           lines=lines, cols=cols, sort=sort, league=league, kinds=KINDS)
+    return render_template("teams.html", kind=kind, lo=lo, hi=hi, mode=mode, modes=queries.TEAM_MODES[kind],
+                           lines=lines, cols=cols, sort=sort, league=league, kinds=KINDS,
+                           lg=queries.league_range(kind, lo, hi, tuple(c["key"] for c in cols), league))
 
 
 @bp.route("/player/<int:pid>")
@@ -155,6 +156,9 @@ def player(pid: int):
         for kind, table, mode in (("bat", batting, bmode), ("pit", pitching, pmode)):
             if table:
                 span_rows[kind] = queries.player_span(pid, kind, mode, span[0], span[1])
+                if span_rows[kind]:
+                    inside = tuple((season, group) for season, group in table["pairs"] if span[0] <= season <= span[1])
+                    span_rows[kind]["league"] = queries.league_over(kind, inside, tuple(c["key"] for c in table["cols"]))
     pct_seasons = [r["season"] for r in reversed(main["rows"])] if main else []
     qualified = [r["season"] for r in reversed(main["rows"]) if r["qualified"]] if main else []
     choice = request.args.get("pseason", "")

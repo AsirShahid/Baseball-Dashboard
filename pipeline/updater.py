@@ -23,7 +23,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from . import build, bwar, fetch
+from . import build, bwar, fetch, savant
 
 log = logging.getLogger("updater")
 
@@ -78,6 +78,14 @@ def cycle(csv_root: Path, stints_root: Path, output: Path, now: dt.datetime | No
             state["bwar_checked"] = today
         except Exception:   # never let a second source stop the FanGraphs refresh
             log.exception("bWAR download failed; keeping the previous files")
+    # Baseball Savant's season CSVs: the current season when stale, every season monthly.
+    if state.get("savant_checked") != today:
+        try:
+            if savant.fetch(output / "savant", now=now):
+                changed["savant"] = ["season csv"]
+            state["savant_checked"] = today
+        except Exception:
+            log.exception("Savant download failed; keeping the previous files")
     need = bool(changed) or db_schema(output) != build.SCHEMA_VERSION
     if need:
         log.info("rebuilding (changed: %s)", {k: len(v) for k, v in changed.items()} or "schema")

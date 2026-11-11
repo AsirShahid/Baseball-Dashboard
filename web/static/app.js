@@ -64,8 +64,14 @@
   function sortTable(table, index, dir, text) {
     var sign = dir === "asc" ? 1 : -1;
     Array.prototype.forEach.call(table.tBodies, function (body) {
-      var rows = Array.prototype.filter.call(body.rows, function (row) {
-        return !row.classList.contains("fixed");
+      // "child" rows (a season's per-club and league rows) move with the row above them.
+      var rows = [], children = new Map(), last = null;
+      Array.prototype.forEach.call(body.rows, function (row) {
+        if (row.classList.contains("child")) {
+          if (last) children.get(last).push(row);
+        } else if (!row.classList.contains("fixed")) {
+          rows.push(row); children.set(row, []); last = row;
+        }
       });
       var keyed = rows.map(function (row, order) {
         var cell = row.cells[index];
@@ -83,6 +89,7 @@
       });
       keyed.forEach(function (item, place) {
         body.appendChild(item.row);
+        children.get(item.row).forEach(function (child) { body.appendChild(child); });
         var rank = item.row.querySelector("td.rank");
         if (rank) rank.textContent = place + 1;
         Array.prototype.forEach.call(item.row.cells, function (cell, i) {
@@ -101,7 +108,8 @@
     input.addEventListener("input", function () {
       var needle = fold(input.value);
       var shown = 0;
-      Array.prototype.forEach.call(table.tBodies[0].rows, function (row) {
+      var body = table.querySelector("tbody:not(.lgbody)") || table.tBodies[0];
+      Array.prototype.forEach.call(body.rows, function (row) {
         var hit = !needle || fold(row.dataset.name || row.textContent).indexOf(needle) !== -1;
         row.hidden = !hit;
         if (hit) shown += 1;
@@ -235,6 +243,24 @@
         var section = button.closest("section");
         url.hash = section && section.id ? section.id : "";
         window.location.href = url.toString();
+      });
+    });
+  }
+
+  // Player pages: "League average under every season" (remembered on this device).
+  var toggles = document.querySelectorAll("input[data-lgtoggle]");
+  if (toggles.length) {
+    var saved = false;
+    try { saved = window.localStorage.getItem("lgEvery") === "1"; } catch (e) { /* private mode */ }
+    var apply = function (on) {
+      document.querySelectorAll("table.lgtable").forEach(function (t) { t.classList.toggle("lg-every", on); });
+      toggles.forEach(function (box) { box.checked = on; });
+    };
+    apply(saved);
+    toggles.forEach(function (box) {
+      box.addEventListener("change", function () {
+        apply(box.checked);
+        try { window.localStorage.setItem("lgEvery", box.checked ? "1" : "0"); } catch (e) { /* ignore */ }
       });
     });
   }

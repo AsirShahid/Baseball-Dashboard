@@ -20,14 +20,15 @@ from pathlib import Path
 
 import numpy as np
 
-from pipeline import aggregate
+from pipeline import aggregate, savant
 
 _local = threading.local()
 _lock = threading.Lock()
 _cache: dict = {}
 _cache_version = None
 DATA_ROOT = Path(os.environ.get("DATA_ROOT") or Path(__file__).resolve().parent.parent / "data")
-PITCHING = {"pit": True, "tpit": True, "spit": True, "bat": False, "tbat": False, "sbat": False}
+PITCHING = {"pit": True, "tpit": True, "spit": True, "lpit": True,
+            "bat": False, "tbat": False, "sbat": False, "lbat": False}
 
 
 def configure(data_root) -> None:
@@ -181,7 +182,8 @@ def table(kind: str, lo: int, hi: int, stats: tuple) -> Table:
     summed parts. A player's team over a range is his team in his last
     season in it (or "- - -" for a traded player)."""
     weight = "IP" if PITCHING[kind] else "PA"
-    need = tuple(dict.fromkeys(stats + (weight, "TG") + _PARTS[PITCHING[kind]]))
+    extra = _SAVANT_PARTS if any(s in _SAVANT_REBUILT for s in stats) else ()
+    need = tuple(dict.fromkeys(stats + (weight, "TG") + _PARTS[PITCHING[kind]] + extra))
     if lo == hi:
         t = _season_table(kind, lo, need)
         return Table(t.ident, {s: t.cols[s] for s in need}, t.seasons)
@@ -216,6 +218,10 @@ def table(kind: str, lo: int, hi: int, stats: tuple) -> Table:
         out_ident.append(r)
     return Table(out_ident, agg, (lo, hi))
 
+
+# Baseball Savant stats are rebuilt from their counts over a span (pipeline/savant.py).
+_SAVANT_REBUILT = frozenset(savant.SHOWN + savant.PITCHER_SHOWN + ("Barrel/PA",))
+_SAVANT_PARTS = savant.PARTS + ("Barrels",)
 
 _PARTS = {
     False: ("AB", "H", "1B", "2B", "3B", "HR", "BB", "HBP", "SF", "SO", "Events", "Pitches"),

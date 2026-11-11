@@ -160,3 +160,37 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
 - 3D text no longer collides: tick values, axis titles and average labels reserve space; names
   go right, left, above or below their dot and never cover another named dot; text is kept
   inside the chart (phones were cutting off axis titles). The cube is a bit smaller on phones.
+
+## Baseball Savant stats and league-average rows (2026-11-11)
+
+- Source: Savant's custom leaderboard CSV (`pipeline/savant.py`), one file per season and type,
+  2015 on, min=0 (every player), joined to FanGraphs players by MLBAM id. The updater fetches the
+  current season once a day and every season once a month (24 files, ~35 s). Files live in
+  `/data/savant`; a failed download keeps the old files and never stops the FanGraphs refresh.
+- New stats: Sweet-Spot%, xwOBAcon, Sprint (hitters), pitchers' xAVG/xSLG/xwOBA, Barrel/PA
+  (from FanGraphs' Barrels), and a "Savant discipline" table: Zone%, Z-Swing%, Z-Contact%,
+  Chase%, Chase contact, Edge%, Swing%, Whiff%, Meatball%, Meatball swing%. Savant's Zone% and
+  Chase% use Statcast's zone; FanGraphs' Zone% and O-Swing% (BIS zone) stay in Plate discipline,
+  so the Savant ones are stored as `svZone%`, `svZ-Swing%`, ... and shown as Zone%, Z-Swing%.
+- Each rate is stored with its counts (hidden `sv*` columns: pitches in/out of zone, swings,
+  contact, whiffs, batted balls, ...) and rebuilt from summed counts for spans and careers.
+  Checked: Judge 2026 matches his Savant page on all 16 stats; Judge career (2016-2026) matches
+  Savant's "Player" row on all 14 checked (Zone 45.2, Chase 22.3, Whiff 33.4, xwOBA .436, ...).
+- League rows: kinds `lbat`/`lpit`, one row per season per league group ("MLB" = AL+NL, plus
+  "AL", "NL", and each other league), built by adding up FanGraphs' team rows (so a rate is the
+  league's own) and, for MLB 2015+, every Savant player's counts. Index stats (wRC+, ERA+, ERA-,
+  ...) are 100. Counting stats are left blank. 1927 MLB: .284/.345/.393.
+- Savant's own "MLB" row on a player page is the league pooled over 2015 to now (checked against
+  Judge's page: 14 of 15 stats within rounding), whatever seasons the player played. Here, the
+  league row under Career is the league over his seasons in his league group, the span row's is
+  over the span, and "League average under every season" (saved per device) adds one under each
+  season. Leaderboards pin the league line for the seasons shown (AL or NL when picked).
+- Percentile panel: Chase% and Whiff% replace O-Swing% and Contact% (hitters) and SwStr% and
+  O-Swing% (pitchers), and Sweet-Spot%, Sprint and pitchers' xwOBA are added, when every season
+  ranked is 2015 or later; earlier seasons keep the FanGraphs stats.
+- Team tables have no Savant stats (Savant does not split a traded player's season by club), so
+  the Savant mode is not offered there and empty columns are dropped.
+- Sorting a player table keeps each season's club and league rows under it (class `child`).
+- Schema 5. New code serves a schema-4 database (checked: player, board, team, chart pages all
+  200), so the rebuild after deploy is safe. Build: ~102 s, peak 499 MB (updater limit 768 MB).
+  Rollback: tag `baseball-site:pre-savant-20261111` as `baseball-site:latest`, `docker compose up -d`.

@@ -15,6 +15,7 @@
 <div class="table-wrap">
 <table class="stats sortable" id="teams">
 <thead><tr><th class="rank">#</th><th class="t" data-key="name" data-type="text" data-dir="asc">Team</th><th data-key="w">W</th><th data-key="l" data-dir="asc">L</th><th data-key="pct">PCT</th>{{ m.heads(cols, sort) }}</tr></thead>
+{% if lg %}<tbody class="lgbody"><tr class="lgrow fixed"><td class="rank"></td><td class="t name" title="{{ lg._name }}{% if lg._name == 'MLB' %}: the AL and NL{% endif %}, {{ lo }}{% if hi != lo %}&ndash;{{ hi }}{% endif %}">{{ lg._label }} average</td><td></td><td></td><td></td>{{ m.lg_cells(lg, cols, sort) }}</tr></tbody>{% endif %}
 <tbody>
 {% for t in lines %}
 <tr data-name="{{ t.name }}"{{ ' class="me"'|safe if t.team == favorite }}>

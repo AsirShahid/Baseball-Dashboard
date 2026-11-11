@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import catalog
+from . import catalog, savant
 
 def _weights(cols: dict, family: str, pitching: bool, n: int):
     base = cols.get("IP" if pitching else "PA")
@@ -71,6 +71,17 @@ def rebuild_rates(c: dict, pitching: bool) -> None:
     def put(name, value):
         if name in c:
             c[name] = value
+
+    # Barrels per PA (per batter faced for pitchers).
+    if g("Barrels") is not None and g("TBF" if pitching else "PA") is not None:
+        put("Barrel/PA", div(g("Barrels"), g("TBF" if pitching else "PA")))
+    # Baseball Savant: every shown stat rebuilt from its counts, as Savant builds
+    # its Player and MLB rows; a row with no Savant counts keeps its value.
+    if all(g(p) is not None for p in savant.PARTS):
+        rebuilt = savant.rates(c, pitching)
+        for name, value in rebuilt.items():
+            if name in c:
+                c[name] = np.where(np.isnan(value), c[name], value)
 
     if pitching:
         ip, tbf = g("IP"), g("TBF")

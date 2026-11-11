@@ -3,8 +3,9 @@
 {% block title %}{{ p.name }}{% endblock %}
 {% macro career_table(kind, data, mode, param) %}
 <div class="section-head"><h2>{{ 'Hitting' if kind == 'bat' else 'Pitching' }}</h2>{{ m.mode_seg(modes[kind], mode, param) }}</div>
+{% if data.rows|length > 1 %}<label class="check lgtoggle"><input type="checkbox" data-lgtoggle> League average under every season</label>{% endif %}
 <div class="table-wrap">
-<table class="stats sortable">
+<table class="stats sortable lgtable">
 <thead><tr><th class="t" data-key="season" data-dir="asc">Season</th><th class="t">Team</th><th data-key="age" data-dir="asc">Age</th>{{ m.heads(data.cols) }}</tr></thead>
 <tbody>
 {% for r in data.rows %}
@@ -16,15 +17,20 @@
   {{ m.cells(r['values'], data.cols, led=r.led) }}
 </tr>
 {% for s in r.stints %}
-<tr class="stint fixed{{ ' inspan' if inspan }}"><td class="t"></td><td class="t">{{ m.team(s.team, r.season, size=14) }}</td><td></td>{{ m.cells(s['values'], data.cols) }}</tr>
+<tr class="stint child{{ ' inspan' if inspan }}"><td class="t"></td><td class="t">{{ m.team(s.team, r.season, size=14) }}</td><td></td>{{ m.cells(s['values'], data.cols) }}</tr>
 {% endfor %}
+{% if r.league and data.rows|length > 1 %}<tr class="lgrow child every"><td class="t" title="{{ r.lg_name }}{% if r.lg_name == 'MLB' %}: the AL and NL{% endif %} average, {{ r.season }}">{{ r.lg_label }}</td><td class="t muted">avg</td><td></td>{{ m.lg_cells(r.league, data.cols) }}</tr>{% endif %}
 {% endfor %}
 </tbody>
 {% if span %}{% set sp = span_rows.get(kind) %}
-<tbody><tr class="total spanrow fixed"><td class="t">{{ span[0] }}{% if span[1] != span[0] %}&ndash;{{ span[1] }}{% endif %}</td><td class="t muted">{% if sp %}{{ sp.n }} season{{ 's' if sp.n != 1 }}{% else %}None{% endif %} &middot; <a href="{{ url_with(**{'from': None, 'to': None, 'pseason': None}) }}#t-{{ kind }}">Clear</a></td><td></td>{% if sp %}{{ m.cells(sp['values'], data.cols, fails={} if sp.qualified else {'q': 'Not qualified over the span'}) }}{% else %}{% for c in data.cols %}<td></td>{% endfor %}{% endif %}</tr></tbody>
+<tbody><tr class="total spanrow fixed"><td class="t">{{ span[0] }}{% if span[1] != span[0] %}&ndash;{{ span[1] }}{% endif %}</td><td class="t muted">{% if sp %}{{ sp.n }} season{{ 's' if sp.n != 1 }}{% else %}None{% endif %} &middot; <a href="{{ url_with(**{'from': None, 'to': None, 'pseason': None}) }}#t-{{ kind }}">Clear</a></td><td></td>{% if sp %}{{ m.cells(sp['values'], data.cols, fails={} if sp.qualified else {'q': 'Not qualified over the span'}) }}{% else %}{% for c in data.cols %}<td></td>{% endfor %}{% endif %}</tr>
+{% if sp and sp.league %}<tr class="lgrow fixed"><td class="t" title="The league over the same seasons">{{ data.lg_label }}</td><td class="t muted">same seasons</td><td></td>{{ m.lg_cells(sp.league, data.cols) }}</tr>{% endif %}</tbody>
 {% endif %}
 {% if data.career and data.rows|length > 1 %}
-<tbody><tr class="total fixed"><td class="t">Career</td><td class="t muted">{{ data.rows|length }} seasons</td><td></td>{{ m.cells(data.career, data.cols) }}</tr></tbody>
+<tbody><tr class="total fixed"><td class="t">Career</td><td class="t muted">{{ data.rows|length }} seasons</td><td></td>{{ m.cells(data.career, data.cols) }}</tr>
+{% if data.league %}<tr class="lgrow fixed"><td class="t" title="The league over the seasons he played, added up like his career">{{ data.lg_label }}</td><td class="t muted">same seasons</td><td></td>{{ m.lg_cells(data.league, data.cols) }}</tr>{% endif %}</tbody>
+{% elif data.league and data.rows|length == 1 %}
+<tbody><tr class="lgrow fixed"><td class="t" title="{{ data.rows[0].lg_name }} average, {{ data.rows[0].season }}">{{ data.lg_label }}</td><td class="t muted">avg</td><td></td>{{ m.lg_cells(data.league, data.cols) }}</tr></tbody>
 {% endif %}
 </table>
 </div>

@@ -30,18 +30,20 @@ from pathlib import Path
 
 import numpy as np
 
-from . import aggregate, bwar, catalog, teams
+from . import aggregate, bwar, catalog, savant, teams
 from .text import search_key
 
 log = logging.getLogger("build")
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 SOURCES = {
     "bat": "all_batting_stats", "pit": "all_pitching_stats",
     "tbat": "team_batting", "tpit": "team_pitching",
     "sbat": "stints_batting", "spit": "stints_pitching",
 }
 NOTATION_IP = ("IP", "Start-IP", "Relief-IP")
-INTERNAL = ("TG", "ERlg", "bER")   # stored but not offered as a stat (ERlg, bER: ERA+'s parts)
+# Stored but not offered as stats: TG, ERA+'s parts (ERlg, bER) and the Baseball
+# Savant counts its rates are rebuilt from.
+INTERNAL = ("TG", "ERlg", "bER") + savant.PARTS
 
 
 def pack(values: np.ndarray) -> bytes:
@@ -115,9 +117,11 @@ def _int(text):
 
 _REBUILD_PARTS = {
     False: ("PA", "AB", "H", "1B", "2B", "3B", "HR", "BB", "HBP", "SF", "SO",
-            "AVG", "OBP", "SLG", "OPS", "ISO", "BABIP", "K%", "BB%", "BB/K"),
+            "AVG", "OBP", "SLG", "OPS", "ISO", "BABIP", "K%", "BB%", "BB/K", "Barrels", "Barrel/PA")
+    + savant.PARTS + savant.SHOWN + savant.PITCHER_SHOWN,
     True: ("IP", "TBF", "ER", "H", "HR", "BB", "SO", "ERA", "WHIP", "K/9", "BB/9", "HR/9", "H/9",
-           "K%", "BB%", "K-BB%", "K/BB", "ERlg", "bER", "ERA+"),
+           "K%", "BB%", "K-BB%", "K/BB", "ERlg", "bER", "ERA+", "Barrels", "Barrel/PA")
+    + savant.PARTS + savant.SHOWN + savant.PITCHER_SHOWN,
 }
 
 
@@ -207,10 +211,64 @@ def _team_era_plus(con, era_parts, traded, stint_parts, cover: float = 0.95) -> 
             con.execute("INSERT OR REPLACE INTO cols VALUES (?,?,?,?)", ("tpit", season, stat, pack(values)))
 
 
-def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | None = None) -> dict:
+def _league_rows(con, sv) -> int:
+    """League averages for every season, one row per league group (the AL and NL
+    together as "MLB", plus "AL" and "NL" alone, and every other league): the
+    league's clubs added up like any roster, so rates are the league's own
+    (FanGraphs team files), and Baseball Savant's stats from every player's counts
+    (MLB only, 2015 on). Index stats (wRC+, ERA-, ERA+, ...) are 100 by definition."""
+    written = 0
+    for base, tkind in (("bat", "tbat"), ("pit", "tpit")):
+        pitching = base == "pit"
+        lkind = "l" + base
+        seasons = [s for (s,) in con.execute("SELECT DISTINCT season FROM rows WHERE kind = ? ORDER BY season", (tkind,))]
+        for season in seasons:
+            clubs = [t for (t,) in con.execute("SELECT team FROM rows WHERE kind = ? AND season = ? ORDER BY i",
+                                               (tkind, season))]
+            cols = {stat: unpack(blob).astype(np.float64)
+                    for stat, blob in con.execute("SELECT stat, data FROM cols WHERE kind = ? AND season = ?",
+                                                  (tkind, season))}
+            if not clubs or not cols:
+                continue
+            group = [teams.league_group(c, season) for c in clubs]
+            league = [teams.league(c, season) for c in clubs]
+            # Each club once in its group, and AL and NL clubs once more in their own league.
+            keys, picks = [], []
+            for i, g in enumerate(group):
+                keys.append(g); picks.append(i)
+                if g == "MLB" and league[i] in ("AL", "NL"):
+                    keys.append(league[i]); picks.append(i)
+            idx = np.array(picks)
+            uniq, _first, agg = aggregate.group_rows(np.array(keys), {k: v[idx] for k, v in cols.items()}, pitching)
+            labels = [str(u) for u in uniq]
+            parts = sv.league_parts(base, season) if sv is not None else None
+            if parts and "MLB" in labels:
+                j = labels.index("MLB")
+                for k, v in parts.items():
+                    agg.setdefault(k, np.full(len(labels), np.nan))[j] = v
+                shown = savant.rates({k: np.array([v]) for k, v in parts.items()}, pitching)
+                for k in savant.SHOWN + savant.PITCHER_SHOWN:
+                    if k in shown:
+                        agg.setdefault(k, np.full(len(labels), np.nan))[j] = shown[k][0]
+            for stat in list(agg):
+                if (stat.endswith(("+", "-")) and stat not in ("+WPA", "-WPA")):
+                    agg[stat] = np.where(np.isnan(agg[stat]), np.nan, 100.0)
+            con.executemany("INSERT INTO rows VALUES (?,?,?,?,?,?,?,?,?)", [
+                (lkind, season, i, None, label, None, None, None, None) for i, label in enumerate(labels)])
+            con.executemany("INSERT INTO cols VALUES (?,?,?,?)", [
+                (lkind, season, stat, pack(np.asarray(values, dtype=np.float32))) for stat, values in agg.items()
+                if not np.isnan(np.asarray(values, dtype=np.float64)).all()])
+            written += len(labels)
+    return written
+
+
+def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | None = None,
+          savant_root: Path | None = None) -> dict:
     started = time.time()
     # Baseball-Reference WAR files live beside the database (pipeline/bwar.py).
     bw = bwar.BWar(bwar_root if bwar_root is not None else output / "bwar")
+    # Baseball Savant season files, also beside the database (pipeline/savant.py).
+    sv = savant.Savant(savant_root if savant_root is not None else output / "savant")
     output.mkdir(parents=True, exist_ok=True)
     tmp = output / "baseball.sqlite.tmp"
     if tmp.exists():
@@ -268,6 +326,16 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
             for stat, values in extra.items():
                 if not np.isnan(values).all():
                     columns[stat] = values
+            if kind in ("bat", "pit") and sv.loaded:
+                for stat, values in sv.season_columns(kind, season, ident).items():
+                    if not np.isnan(values).all():
+                        columns[stat] = values
+            per = "TBF" if kind in ("pit", "spit", "tpit") else "PA"
+            if "Barrels" in columns and per in columns:
+                denominator = columns[per]
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    columns["Barrel/PA"] = np.where(denominator > 0, columns["Barrels"] / np.where(denominator > 0, denominator, 1),
+                                                    np.nan).astype(np.float32)
             if "ERlg" in columns and "bER" in columns:
                 columns["ERA+"] = bwar.era_plus(columns["ERlg"], columns["bER"]).astype(np.float32)
                 _collect_era_parts(kind, season, ident, columns, era_parts, traded, stint_parts)
@@ -326,6 +394,7 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
                             t[(kind, stat)] = int(round(columns[stat][i]))
             del ident, columns
     _team_era_plus(con, era_parts, traded, stint_parts)
+    league_rows = _league_rows(con, sv if sv.loaded else None)
     if hundred:
         log.info("percent columns stored as 0-100: %s", sorted(s for _, s in hundred))
     # Careers (season 0), one stat at a time from the stored columns.

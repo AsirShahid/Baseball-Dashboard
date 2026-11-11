@@ -342,3 +342,11 @@ a.game:hover { border-color: #3a475d; color: inherit; }
 .stats tr.spanrow td { background: rgba(249, 115, 22, 0.12); font-weight: 650; border-top: 1px solid var(--accent); }
 .spanbar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 12px; max-width: calc(100% - 24px); padding: 10px 12px 10px 16px; border-radius: 12px; border: 1px solid var(--accent); background: var(--surface); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); font-size: 14px; }
 .spanbar[hidden] { display: none; }
+
+/* League-average rows (rates only), in the style of Baseball Savant's MLB row */
+.stats tr.lgrow td { color: var(--muted); font-style: italic; font-size: 12px; background: rgba(148, 163, 184, 0.06); }
+.stats tr.lgrow td:first-child { font-style: normal; font-weight: 600; letter-spacing: 0.02em; }
+.stats tbody.lgbody tr.lgrow td { border-bottom: 1px solid var(--line); }
+.stats tr.lgrow.every { display: none; }
+.stats.lg-every tr.lgrow.every { display: table-row; }
+.lgtoggle { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 13px; color: var(--dim); cursor: pointer; }
