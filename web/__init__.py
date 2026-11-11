@@ -100,6 +100,17 @@ def create_app(data_root=None) -> Flask:
         response = send_from_directory(T.LOGO_DIR, name, max_age=86400 * 30)
         return response
 
+    from . import pwa
+    pwa.register(
+        app, site="Baseball", description="MLB stats since 1871, from FanGraphs.",
+        pages=["site.home", "site.standings", "site.players", "site.teams", "site.compare",
+               "site.chart", "site.about"],
+        favorite_page="/team/{favorite}",
+        shortcuts=[("Standings", "/standings"), ("Players", "/players"), ("Charts", "/chart"),
+                   ("My team", "/team/{favorite}")],
+        image_paths=["/logos/"], image_hosts=["img.mlbstatic.com"], data_paths=["/api/chart"],
+    )
+
     @app.context_processor
     def shared():
         if not db.available():

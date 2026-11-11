@@ -282,3 +282,46 @@
     });
   });
 })();
+
+// Home-screen app and offline use (web/sw.js). A page served from the offline copy
+// has data-saved on <html>; say so at the top. In the installed app, coming back after
+// 15+ minutes reloads the page so scores and standings are current.
+(function () {
+  "use strict";
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").then(function () {
+      return navigator.serviceWorker.ready;
+    }).then(function (registration) {
+      if (navigator.onLine && registration.active) registration.active.postMessage("warm");
+    }).catch(function () { /* signed out or private mode: the site still works online */ });
+  }
+  var standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+  if (standalone && navigator.storage && navigator.storage.persist) {
+    navigator.storage.persisted().then(function (yes) { if (!yes) navigator.storage.persist(); })
+      .catch(function () {});
+  }
+
+  var saved = document.documentElement.getAttribute("data-saved");
+  var main = document.querySelector("main.page");
+  if (saved && main) {
+    var when = new Date(saved), note = document.createElement("div"), again = document.createElement("a");
+    note.className = "note offline-note";
+    note.setAttribute("role", "status");
+    note.textContent = "Offline: saved copy from " + (isNaN(when) ? "earlier" : when.toLocaleString([], {
+      weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+    })) + ". ";
+    again.href = window.location.href;
+    again.textContent = navigator.onLine ? "Try again" : "Reload when back online";
+    note.appendChild(again);
+    main.insertBefore(note, main.firstChild);
+    window.addEventListener("online", function () { again.textContent = "Back online: reload"; });
+  }
+
+  if (standalone) {
+    var hiddenAt = 0;
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) { hiddenAt = Date.now(); return; }
+      if (hiddenAt && Date.now() - hiddenAt > 15 * 60 * 1000 && navigator.onLine) window.location.reload();
+    });
+  }
+})();

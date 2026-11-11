@@ -635,3 +635,33 @@ def test_league_filter_counts_only_play_in_that_league(app, client):
         assert math.isclose(float(np.nansum(nl_t.cols["PA"])), float(np.nansum(nl_teams.cols["PA"])), rel_tol=0.002)
     assert "NL play only" in page(client, "/players?league=NL")
     assert "NL seasons only" in page(client, "/teams?league=NL&season=1955&to=2024")
+
+
+# ---------------------------------------------------------------- home-screen app
+
+
+def test_installable_and_ready_for_offline(client):
+    import json
+    html = client.get("/").get_data(as_text=True)
+    assert '<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">' in html
+    assert 'rel="apple-touch-icon"' in html
+    manifest = client.get("/manifest.webmanifest")
+    assert manifest.mimetype == "application/manifest+json"
+    body = json.loads(manifest.get_data(as_text=True))
+    assert (body["id"], body["start_url"], body["scope"], body["display"]) == ("/", "/", "/", "standalone")
+    assert {icon["purpose"] for icon in body["icons"]} == {"any", "maskable"}
+    for icon in body["icons"] + [s["icons"][0] for s in body["shortcuts"]]:
+        assert client.get(icon["src"]).status_code == 200, icon["src"]
+    for shortcut in body["shortcuts"]:
+        assert client.get(shortcut["url"]).status_code == 200, shortcut["url"]
+    worker = client.get("/sw.js")
+    assert worker.mimetype == "application/javascript"
+    assert worker.headers["Cache-Control"] == "no-cache"
+    first, rest = worker.get_data(as_text=True).split("\n", 1)
+    assert first.startswith("const CONFIG = ") and first.endswith(";")
+    config = json.loads(first[len("const CONFIG = "):-1])
+    assert config["pages"][0] == "/" and "/team/NYY" in config["pages"]
+    assert config["css"] in config["static"] and all("?v=" in url for url in config["static"])
+    assert "self.addEventListener(\"fetch\"" in rest
+    for url in config["static"] + config["pages"]:
+        assert client.get(url).status_code == 200, url

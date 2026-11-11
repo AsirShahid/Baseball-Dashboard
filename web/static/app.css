@@ -417,3 +417,7 @@ sup.cov { color: var(--accent); font-size: 9px; margin-left: 1px; vertical-align
 }
 .stats tbody tr:hover td.name { background: var(--raised); }
 .stats th.name { font-weight: 600; z-index: 2; }   /* set by app.js on the header above a pinned column */
+
+/* Offline copy banner (app.js, web/sw.js) */
+.offline-note { margin: 0 0 14px; }
+.offline-note a { color: var(--accent); }
