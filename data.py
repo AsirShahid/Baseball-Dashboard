@@ -87,10 +87,12 @@ PRIORITY_COLS = ["WAR", "wRC+", "SIERA"]
 # most recent identity as the fallback when no season is in play.
 NL_TEAMS = {"ARI", "ATL", "CHC", "CIN", "COL", "LAD", "MIA", "MIL",
             "NYM", "PHI", "PIT", "SDP", "SFG", "STL",
-            "BRO", "BSN", "NYG", "MON", "FLA", "WSN", "CHI", "LOU"}
+            "BRO", "BSN", "NYG", "MON", "FLA", "WSN", "CHI", "LOU",
+            "MLN", "CI76", "CL79", "DE81", "MI78", "WA86"}
 AL_TEAMS = {"BAL", "BOS", "CHW", "CLE", "DET", "HOU", "LAA", "KCR",
             "MIN", "NYY", "OAK", "ATH", "SEA", "TBR", "TEX", "TOR",
-            "ANA", "CAL", "KCA", "NYH", "PHA", "SLB", "TBD", "WAS"}
+            "ANA", "CAL", "KCA", "NYH", "PHA", "SLB", "TBD", "WAS",
+            "MLA", "SEP", "WSH", "WSA", "BLA"}
 
 # Franchises whose league changed while keeping the same FanGraphs code.
 # Entries are (first, last, league) with inclusive bounds; None = open-ended;
@@ -104,6 +106,14 @@ _LEAGUE_ERAS = {
     "WAS": ((1901, 1971, "AL"), (None, 1899, "NL")),
     # 1890s NL Orioles; the 1880s club was American Association (neither).
     "BAL": ((1892, 1899, "NL"), (None, 1891, None), (1901, None, "AL")),
+    # Split-off 19th-century clubs (_TEAM_IDENTITY) that moved between the
+    # NA / AA / UA (neither) and the NL.
+    "BA82": ((1892, 1899, "NL"), (None, None, None)),
+    "CL87": ((1889, 1899, "NL"), (None, None, None)),
+    "SL75": ((1876, 1877, "NL"), (None, None, None)),
+    "SL84": ((1885, 1886, "NL"), (None, None, None)),
+    "NY71": ((1876, 1876, "NL"), (None, None, None)),
+    "WA91": ((1892, 1899, "NL"), (None, None, None)),
 }
 
 
@@ -123,6 +133,62 @@ def team_league(team: str, year=None):
 # doesn't say which teams, so league filters treat these players as possibly
 # either league rather than silently dropping them.
 MULTI_TEAM = "- - -"
+
+
+# FanGraphs reuses some team codes for different franchises; its teamid tells
+# them apart. Without this split the 1957 Milwaukee Braves were drawn with the
+# Brewers logo and named "Milwaukee Brewers", the 1969 Pilots got the Mariners
+# logo, the 1890 Cleveland Spiders the Guardians', and range views merged each
+# pair into one team (in 1884 two different clubs were both "STL" and "BAL").
+# Rows are recoded at load time; codes are kept to 3–4 characters so they fit
+# the team chips. Generated 19th-century names are city + years (the data has
+# no nicknames).
+_TEAM_IDENTITY = {
+    # code, FanGraphs teamid → identity code
+    ("MIL", 16): "MLN",   ("MIL", 2): "MLA",    ("SEA", 23): "SEP",
+    ("WAS", 8): "WSH",    ("WAS", 13): "WSA",   ("BAL", 9): "BLA",
+    ("BAL", 1005): "BA72", ("BAL", 1006): "BA82", ("BAL", 1008): "BA84",
+    ("BAL", 1007): "BA14", ("CIN", 1028): "CI76", ("CLE", 1020): "CL71",
+    ("CLE", 1018): "CL79", ("CLE", 1026): "CL87", ("COL", 1017): "CO83",
+    ("COL", 1025): "CO89", ("DET", 1031): "DE81", ("MIL", 1048): "MI78",
+    ("MIL", 1049): "MI84", ("MIL", 1047): "MI91", ("NYM", 1053): "NY71",
+    ("NYM", 1055): "NY83", ("STL", 1070): "SL75", ("STL", 1072): "SL84",
+    ("WAS", 1087): "WA86", ("WAS", 1082): "WA91", ("WSN", 1050): "WS72",
+    ("WSN", 1083): "WS73", ("WSN", 1090): "WS84", ("PHA", 1060): "PH82",
+    ("PHA", 1062): "PH91",
+}
+_IDENTITY_CODES = frozenset(c for c, _ in _TEAM_IDENTITY)
+# (years, city) for the generated codes → "Cleveland (1887–1899)".
+_IDENTITY_NAMES = {
+    "BA72": ("Baltimore", 1872, 1874), "BA82": ("Baltimore", 1882, 1899),
+    "BA84": ("Baltimore", 1884, 1884), "BA14": ("Baltimore", 1914, 1915),
+    "CI76": ("Cincinnati", 1876, 1880), "CL71": ("Cleveland", 1871, 1872),
+    "CL79": ("Cleveland", 1879, 1884), "CL87": ("Cleveland", 1887, 1899),
+    "CO83": ("Columbus", 1883, 1884), "CO89": ("Columbus", 1889, 1891),
+    "DE81": ("Detroit", 1881, 1888), "MI78": ("Milwaukee", 1878, 1878),
+    "MI84": ("Milwaukee", 1884, 1884), "MI91": ("Milwaukee", 1891, 1891),
+    "NY71": ("New York", 1871, 1876), "NY83": ("New York", 1883, 1887),
+    "SL75": ("St. Louis", 1875, 1877), "SL84": ("St. Louis", 1884, 1886),
+    "WA86": ("Washington", 1886, 1889), "WA91": ("Washington", 1891, 1899),
+    "WS72": ("Washington", 1872, 1872), "WS73": ("Washington", 1873, 1873),
+    "WS84": ("Washington", 1884, 1884), "PH82": ("Philadelphia", 1882, 1890),
+    "PH91": ("Philadelphia", 1891, 1891),
+}
+
+
+def apply_team_identity(df: pd.DataFrame) -> pd.DataFrame:
+    """Recode Team where FanGraphs' code is shared by several franchises
+    (see _TEAM_IDENTITY). Needs the teamid column; a no-op without it."""
+    if "Team" not in df.columns or "teamid" not in df.columns or df.empty:
+        return df
+    m = df["Team"].isin(_IDENTITY_CODES)
+    if not m.any():
+        return df
+    tid = pd.to_numeric(df.loc[m, "teamid"], errors="coerce")
+    new = [_TEAM_IDENTITY.get((t, int(i)), t) if i == i else t
+           for t, i in zip(df.loc[m, "Team"], tid)]
+    df.loc[m, "Team"] = new
+    return df
 
 
 def team_display(code, full: bool = False) -> str:
@@ -145,6 +211,15 @@ TEAM_LOGO_MAP = {
     "HOU": "astros",   "LAD": "dodgers",  "MIL": "brewers",   "WSN": "nationals",
     "NYM": "mets",     "PHI": "phillies", "PIT": "pirates",   "STL": "cardinals",
     "SDP": "padres",   "SFG": "giants",   "ATH": "athletics",
+    # Former identities: period logos from Wikipedia's club articles, the
+    # Florida Marlins (1993) and Devil Rays (2001) primaries from
+    # sportslogos.net. Boston/Milwaukee Braves use their cap insignia, not the
+    # Native American caricature primaries.
+    "MON": "expos",     "FLA": "flmarlins", "TBD": "devilrays",
+    "CAL": "calangels", "ANA": "anaangels", "KCA": "kcathletics",
+    "PHA": "phathletics","SLB": "browns",   "SEP": "pilots",
+    "WSH": "senators",  "WSA": "senators2", "MLN": "milbraves",
+    "BSN": "bosbraves", "BRO": "brododgers","NYG": "nygiants",
 }
 
 # Import-time snapshot used only to seed the first layout paint; callbacks that
@@ -212,6 +287,11 @@ TEAM_COLORS = {
     "PHI": "#E81828", "PIT": "#FDB827", "SDP": "#2F241D", "SEA": "#0C2C56",
     "SFG": "#FD5A1E", "STL": "#C41E3A", "TBR": "#092C5C", "TEX": "#003278",
     "TOR": "#134A8E", "WAS": "#AB0003", "WSN": "#AB0003", "ATH": "#003831",
+    "MON": "#003087", "FLA": "#00A3AD", "TBD": "#00573F", "CAL": "#BA0021",
+    "ANA": "#BA0021", "KCA": "#006341", "PHA": "#003087", "SLB": "#6E3B1E",
+    "SEP": "#002D72", "WSH": "#AB0003", "WSA": "#AB0003", "MLN": "#13274F",
+    "BSN": "#13274F", "BRO": "#005A9C", "NYG": "#FD5A1E", "NYH": "#0C2340",
+    "MLA": "#12284B", "BLA": "#DF4601",
 }
 
 # Secondary brand colors — used for the detail-panel header gradient.
@@ -224,6 +304,11 @@ TEAM_COLOR_ALT = {
     "PHI": "#002D72", "PIT": "#FDB827", "SDP": "#FFC425", "SEA": "#005C5C",
     "SFG": "#27251F", "STL": "#0C2340", "TBR": "#8FBCE6", "TEX": "#C0111F",
     "TOR": "#1D2D5C", "WAS": "#14225A", "WSN": "#14225A", "ATH": "#EFB21E",
+    "MON": "#E4002B", "FLA": "#000000", "TBD": "#4B2E83", "CAL": "#003263",
+    "ANA": "#1D2D5C", "KCA": "#FFC52F", "PHA": "#A2AAAD", "SLB": "#F47A00",
+    "SEP": "#FFC72C", "WSH": "#14225A", "WSA": "#14225A", "MLN": "#CE1141",
+    "BSN": "#CE1141", "BRO": "#EF3E42", "NYG": "#000000", "NYH": "#A2AAAD",
+    "MLA": "#FFC52F", "BLA": "#000000",
 }
 
 TEAM_FULL_NAME = {
@@ -243,6 +328,9 @@ TEAM_FULL_NAME = {
     "TBR": "Tampa Bay Rays",       "TEX": "Texas Rangers",
     "TOR": "Toronto Blue Jays",    "WSN": "Washington Nationals",
     "WAS": "Washington Senators",  "ATH": "Athletics",
+    "MLN": "Milwaukee Braves",     "SEP": "Seattle Pilots",
+    "WSH": "Washington Senators",  "WSA": "Washington Senators (1961–71)",
+    "MLA": "Milwaukee Brewers (1901)", "BLA": "Baltimore Orioles (1901–02)",
     # Former MLB identities that FanGraphs keeps under their own codes.
     "BSN": "Boston Braves",        "BRO": "Brooklyn Dodgers",
     "NYG": "New York Giants",      "NYH": "New York Highlanders",
@@ -269,6 +357,10 @@ TEAM_FULL_NAME = {
     "AC":  "Bacharach Giants",     "BRG": "Brooklyn Royal Giants",
     "HBG": "Harrisburg Giants",    "NEG": "Nashville Elite Giants",
 }
+
+TEAM_FULL_NAME.update({
+    code: f"{city} ({lo})" if lo == hi else f"{city} ({lo}–{hi})"
+    for code, (city, lo, hi) in _IDENTITY_NAMES.items()})
 
 TEAM_DIVISION = {
     "ARI": "NL West",   "ATL": "NL East",  "BAL": "AL East",   "BOS": "AL East",
@@ -644,14 +736,15 @@ def load_csv(path: str, fetch: bool = True, copy: bool = True,
             cached = _CSV_CACHE.get(path)
             if cached and cached[0] == mtime:
                 return cached[1].copy() if copy else cached[1]
-            df = _float32(_normalize_ids(strip_html(pd.read_csv(path))))
+            df = _float32(apply_team_identity(
+                _normalize_ids(strip_html(pd.read_csv(path)))))
             if not df.empty and cache:
                 _csv_cache_put(path, mtime, df)
                 return df.copy() if copy else df
             return df
         if not fetch:
             return pd.DataFrame()
-        return _normalize_ids(strip_html(_live_fetch(path)))
+        return apply_team_identity(_normalize_ids(strip_html(_live_fetch(path))))
     except Exception as exc:
         logging.warning("load_csv failed for %s: %s", path, exc)
         return pd.DataFrame()
@@ -1003,7 +1096,7 @@ def _disk_put(kind: str, key, df: pd.DataFrame) -> None:
 # Light per-season index: just the columns needed to decide who is in a
 # player pool (id, playing time, games, team). Reading these for 156 seasons is
 # a few MB, versus ~465 MB for the full all-players history.
-_INDEX_COLS = frozenset({"IDfg", "playerid", "PA", "IP", "G", "GS", "Team"})
+_INDEX_COLS = frozenset({"IDfg", "playerid", "PA", "IP", "G", "GS", "Team", "teamid"})
 _INDEX: dict = {}
 
 
@@ -1024,7 +1117,8 @@ def _season_index(path) -> pd.DataFrame:
             if cached:
                 df = cached[1][[c for c in cached[1].columns if c in _INDEX_COLS]].copy()
             else:
-                df = pd.read_csv(path, usecols=lambda c: c in _INDEX_COLS)
+                df = apply_team_identity(
+                    pd.read_csv(path, usecols=lambda c: c in _INDEX_COLS))
             df = _normalize_ids(df)
         except Exception as exc:
             logging.warning("index read failed for %s: %s", path, exc)

@@ -174,6 +174,30 @@ be typed in and is kept in the share link. How it applies:
 A line under the control states the rule in effect and how many players it
 leaves.
 
+## Team identities and logos
+
+FanGraphs reuses some team codes for different franchises and tells them apart
+only by `teamid`. `apply_team_identity` (data.py) recodes those rows at load
+time, so each franchise is its own team, with its own logo and name, in
+single seasons and in ranges:
+
+- `MIL` → `MLN` Milwaukee Braves (1953–65) and `MLA` Milwaukee Brewers (1901);
+  `SEA` → `SEP` Seattle Pilots (1969); `WAS` → `WSH` Senators (1901–60) and
+  `WSA` Senators (1961–71); `BAL` → `BLA` Orioles (1901–02).
+- 19th-century clubs that share a modern code get 4-character codes named by
+  city and years, e.g. `CL87` Cleveland (1887–1899), `SL84` St. Louis
+  (1884–1886).
+
+Logos: the 30 current clubs plus 15 former identities (Expos, Florida Marlins,
+Devil Rays, California and Anaheim Angels, Kansas City and Philadelphia A's,
+Browns, Pilots, both Senators, Milwaukee and Boston Braves, Brooklyn Dodgers,
+New York Giants), from Wikipedia's club articles except the Florida Marlins and
+Devil Rays (sportslogos.net). The Braves clubs use cap insignia rather than
+their Native American caricature primaries; Brooklyn and the Giants use cap
+logos because their script primaries are unreadable on the dark theme. Any
+other team (pre-1901 clubs, Negro League and Federal League teams) is drawn as
+a chip with its code in logo mode.
+
 ## Data sources
 
 Stats are sourced from [FanGraphs](https://www.fangraphs.com/) via [pybaseball](https://pypi.org/project/pybaseball/). Charts are built with [Plotly](https://plotly.com/python/) inside a [Dash](https://dash.plotly.com/) app.

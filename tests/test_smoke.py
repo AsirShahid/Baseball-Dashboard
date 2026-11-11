@@ -527,8 +527,12 @@ def test_al_filter_1955_chart_includes_senators():
     fig, *_ = render_team(1955, False, "Batting", "Pitching", "WAR", "ERA",
                           False, False, False, "Batting", None, "dark", "AL")
     teams = set(fig.data[0].text)
-    assert "WAS" in teams and "KCA" in teams
-    assert "BRO" not in teams and "MIL" not in teams   # Braves were NL
+    # FanGraphs' WAS (teamid 8) is recoded WSH, its MIL (teamid 16) MLN.
+    assert "WSH" in teams and "KCA" in teams
+    assert "BRO" not in teams and "MLN" not in teams   # Braves were NL
+    nl = render_team(1955, False, "Batting", "Pitching", "WAR", "ERA",
+                     False, False, False, "Batting", None, "dark", "NL")[0]
+    assert "MLN" in set(nl.data[0].text) and "MIL" not in set(nl.data[0].text)
 
 
 # ── New-feature tests: id normalisation, era percentiles, trend, search,
@@ -1501,4 +1505,55 @@ def test_per_season_view_refuses_huge_pools(career_data, monkeypatch):
     # A cut that leaves few rows still plots, filtered season by season.
     ok = player_frame(2001, 2003, "Batters", 600, "Qualified", "All Teams", split=True)
     assert sorted(ok["IDfg"]) == [2, 2, 2]
+
+
+# ── Team identities and logos ────────────────────────────────────────────────
+
+def test_shared_codes_split_by_franchise(tmp_path):
+    """FanGraphs codes the 1957 Braves MIL and the 1969 Pilots SEA; teamid
+    tells them apart from the Brewers/Mariners (and 1890 Cleveland from the
+    Guardians)."""
+    from data import load_csv, TEAM_FULL_NAME, team_in_league
+    p = tmp_path / "1957.csv"
+    pd.DataFrame({"Team": ["MIL", "MIL", "SEA", "SEA", "CLE", "CLE", "WAS", "WAS", "NYY"],
+                  "teamid": [16, 23, 23, 11, 1026, 5, 8, 13, 9],
+                  "PA": [1, 2, 3, 4, 5, 6, 7, 8, 9]}).to_csv(p, index=False)
+    got = load_csv(str(p), fetch=False)["Team"].tolist()
+    assert got == ["MLN", "MIL", "SEP", "SEA", "CL87", "CLE", "WSH", "WSA", "NYY"]
+    assert TEAM_FULL_NAME["MLN"] == "Milwaukee Braves"
+    assert TEAM_FULL_NAME["SEP"] == "Seattle Pilots"
+    assert TEAM_FULL_NAME["CL87"] == "Cleveland (1887–1899)"
+    assert TEAM_FULL_NAME["MI78"] == "Milwaukee (1878)"
+    assert team_in_league("MLN", "NL", 1957) and team_in_league("SEP", "AL", 1969)
+    assert team_in_league("CL87", "NL", 1895) and not team_in_league("CL87", "NL", 1888)
+    assert not team_in_league("CL87", "AL", 1895)          # no AL before 1901
+
+
+def test_identity_needs_teamid():
+    """Frames without teamid (e.g. older caches) pass through unchanged."""
+    from data import apply_team_identity
+    df = pd.DataFrame({"Team": ["MIL"], "PA": [1]})
+    assert apply_team_identity(df.copy())["Team"].tolist() == ["MIL"]
+
+
+def test_every_mapped_logo_loads():
+    from data import TEAM_LOGO_MAP, logo_b64, logo_aspect
+    missing = [c for c in TEAM_LOGO_MAP if not logo_b64(c)]
+    assert not missing, missing
+    for c in ("MON", "FLA", "TBD", "CAL", "ANA", "MLN", "SEP", "WSH", "WSA", "BRO", "NYG"):
+        assert logo_aspect(c) and 0.4 < logo_aspect(c) < 2.5, c
+
+
+def test_team_without_logo_gets_badge(monkeypatch):
+    """Logo mode used to give logo-less teams only an invisible hit target, so
+    the Expos, Devil Rays, Negro League clubs etc. vanished from the chart."""
+    import charts
+    from charts import render_team
+    real = charts.logo_b64
+    monkeypatch.setattr(charts, "logo_b64", lambda t: None if t == "LAD" else real(t))
+    fig, *_ = render_team(SEASON, True, "Batting", "Pitching", "wRC+", "ERA",
+                          True, True, False, "Batting", None)
+    badges = [tr for tr in fig.data if tr.mode == "markers+text" and tr.hoverinfo == "skip"]
+    assert len(badges) == 1 and list(badges[0].text) == ["LAD"]
+    assert len(fig.layout.images) == 29
 

@@ -16,6 +16,9 @@ from data import (
     season_row_count,
 )
 
+# Chip color for teams with neither a logo nor a brand color.
+BADGE_FALLBACK = "#4a5468"
+
 # Most player-seasons the per-season view will plot. 1871–2026 at Min PA 0 is
 # ~109,000 — unreadable as a scatter and ~0.5 GB to build.
 MAX_SEASON_POINTS = 40_000
@@ -445,6 +448,22 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         x_lo, x_hi = x_min - x_pad, x_max + x_pad
         y_lo, y_hi = y_min - y_pad, y_max + y_pad
         images = []
+        # Teams with no logo (most pre-1961 clubs, Negro League and Federal
+        # League teams) get a chip with their code, like the leaderboard's,
+        # instead of the invisible hit target alone (they used to vanish).
+        bare = [(t, xv, yv) for t, xv, yv in zip(teams, x_vals, y_vals)
+                if not logo_b64(str(t))]
+        if bare:
+            fig.add_trace(go.Scatter(
+                x=[b[1] for b in bare], y=[b[2] for b in bare],
+                mode="markers+text", hoverinfo="skip",
+                text=[str(b[0]) for b in bare], textposition="middle center",
+                textfont=dict(size=9, color="#ffffff", family="Geist Mono, monospace"),
+                marker=dict(symbol="square",
+                            size=[22 if len(str(b[0])) <= 3 else 27 for b in bare],
+                            color=[TEAM_COLORS.get(str(b[0]), BADGE_FALLBACK) for b in bare],
+                            line=dict(color=c["marker_line"], width=1)),
+            ))
         # Box (0.045 × 0.07 of the data range; was 0.07 × 0.11 until 2026-11-10,
         # which made the mid-pack cluster pile up) is tuned for a square logo. Size
         # each team's box to its logo's native aspect while holding the box
