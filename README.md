@@ -188,15 +188,38 @@ single seasons and in ranges:
   city and years, e.g. `CL87` Cleveland (1887–1899), `SL84` St. Louis
   (1884–1886).
 
-Logos: the 30 current clubs plus 15 former identities (Expos, Florida Marlins,
-Devil Rays, California and Anaheim Angels, Kansas City and Philadelphia A's,
-Browns, Pilots, both Senators, Milwaukee and Boston Braves, Brooklyn Dodgers,
-New York Giants), from Wikipedia's club articles except the Florida Marlins and
-Devil Rays (sportslogos.net). The Braves clubs use cap insignia rather than
-their Native American caricature primaries; Brooklyn and the Giants use cap
-logos because their script primaries are unreadable on the dark theme. Any
-other team (pre-1901 clubs, Negro League and Federal League teams) is drawn as
-a chip with its code in logo mode.
+Logos are dated: `Logos/eras/manifest.json` lists, per team code, each
+primary logo with the seasons it was used (`[first, last or null, file]`), from
+the sportslogos.net franchise histories, about 370 logos across all 30
+franchises and their former names. The chart picks the logo by season:
+
+- a single season shows that season's logo (1999 Devil Rays, 2010 Rays);
+- a range shows each club's logo from its last season inside the range, so
+  1900–2026 shows today's logos and the Expos their 2004 one;
+- the per-season view shows each point's own season;
+- the team panel uses the club's last season in the range (or the clicked
+  season).
+
+A season between two listed eras keeps the earlier logo. A season before a
+club's first documented logo (most 19th-century clubs; the Reds before 1890)
+gets no logo, and the chart draws a chip with the team code, as it does for
+Negro League and Federal League teams.
+
+Processing (`scratch` script, not in the repo): opaque white backgrounds are
+removed, including white trapped inside letters where it was background
+(reviewed logo by logo; white that is part of a design stays). Very dark
+navy/black logos get a thin light outline so they read on the dark theme.
+Where a club's primary was a Native American caricature (Cleveland 1928–2013,
+Atlanta 1966–86, the Milwaukee Braves, the Boston Braves' head logos), the
+chart shows the cap logo the club wore those seasons instead; for Boston
+1912–20 that is the previous "B". `TEAM_LOGO_MAP` (the original 45 logos) is
+only a fallback for codes missing from the manifest.
+
+Names follow the season the same way (`TEAM_NAME_ERAS`, `team_name`): the
+2021 Cleveland panel says Cleveland Indians, 1963 Houston the Colt .45s, 1938
+Boston the Bees; ranges use the club's name in its last season there. Tooling
+and decisions for the logo build are in `tools/logo_eras/`.
+
 
 ## Data sources
 

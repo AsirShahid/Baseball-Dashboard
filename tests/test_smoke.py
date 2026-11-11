@@ -1550,10 +1550,116 @@ def test_team_without_logo_gets_badge(monkeypatch):
     import charts
     from charts import render_team
     real = charts.logo_b64
-    monkeypatch.setattr(charts, "logo_b64", lambda t: None if t == "LAD" else real(t))
+    monkeypatch.setattr(charts, "logo_b64",
+                        lambda t, season=None: None if t == "LAD" else real(t, season))
     fig, *_ = render_team(SEASON, True, "Batting", "Pitching", "wRC+", "ERA",
                           True, True, False, "Batting", None)
     badges = [tr for tr in fig.data if tr.mode == "markers+text" and tr.hoverinfo == "skip"]
     assert len(badges) == 1 and list(badges[0].text) == ["LAD"]
     assert len(fig.layout.images) == 29
+
+
+# ── Dated logos (the logo a club used that season) ───────────────────────────
+
+def test_logo_follows_season():
+    from data import logo_path
+    assert logo_path("TBD", 1999) != logo_path("TBD", 2005)      # Devil Rays eras
+    assert logo_path("TBR", 2010) != logo_path("TBR", 2020)      # Rays 2008 / 2019
+    assert logo_path("CLE", 2021) != logo_path("CLE", 2022)      # Indians → Guardians
+    assert logo_path("MON", 1980) != logo_path("MON", 2000)
+    # Latest logo when no season is given, and after the last listed season.
+    assert logo_path("CLE", None) == logo_path("CLE", 2026) == logo_path("CLE", 2031)
+    # Before a club's first documented logo there is none (the chart draws the
+    # code chip); 1890 is the Reds' first.
+    assert logo_path("CIN", 1885) is None and logo_path("CIN", 1890) is not None
+    assert logo_path("BRO", 1890) is None
+
+
+def test_logo_manifest_files_load():
+    from data import TEAM_LOGO_ERAS, logo_b64, logo_aspect
+    assert len(TEAM_LOGO_ERAS) >= 50
+    for code, eras in TEAM_LOGO_ERAS.items():
+        firsts = [e[0] for e in eras]
+        assert firsts == sorted(firsts) and len(set(firsts)) == len(firsts), code
+        for first, _last, fn in eras:
+            assert logo_b64(code, first), (code, first, fn)
+            assert 0.2 < logo_aspect(code, first) < 5, (code, first)
+
+
+def test_caricature_eras_use_cap_logos():
+    """Cleveland 1928–2013, Atlanta 1966–86, the Milwaukee Braves and the
+    Boston Braves' Native American head logos are replaced by the cap logo the
+    club wore those seasons (or the previous logo carried forward)."""
+    from data import TEAM_LOGO_ERAS, logo_path
+
+    def started(code, lo, hi):
+        return [fn for a, _b, fn in TEAM_LOGO_ERAS[code] if lo <= a <= hi]
+    for code, lo, hi in (("CLE", 1928, 2013), ("ATL", 1966, 1986), ("MLN", 1953, 1965),
+                         ("BSN", 1912, 1920), ("BSN", 1929, 1935), ("BSN", 1945, 1952)):
+        assert all(fn.endswith("-cap.png") for fn in started(code, lo, hi)), (code, lo)
+    assert logo_path("BSN", 1915) == logo_path("BSN", 1911)
+    assert logo_path("CLE", 1990).name.endswith("-cap.png")
+
+
+def test_team_last_seasons():
+    from data import team_last_seasons
+    last = team_last_seasons(1955, 2024)
+    assert last["CLE"] == 2024 and last["BRO"] == 1955     # Brooklyn's last in range
+    assert team_last_seasons(2019, 2021)["CLE"] == 2021
+
+
+def test_team_chart_logo_season(monkeypatch):
+    """Single season → that season's logo; range → each club's last season in
+    the range; per-season view → each point's own season."""
+    import charts
+    seen = {}
+    real = charts.logo_b64
+
+    def spy(t, season=None):
+        seen.setdefault(t, set()).add(season)
+        return real(t, season)
+    monkeypatch.setattr(charts, "logo_b64", spy)
+    args = ("Batting", "Pitching", "wRC+", "ERA", True, True, False, "Batting", None)
+    charts.render_team(2021, True, *args)
+    assert seen["CLE"] == {2021}
+    seen.clear()
+    charts.render_team([2019, 2023], True, *args)
+    assert seen["CLE"] == {2023}
+    seen.clear()
+    charts.render_team([2019, 2023], True, *args, split=True)
+    assert seen["CLE"] == {2019, 2020, 2021, 2022, 2023}
+
+
+def test_team_panel_logo_season():
+    import json
+    import plotly
+    from components import detail_body
+    from data import logo_b64
+    body = json.dumps(detail_body("CLE", "2021 SEASON", 50, [], [], logo_season=2021),
+                      cls=plotly.utils.PlotlyJSONEncoder)
+    assert logo_b64("CLE", 2021) in body and logo_b64("CLE", 2022) not in body
+    assert "Cleveland Indians" in body and "Guardians" not in body
+
+
+def test_team_name_follows_season():
+    from data import team_name, team_display
+    assert team_name("CLE", 2021) == "Cleveland Indians"
+    assert team_name("CLE", 2022) == team_name("CLE") == "Cleveland Guardians"
+    assert team_name("CLE", 1910) == "Cleveland Naps"
+    assert team_name("HOU", 1963) == "Houston Colt .45s" and team_name("HOU", 1965) == "Houston Astros"
+    assert team_name("BSN", 1938) == "Boston Bees" and team_name("BRO", 1920) == "Brooklyn Robins"
+    assert team_display("CLE", full=True, season=1948) == "Cleveland Indians"
+    assert team_name("NYY", 1950) == "New York Yankees"        # unchanged codes
+
+
+def test_team_leaderboard_names_by_season():
+    from callbacks import _leaderboard_rows
+    args = ("Batting", "Pitching", "WAR", "ERA", None, None, "AL Central")
+    names = [r["name"] for r in _leaderboard_rows(2021, *args)[0]]
+    assert "Cleveland Indians" in names and not any("Guardians" in n for n in names)
+    names = [r["name"] for r in _leaderboard_rows([2019, 2023], *args)[0]]
+    assert "Cleveland Guardians" in names            # range → last season's name
+    names = [r["name"] for r in _leaderboard_rows([2019, 2023], *args, split="season")[0]]
+    cle = [n for n in names if "Cleveland" in n]
+    assert cle and all(("Indians" in n) == (n[:4] in ("2019", "2020", "2021")) for n in cle)
 

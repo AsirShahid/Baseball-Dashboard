@@ -10,7 +10,7 @@ from data import (
     config, current_year, opts, season_label, decade_marks, team_display,
     MIN_PA_LIST, MIN_IP_LIST, LEAGUE_FILTERS, threshold_options,
     TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS,
-    TEAM_COLORS, TEAM_COLOR_ALT, TEAM_FULL_NAME, TEAM_DIVISION, logo_b64,
+    TEAM_COLORS, TEAM_COLOR_ALT, TEAM_FULL_NAME, TEAM_DIVISION, logo_b64, team_name,
 )
 
 GRAPH_CONFIG = {
@@ -500,19 +500,21 @@ def _sparkline(values, w=200, h=56):
 
 
 def detail_body(team, span, composite, sparks, groups,
-                spark_title="5-YEAR TRAJECTORY", foot=None):
+                spark_title="5-YEAR TRAJECTORY", foot=None, logo_season=None):
     """Build the slide-in team detail panel. `span` is the seasons line
     ("2024 SEASON", or "1969–2004 · 36 SEASONS" for the team's own seasons in
     a range). sparks = [{label, values, years, last}];
-    groups = [{name, tiles:[...] }]. tiles = [{label, value, pct, ramp}]."""
+    groups = [{name, tiles:[...] }]. tiles = [{label, value, pct, ramp}].
+    logo_season picks the logo the club used then (latest when None)."""
     color = TEAM_COLORS.get(team, "#f5a524")
+    logo = logo_b64(team, logo_season)
     alt = TEAM_COLOR_ALT.get(team, "#0a0d12")
     head = html.Div(className="dt-head", style={
         "background": f"linear-gradient(135deg, {color} 0%, {alt} 100%)"}, children=[
         html.Div(className="dt-mono-big", children=[
-            html.Img(src=logo_b64(team) or "",
+            html.Img(src=logo,
                      style={"height": "72px", "width": "72px",
-                            "objectFit": "contain"}) if logo_b64(team)
+                            "objectFit": "contain"}) if logo
             else html.Div(team, className="lb-mono",
                           style={"background": color, "width": 56, "height": 56,
                                  "fontSize": 18}),
@@ -523,7 +525,7 @@ def detail_body(team, span, composite, sparks, groups,
             html.Div(" · ".join(p for p in (TEAM_DIVISION.get(team, ""),
                                             span) if p),
                      className="dt-eyebrow"),
-            html.H2(TEAM_FULL_NAME.get(team, team), className="dt-name"),
+            html.H2(team_name(team, logo_season), className="dt-name"),
             html.Div(className="dt-sub", children=[
                 "Overall ",
                 html.Span([str(composite),

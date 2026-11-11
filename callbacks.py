@@ -16,7 +16,7 @@ from data import (
     season_tag, fmt_stat, round_stats,
     process_columns,
     seasons_with_data, opts, stat_higher_better, team_in_league, decade_marks,
-    team_display, MULTI_TEAM, TEAM_COLORS,
+    team_display, team_name, team_last_seasons, MULTI_TEAM, TEAM_COLORS,
     TEAM_FULL_NAME, TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS, ramp_color,
 )
 from charts import (
@@ -200,7 +200,10 @@ def _player_facts(rows, prow, lo, hi, is_pitch, qualified=False):
         tw = tdf.groupby("t")["w"].sum().sort_values(ascending=False)
         if len(tw):
             team = tw.index[0]
-            label = team_display(team, full=True)
+            # The club's name in his last season there (Indians, not Guardians).
+            ts = rows.loc[rows["Team"].astype(str).str.strip() == team, "Season"]
+            label = team_display(team, full=True,
+                                 season=int(ts.max()) if len(ts) else hi)
             if len(tw) > 1:
                 label += f" +{len(tw) - 1} more"
             eyebrow.append(label)
@@ -381,10 +384,12 @@ def _leaderboard_rows(season, xt, yt, xs, ys, zt, zs, league="All Teams",
         key=lambda r: r["score"], reverse=True,
     )
     out = []
+    # Names as of the row's season, or the club's last season in the range.
+    last = team_last_seasons(lo, hi) if hi > lo else {}
     for i, r in enumerate(rows[:10]):
         pct = int(round(r["score"]))
         code, _, yr = r["team"].partition("|")
-        name = TEAM_FULL_NAME.get(code, code)
+        name = team_name(code, int(yr) if yr else last.get(code, hi))
         out.append({"rank": i + 1, "team": code, "ref": r["team"],
                     "name": f"{yr} {name}" if yr else name,
                     "pct": pct, "color": TEAM_COLORS.get(code, "#7d8590"),
@@ -1176,7 +1181,7 @@ def register_callbacks(app):
             # entity after the placeholder replaced its body.
             store = dict(store, n=time.time_ns())
             if label is None and store.get("type") == "team":
-                label = TEAM_FULL_NAME.get(store.get("team"), store.get("team"))
+                label = team_name(store.get("team"), store.get("season"))
             return {}, store, detail_loading(label)
 
         # Store {"type":"team","team":abbr} or {"type":"player","idfg":N};
@@ -1343,4 +1348,5 @@ def register_callbacks(app):
             spark_title = "5-YEAR TRAJECTORY"
             foot = None
         return detail_body(team, eyebrow, composite, sparks, groups,
-                           spark_title=spark_title, foot=foot)
+                           spark_title=spark_title, foot=foot,
+                           logo_season=seasons[-1] if seasons else hi)

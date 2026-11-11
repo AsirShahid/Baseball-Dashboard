@@ -12,7 +12,7 @@ from data import (
     season_bounds, season_label, season_tag, team_in_league,
     stat_d3, fmt_stat, stat_precision,
     TEAM_COLORS, MULTI_TEAM, PALETTE, RANK_COLORSCALE, SEASON_THRESHOLD_CAP,
-    logo_b64, logo_aspect, span_qualified_min, threshold_cohort,
+    logo_b64, logo_aspect, span_qualified_min, threshold_cohort, team_last_seasons,
     season_row_count,
 )
 
@@ -448,11 +448,21 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         x_lo, x_hi = x_min - x_pad, x_max + x_pad
         y_lo, y_hi = y_min - y_pad, y_max + y_pad
         images = []
-        # Teams with no logo (most pre-1961 clubs, Negro League and Federal
-        # League teams) get a chip with their code, like the leaderboard's,
+        # Each point's logo is the one the club used that season: its own
+        # season in the per-season view, its last season inside the range in
+        # a combined range (1900–2026 → today's logos, the Expos' 2004 one).
+        if split:
+            logo_yrs = merged["Season"].astype(int).tolist()
+        elif hi > lo:
+            last = team_last_seasons(lo, hi)
+            logo_yrs = [last.get(str(t), hi) for t in teams]
+        else:
+            logo_yrs = [hi] * len(teams)
+        # Teams with no logo that season (19th-century clubs before their
+        # first documented logo, Negro League and Federal League teams) get a chip with their code, like the leaderboard's,
         # instead of the invisible hit target alone (they used to vanish).
-        bare = [(t, xv, yv) for t, xv, yv in zip(teams, x_vals, y_vals)
-                if not logo_b64(str(t))]
+        bare = [(t, xv, yv) for t, xv, yv, ly in zip(teams, x_vals, y_vals, logo_yrs)
+                if not logo_b64(str(t), ly)]
         if bare:
             fig.add_trace(go.Scatter(
                 x=[b[1] for b in bare], y=[b[2] for b in bare],
@@ -470,11 +480,11 @@ def render_team(season, show_logos, x_type, y_type, x_stat, y_stat,
         # *area* constant, so banner-shaped logos (Braves, Reds) and tall ones
         # (Pirates, Angels) render with the same visible area as square ones
         # instead of getting letterboxed.
-        for team, xv, yv in zip(teams, x_vals, y_vals):
-            src = logo_b64(str(team))
+        for team, xv, yv, ly in zip(teams, x_vals, y_vals, logo_yrs):
+            src = logo_b64(str(team), ly)
             if src:
                 # Anchored in data coordinates so logos track zoom/pan.
-                k = (logo_aspect(str(team)) or 1.0) ** 0.5
+                k = (logo_aspect(str(team), ly) or 1.0) ** 0.5
                 images.append(dict(
                     source=src, xref="x", yref="y",
                     x=float(xv), y=float(yv),

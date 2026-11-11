@@ -191,14 +191,50 @@ def apply_team_identity(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def team_display(code, full: bool = False) -> str:
-    """Human label for a team code, handling the traded-player sentinel."""
+def team_display(code, full: bool = False, season=None) -> str:
+    """Human label for a team code, handling the traded-player sentinel.
+    With full=True and a season, the club's name that season (team_name)."""
     code = str(code or "").strip()
     if code == MULTI_TEAM:
         return "Multiple teams" if full else "2TM"
     if not code:
         return "—"
-    return TEAM_FULL_NAME.get(code, code) if full else code
+    return team_name(code, season) if full else code
+
+
+# Club names that changed under one team code: (first season, name), from the
+# sportslogos.net franchise histories behind the dated logos. Seasons before
+# the first entry, and codes not listed, use TEAM_FULL_NAME.
+TEAM_NAME_ERAS = {
+    "CLE": ((1901, "Cleveland Blues"), (1905, "Cleveland Naps"),
+            (1915, "Cleveland Indians"), (2022, "Cleveland Guardians")),
+    "HOU": ((1962, "Houston Colt .45s"), (1965, "Houston Astros")),
+    "BSN": ((1883, "Boston Beaneaters"), (1907, "Boston Doves"),
+            (1911, "Boston Rustlers"), (1912, "Boston Braves"),
+            (1936, "Boston Bees"), (1941, "Boston Braves")),
+    "BRO": ((1899, "Brooklyn Superbas"), (1911, "Brooklyn Dodgers"),
+            (1914, "Brooklyn Robins"), (1932, "Brooklyn Dodgers")),
+    "CHW": ((1901, "Chicago White Stockings"), (1904, "Chicago White Sox")),
+    "BOS": ((1901, "Boston Americans"), (1908, "Boston Red Sox")),
+}
+
+
+def team_name(code, season=None) -> str:
+    """The club's name in `season` (its current/last name when None)."""
+    code = str(code)
+    eras = TEAM_NAME_ERAS.get(code)
+    if eras and season is not None:
+        try:
+            season = int(season)
+        except (TypeError, ValueError):
+            season = None
+        pick = None
+        for first, name in eras:
+            if season is not None and first <= season:
+                pick = name
+        if pick:
+            return pick
+    return TEAM_FULL_NAME.get(code, code)
 
 # FanGraphs codes the Nationals WSN (all seasons) and the Athletics ATH from
 # 2025 (post-Oakland); OAK covers 1968–2024 and WAS is the old AL Senators.
@@ -1465,13 +1501,53 @@ def seasons_with_data(dir_key: str, stat: str) -> frozenset:
 _LOGO_SIZE = 160  # all logos normalised to this square (px) before encoding
 
 
-@functools.lru_cache(maxsize=64)
-def logo_b64(team: str) -> str | None:
-    """Logo as a PNG data URI, at native aspect (not padded to a square)."""
+# Dated logos. Logos/eras/manifest.json maps a team code to the primary logos
+# it used, oldest first: [[first season, last season or null, file], ...]
+# (files relative to Logos/). Sources: sportslogos.net primary-logo
+# histories; eras whose primary is a Native American caricature (Cleveland,
+# the Braves) use that era's cap logo instead. A season before a club's first
+# documented logo gets no logo (the chart draws its code chip); a season in a
+# gap between eras keeps the previous logo. Codes missing from the manifest
+# fall back to TEAM_LOGO_MAP.
+_LOGO_MANIFEST = ROOT / "Logos" / "eras" / "manifest.json"
+
+
+def _load_logo_eras() -> dict:
+    try:
+        raw = json.loads(_LOGO_MANIFEST.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {code: tuple((int(a), None if b is None else int(b), str(fn))
+                        for a, b, fn in sorted(rows, key=lambda r: r[0]))
+            for code, rows in raw.items()}
+
+
+TEAM_LOGO_ERAS = _load_logo_eras()
+
+
+def logo_path(team, season=None) -> Path | None:
+    """The logo file for `team` in `season` (its latest logo when season is
+    None), or None when the club has no logo for that season."""
+    team = str(team)
+    eras = TEAM_LOGO_ERAS.get(team)
+    if eras:
+        if season is None:
+            return ROOT / "Logos" / eras[-1][2]
+        try:
+            season = int(season)
+        except (TypeError, ValueError):
+            return ROOT / "Logos" / eras[-1][2]
+        pick = None
+        for first, _last, fn in eras:
+            if first <= season:
+                pick = fn
+        return ROOT / "Logos" / pick if pick else None
     name = TEAM_LOGO_MAP.get(team)
-    if not name:
-        return None
-    path = ROOT / "Logos" / f"{name}-resizedmatplotlib.png"
+    return ROOT / "Logos" / f"{name}-resizedmatplotlib.png" if name else None
+
+
+@functools.lru_cache(maxsize=512)
+def _logo_uri(path: str) -> str | None:
     try:
         if _PIL:
             with _PILImage.open(path) as img:
@@ -1487,20 +1563,11 @@ def logo_b64(team: str) -> str | None:
         return None
 
 
-@functools.lru_cache(maxsize=64)
-def logo_aspect(team: str) -> float | None:
-    """Native aspect ratio (width / height) of a team's logo, or None.
-
-    Used by the chart renderer to size each logo's box so banner-shaped
-    logos (Braves, Reds) and tall ones (Pirates, Angels) all occupy a
-    similar visible area instead of getting letterboxed into a square.
-    """
-    name = TEAM_LOGO_MAP.get(team)
-    if not name:
-        return None
+@functools.lru_cache(maxsize=512)
+def _logo_aspect(path: str) -> float | None:
     try:
         if _PIL:
-            with _PILImage.open(ROOT / "Logos" / f"{name}-resizedmatplotlib.png") as img:
+            with _PILImage.open(path) as img:
                 w, h = img.size
                 # Require both dims; a 0 would make `aspect or 1.0` silently
                 # fall back to square and hide a corrupt image.
@@ -1508,6 +1575,39 @@ def logo_aspect(team: str) -> float | None:
     except Exception:
         return None
     return None
+
+
+def logo_b64(team, season=None) -> str | None:
+    """Logo as a PNG data URI, at native aspect (not padded to a square), for
+    the logo the team used in `season` (latest when None)."""
+    p = logo_path(team, season)
+    return _logo_uri(str(p)) if p else None
+
+
+def logo_aspect(team, season=None) -> float | None:
+    """Native aspect ratio (width / height) of that logo, or None.
+
+    Used by the chart renderer to size each logo's box so banner-shaped
+    logos (Braves, Reds) and tall ones (Pirates, Angels) all occupy a
+    similar visible area instead of getting letterboxed into a square.
+    """
+    p = logo_path(team, season)
+    return _logo_aspect(str(p)) if p else None
+
+
+@functools.lru_cache(maxsize=32)
+def team_last_seasons(lo: int, hi: int) -> dict:
+    """Each team's last season inside [lo, hi], from the team batting files.
+    A range view shows each club's logo as of that season (so 1900–2026 shows
+    today's logos and the Expos their 2004 one)."""
+    out = {}
+    for y in range(int(hi), int(lo) - 1, -1):
+        df = _season_index(f"{config['team_batting_dir']}/{y}.csv")
+        if df.empty or "Team" not in df.columns:
+            continue
+        for t in df["Team"].dropna().unique():
+            out.setdefault(str(t), y)
+    return out
 
 
 def safe_int(val, default):
