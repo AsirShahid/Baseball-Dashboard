@@ -557,3 +557,26 @@ def test_chart_stat_pickers_are_searchable(client):
     assert "statpick.js" in html and html.index("statpick.js") < html.index("chart.js")
     assert '<select id="c-x" data-statpick>' in html and '<select id="c-z" data-statpick data-clear>' in html
     assert client.get("/static/statpick.js").status_code == 200
+
+
+# ---------- stats that start mid-career (plate discipline 2002, Statcast 2015) ----------
+
+def test_partial_coverage_labels_and_ranks(app):
+    from web import queries
+    with app.app_context():
+        assert queries.years(2002, 2004) == "2002\u201304" and queries.years(1998, 2004) == "1998\u20132004"
+        assert queries.stat_first("bat", "EV") == 2024 and queries.stat_first("bat", "AVG") == 1955   # fixtures
+        assert queries.partial("bat", ("EV", "AVG", "K%"), 1955, 2024) == {"EV": 2024}
+        assert queries.partial("bat", ("EV",), 2024, 2024) == {}
+        # Over 1955-2024 his EV covers 2024 only and ranks against everyone's 2024 EV.
+        span = queries.percentiles(JUDGE, "bat", 1955, 2024)
+        one = queries.percentiles(JUDGE, "bat", 2024)
+        ev = {r["col"]["key"]: r for g in span["groups"] for r in g["rows"]}["EV"]
+        ev1 = {r["col"]["key"]: r for g in one["groups"] for r in g["rows"]}["EV"]
+        assert ev["cover"] == "2024" and ev["pct"] == ev1["pct"]
+        assert span["cover_notes"] and span["cover_notes"][0]["first"] == 2024 and "EV" in span["cover_notes"][0]["heads"]
+        later = queries.partial("bat", [r["col"]["key"] for g in span["groups"] for r in g["rows"]], 1955, 2024)
+        assert all(("cover" in r) == (r["col"]["key"] in later) for g in span["groups"] for r in g["rows"])
+        # The league line over 1955 and 2024 keeps EV (2024's) instead of dropping it.
+        lg = queries.league_over("bat", ((1955, "MLB"), (2024, "MLB")), ("EV", "AVG"))
+        assert lg["EV"] == queries.league_season("bat", 2024, "MLB", ("EV",))["EV"] and lg["AVG"]

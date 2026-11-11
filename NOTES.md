@@ -208,3 +208,19 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
 - The search box is 16px so iOS does not zoom when it focuses; the list refits when the on-screen
   keyboard resizes the visual viewport. Checked with simulated touch in Chromium at iPad and
   phone sizes, not on a real iPad.
+
+## Retired players open on Career; stats that start mid-career are labelled (2026-11-11)
+
+- The percentile panel opened on a player's latest qualified season, so a retired player showed his
+  last, usually worst, year (Alomar: 2003, wRC+ 81, 10th percentile). Now a player whose last season
+  is before the latest season in the data opens on Career; active players still open on their
+  latest qualified season, and a span or an explicit `pseason` still wins.
+- Stats whose data starts after a player's first season (FanGraphs plate discipline and batted
+  balls 2002, Statcast and Savant 2015, bat speed 2023, WPA 1974, pitchers' K%/BB% 1916; the first
+  season is `MIN(season)` in `cols`, which holds only seasons with data) cover the later seasons
+  only. Career and span percentiles rank those stats over those seasons, against everyone's line
+  qualified over the same seasons (Alomar's O-Swing%: his 2002-04 against the 243 hitters qualified
+  over 2002-04; before, against the 792 qualified over 1988-2004), with "2002-04 only" under the
+  stat and a note giving the pool. Career and span rows mark those cells with a dagger and a
+  footnote under the table, and the league row under Career fills them over the same seasons
+  (it was blank, because the league line dropped stats missing from its first seasons).

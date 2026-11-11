@@ -23,17 +23,20 @@
 {% endfor %}
 </tbody>
 {% if span %}{% set sp = span_rows.get(kind) %}
-<tbody><tr class="total spanrow fixed"><td class="t">{{ span[0] }}{% if span[1] != span[0] %}&ndash;{{ span[1] }}{% endif %}</td><td class="t muted">{% if sp %}{{ sp.n }} season{{ 's' if sp.n != 1 }}{% else %}None{% endif %} &middot; <a href="{{ url_with(**{'from': None, 'to': None, 'pseason': None}) }}#t-{{ kind }}">Clear</a></td><td></td>{% if sp %}{{ m.cells(sp['values'], data.cols, fails={} if sp.qualified else {'q': 'Not qualified over the span'}) }}{% else %}{% for c in data.cols %}<td></td>{% endfor %}{% endif %}</tr>
-{% if sp and sp.league %}<tr class="lgrow fixed"><td class="t" title="The league over the same seasons">{{ data.lg_label }}</td><td class="t muted">same seasons</td><td></td>{{ m.lg_cells(sp.league, data.cols) }}</tr>{% endif %}</tbody>
+<tbody><tr class="total spanrow fixed"><td class="t">{{ span[0] }}{% if span[1] != span[0] %}&ndash;{{ span[1] }}{% endif %}</td><td class="t muted">{% if sp %}{{ sp.n }} season{{ 's' if sp.n != 1 }}{% else %}None{% endif %} &middot; <a href="{{ url_with(**{'from': None, 'to': None, 'pseason': None}) }}#t-{{ kind }}">Clear</a></td><td></td>{% if sp %}{{ m.cells(sp['values'], data.cols, fails={} if sp.qualified else {'q': 'Not qualified over the span'}, cover=sp.cover) }}{% else %}{% for c in data.cols %}<td></td>{% endfor %}{% endif %}</tr>
+{% if sp and sp.league %}<tr class="lgrow fixed"><td class="t" title="The league over the same seasons">{{ data.lg_label }}</td><td class="t muted">same seasons</td><td></td>{{ m.lg_cells(sp.league, data.cols, cover=sp.cover) }}</tr>{% endif %}</tbody>
 {% endif %}
 {% if data.career and data.rows|length > 1 %}
-<tbody><tr class="total fixed"><td class="t">Career</td><td class="t muted">{{ data.rows|length }} seasons</td><td></td>{{ m.cells(data.career, data.cols) }}</tr>
-{% if data.league %}<tr class="lgrow fixed"><td class="t" title="The league over the seasons he played, added up like his career">{{ data.lg_label }}</td><td class="t muted">same seasons</td><td></td>{{ m.lg_cells(data.league, data.cols) }}</tr>{% endif %}</tbody>
+<tbody><tr class="total fixed"><td class="t">Career</td><td class="t muted">{{ data.rows|length }} seasons</td><td></td>{{ m.cells(data.career, data.cols, cover=data.cover) }}</tr>
+{% if data.league %}<tr class="lgrow fixed"><td class="t" title="The league over the seasons he played, added up like his career">{{ data.lg_label }}</td><td class="t muted">same seasons</td><td></td>{{ m.lg_cells(data.league, data.cols, cover=data.cover) }}</tr>{% endif %}</tbody>
 {% elif data.league and data.rows|length == 1 %}
 <tbody><tr class="lgrow fixed"><td class="t" title="{{ data.rows[0].lg_name }} average, {{ data.rows[0].season }}">{{ data.lg_label }}</td><td class="t muted">avg</td><td></td>{{ m.lg_cells(data.league, data.cols) }}</tr></tbody>
 {% endif %}
 </table>
 </div>
+{% set sp = span_rows.get(kind) if span else none %}
+{% if sp and sp.cover_notes %}{{ m.cover_note(sp.cover_notes, 'The ' ~ span[0] ~ '–' ~ span[1] ~ ' line') }}
+{% elif data.cover_notes and data.rows|length > 1 %}{{ m.cover_note(data.cover_notes, 'Career') }}{% endif %}
 {% endmacro %}
 {% block main %}
 <div class="profile">
@@ -70,13 +73,14 @@
     {% for g in pct.groups %}
     <div><h3 style="margin-bottom:8px">{{ g.title }}</h3>
       <div class="pbars">{% for r in g.rows %}
-        <div class="pbar" title="{{ r.col.name }}"><span>{{ r.col.head }}</span><div class="track"><div class="fill" style="width:{{ [r.pct, 2]|max }}%;background:{{ r.pct|ramp }}"></div></div><span class="v">{{ r.value|f(r.col.fmt, r.col.key) }}</span><span class="p" style="color:{{ r.pct|ramp }}">{{ r.pct }}</span></div>
+        <div class="pbar{{ ' partial' if r.cover }}" title="{{ r.col.name }}{% if r.cover %} ({{ r.cover }} only){% endif %}"><span>{{ r.col.head }}{% if r.cover %}<small class="cov">{{ r.cover }} only</small>{% endif %}</span><div class="track"><div class="fill" style="width:{{ [r.pct, 2]|max }}%;background:{{ r.pct|ramp }}"></div></div><span class="v">{{ r.value|f(r.col.fmt, r.col.key) }}</span><span class="p" style="color:{{ r.pct|ramp }}">{{ r.pct }}</span></div>
       {% endfor %}</div>
     </div>
     {% endfor %}
   </div>
   {% if pct.label %}
   <p class="sub" style="margin-bottom:0">{{ pct.label }}{% if pct.label == 'Career' %} ({{ pct.lo }}&ndash;{{ pct.hi }}){% endif %}: his line over those seasons against the {{ pct.pool }} {{ pct.group }} {{ 'hitters' if pkind == 'bat' else 'pitchers' }} with a qualified line over the same seasons ({{ '{:,}'.format(pct.need|int) }} {{ 'PA' if pkind == 'bat' else 'IP' }}, FanGraphs' multi-season cut), so everyone is measured over the same years. 100 is best; lower-is-better stats count the right way round.{% if not pct.qualified %} His own line falls short of that cut.{% endif %}</p>
+  {% for n in pct.cover_notes %}<p class="sub covnote">{{ n.heads|join(', ') }} {{ 'has' if n.heads|length == 1 else 'have' }} data from {{ n.first }} on, so {{ 'it covers' if n.heads|length == 1 else 'they cover' }} his {{ n.label }} only, ranked against the {{ n.pool }} {{ pct.group }} {{ 'hitters' if pkind == 'bat' else 'pitchers' }} qualified over those seasons ({{ '{:,}'.format(n.need|int) }} {{ 'PA' if pkind == 'bat' else 'IP' }}).{% if not n.qualified %} His own line falls short of that cut.{% endif %}</p>{% endfor %}
   {% else %}
   <p class="sub" style="margin-bottom:0">Against the {{ pct.pool }} qualified {{ pct.group }} {{ 'hitters' if pkind == 'bat' else 'pitchers' }} in {{ pct.season }}; 100 is best, and lower-is-better stats (K% for hitters, ERA for pitchers) count the right way round.{% if not pct.qualified %} He was not qualified that season, so his numbers come from fewer {{ 'plate appearances' if pkind == 'bat' else 'innings' }}.{% endif %}</p>
   {% endif %}

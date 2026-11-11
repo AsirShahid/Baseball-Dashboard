@@ -393,3 +393,10 @@ a.game:hover { border-color: #3a475d; color: inherit; }
 @media (hover: hover) { .sp-opt:hover { background: rgba(255, 255, 255, 0.05); } }
 .sp-opt.sel b { color: var(--accent); }
 .sp-empty { padding: 10px 8px; color: var(--muted); }
+
+/* Career and span values that cover only some seasons (plate discipline from 2002, Statcast from 2015) */
+sup.cov { color: var(--accent); font-size: 9px; margin-left: 1px; vertical-align: super; line-height: 0; }
+.pbar .cov { display: block; color: var(--accent); font-size: 10px; font-weight: 500; letter-spacing: 0.01em; margin-top: 1px; }
+.pbar.partial .fill { opacity: 0.75; }
+.covnote { margin: 6px 0 0; font-size: 12px; }
+.covnote .dag { color: var(--accent); }

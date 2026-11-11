@@ -162,8 +162,15 @@ def player(pid: int):
     pct_seasons = [r["season"] for r in reversed(main["rows"])] if main else []
     qualified = [r["season"] for r in reversed(main["rows"]) if r["qualified"]] if main else []
     choice = request.args.get("pseason", "")
+    # A retired player opens on his career; an active one on his latest qualified season.
+    retired = bool(pct_seasons) and max(pct_seasons) < queries.seasons()[0]
     if not choice:
-        choice = "span" if span else str(qualified[0] if qualified else (pct_seasons[0] if pct_seasons else ""))
+        if span:
+            choice = "span"
+        elif retired and len(pct_seasons) > 1:
+            choice = "career"
+        else:
+            choice = str(qualified[0] if qualified else (pct_seasons[0] if pct_seasons else ""))
     pct = None
     if pct_seasons:
         seasons = sorted(pct_seasons)

@@ -39,13 +39,18 @@
 {% for c in columns %}<th data-key="{{ c.key }}" data-dir="{{ 'desc' if c.better else 'asc' }}" title="{{ c.name }}" class="{{ 'sorted' if c.key == sort }}{{ ' asc' if c.key == sort and not c.better }}">{{ c.head }}</th>{% endfor %}
 {%- endmacro %}
 
-{% macro cells(line, columns, sort=None, fails={}, led=()) -%}
-{% for c in columns %}{% set v = line[c.key] %}{% if c.rule and c.rule in fails %}<td data-v="" class="muted{{ ' sorted' if c.key == sort }}" title="{{ fails[c.rule] }}">{{ v|f(c.fmt, c.key) }}</td>{% else %}<td data-v="{{ v|sv }}" class="{{ 'sorted' if c.key == sort }}{{ ' lead' if c.key in led }}">{{ v|f(c.fmt, c.key) }}</td>{% endif %}{% endfor %}
+{# cover: {stat: "2002–04"} for a career or span value that covers only those seasons (marked †). #}
+{% macro cells(line, columns, sort=None, fails={}, led=(), cover={}) -%}
+{% for c in columns %}{% set v = line[c.key] %}{% set mark %}{% if c.key in cover and v is not none %}<sup class="cov" title="{{ cover[c.key] }} only">&dagger;</sup>{% endif %}{% endset %}{% if c.rule and c.rule in fails %}<td data-v="" class="muted{{ ' sorted' if c.key == sort }}" title="{{ fails[c.rule] }}">{{ v|f(c.fmt, c.key) }}{{ mark }}</td>{% else %}<td data-v="{{ v|sv }}" class="{{ 'sorted' if c.key == sort }}{{ ' lead' if c.key in led }}">{{ v|f(c.fmt, c.key) }}{{ mark }}</td>{% endif %}{% endfor %}
+{%- endmacro %}
+
+{% macro cover_note(notes, what) -%}
+{% if notes %}<p class="sub covnote"><span class="dag">&dagger;</span> {% for n in notes %}{{ n.heads|join(', ') if n.heads|length <= 4 else 'The ' ~ n.heads|length ~ ' marked stats' }}: {{ n.label }} only (data from {{ n.first }}){{ '; ' if not loop.last }}{% endfor %}. {{ what }} uses those seasons for {{ 'this stat' if notes|length == 1 and notes[0].heads|length == 1 else 'these stats' }}.</p>{% endif %}
 {%- endmacro %}
 
 {# A league-average row: rates only (a league's home run total means nothing beside a player's). #}
-{% macro lg_cells(line, columns, sort=None) -%}
-{% for c in columns %}{% set v = (line or {}).get(c.key) %}<td data-v="" class="{{ 'sorted' if c.key == sort }}">{% if c.rule and v is not none %}{{ v|f(c.fmt, c.key) }}{% endif %}</td>{% endfor %}
+{% macro lg_cells(line, columns, sort=None, cover={}) -%}
+{% for c in columns %}{% set v = (line or {}).get(c.key) %}<td data-v="" class="{{ 'sorted' if c.key == sort }}">{% if c.rule and v is not none %}{{ v|f(c.fmt, c.key) }}{% if c.key in cover %}<sup class="cov" title="{{ cover[c.key] }} only">&dagger;</sup>{% endif %}{% endif %}</td>{% endfor %}
 {%- endmacro %}
 
 {% macro standings_table(rows, season, compact=False) -%}

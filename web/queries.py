@@ -318,7 +318,24 @@ def league_season(kind: str, season: int, group: str, stats: tuple) -> dict | No
 
 def league_over(kind: str, pairs, stats: tuple) -> dict | None:
     """The league over several (season, league group) pairs, added up like a
-    career: a player's league line over the seasons he played."""
+    career: a player's league line over the seasons he played. A stat whose data
+    starts later (plate discipline in 2002) is the league over those seasons."""
+    out = _league_over(kind, pairs, stats)
+    seasons = [season for season, _g in pairs]
+    if not seasons:
+        return out
+    later: dict = {}
+    for stat, first in partial(kind, stats, min(seasons), max(seasons)).items():
+        later.setdefault(first, []).append(stat)
+    for first, group in later.items():
+        sub = _league_over(kind, tuple(p for p in pairs if p[0] >= first), tuple(group))
+        if sub:
+            out = dict(out or {})
+            out.update({k: v for k, v in sub.items() if k in group})
+    return out
+
+
+def _league_over(kind: str, pairs, stats: tuple) -> dict | None:
     lk = LEAGUE_KIND[kind]
     chunks = []
     for season, group in pairs:
@@ -541,6 +558,46 @@ PLAYER_MODES = {BAT: ["standard", "advanced", "value", "battedball", "discipline
                 PIT: ["standard", "advanced", "value", "battedball", "discipline", "statcast", "savant"]}
 
 
+@db.cached
+def stat_first(kind: str, stat: str) -> int | None:
+    """The first season with any data for a stat (columns are stored only for
+    seasons that have it): 2002 for FanGraphs plate discipline and batted
+    balls, 2015 for Statcast and Savant, 1974 for WPA."""
+    row = db.one("SELECT MIN(season) AS s FROM cols WHERE kind = ? AND stat = ? AND season > 0", kind, stat)
+    return row["s"] if row else None
+
+
+def years(lo: int, hi: int) -> str:
+    """2002\u201304, 1998\u20132004, or 2003."""
+    if lo == hi:
+        return str(lo)
+    return f"{lo}\u2013{hi % 100:02d}" if lo // 100 == hi // 100 else f"{lo}\u2013{hi}"
+
+
+def partial(kind: str, stats, lo: int, hi: int) -> dict:
+    """{stat: first season} for stats whose data starts inside lo..hi: a line over
+    lo..hi has them for the later seasons only (Alomar's 1988-2004 career has
+    plate discipline for 2002-04)."""
+    out = {}
+    for stat in stats:
+        first = stat_first(kind, stat)
+        if first is not None and lo < first <= hi:
+            out[stat] = first
+    return out
+
+
+def partial_notes(kind: str, stats, lo: int, hi: int, have_lo: int | None = None) -> tuple[dict, list]:
+    """Labels for a career or span line: ({stat: "2002\u201304"}, [{label, heads, first}])."""
+    found = partial(kind, stats, lo, hi)
+    labels, notes = {}, {}
+    for stat, first in found.items():
+        label = years(max(first, have_lo or first), hi)
+        labels[stat] = label
+        c = column(kind, stat)
+        notes.setdefault((first, label), []).append(c["head"] if c else stat)
+    return labels, [{"first": f, "label": label, "heads": heads} for (f, label), heads in sorted(notes.items())]
+
+
 def _row_values(kind, season, i, stats):
     out = {}
     for s in stats:
@@ -623,8 +680,13 @@ def player(pid: int, kind: str, mode: str) -> dict | None:
     if facts["games"] is None:
         facts["games"] = sum((r["values"].get("G") or 0) for r in seasons_rows)
     labels = {row["lg_label"] for row in seasons_rows}
+    cover, notes = ({}, [])
+    if len(seasons_rows) > 1:
+        lo, hi = seasons_rows[0]["season"], seasons_rows[-1]["season"]
+        cover, notes = partial_notes(kind, shown, lo, hi, lo)
     return {"cols": cols, "rows": seasons_rows, "career": career, "facts": facts, "league": league_career,
-            "lg_label": labels.pop() if len(labels) == 1 else "League", "pairs": pairs}
+            "lg_label": labels.pop() if len(labels) == 1 else "League", "pairs": pairs,
+            "cover": cover, "cover_notes": notes}
 
 
 def player_span(pid: int, kind: str, mode: str, lo: int, hi: int) -> dict | None:
@@ -640,8 +702,10 @@ def player_span(pid: int, kind: str, mode: str, lo: int, hi: int) -> dict | None
     _need, have, ok = qualifying(kind, t)
     values = {s: (None if np.isnan(t.cols[s][idx]) else float(t.cols[s][idx])) for s in stats if s in t.cols}
     r = t.ident[idx]
+    first, last = r.get("first", lo), r.get("last", hi)
+    cover, notes = partial_notes(kind, tuple(c["key"] for c in cols), first, last, first)
     return {"lo": lo, "hi": hi, "values": values, "qualified": bool(ok[idx]), "have": float(have[idx]),
-            "first": r.get("first", lo), "last": r.get("last", hi), "n": r.get("n", 1)}
+            "first": first, "last": last, "n": r.get("n", 1), "cover": cover, "cover_notes": notes}
 
 
 PCT_STATS = {
@@ -697,32 +761,62 @@ def percentiles(pid: int, kind: str, lo: int, hi: int | None = None) -> dict | N
     idx = next((i for i, r in enumerate(t.ident) if r["pid"] == pid), None)
     if idx is None:
         return None
-    need, _have, ok = qualifying(kind, t)
-    group_of = range_groups(kind, lo, hi)
-    mine = group_of.get(pid, "MLB")
-    same = np.array([group_of.get(r["pid"], "MLB") == mine for r in t.ident])
-    ok = ok & same
+    def ranked(table, a, b):
+        """Who he is ranked against over seasons a..b: qualified, same league group."""
+        need, _have, ok = qualifying(kind, table)
+        group_of = range_groups(kind, a, b)
+        mine = group_of.get(pid, "MLB")
+        return need, ok & np.array([group_of.get(r["pid"], "MLB") == mine for r in table.ident]), mine
+
+    need, ok, mine = ranked(t, lo, hi)
+    # Stats whose data starts after lo (plate discipline in 2002, Statcast in 2015)
+    # cover only the later seasons: rank his line over those seasons against
+    # everyone's line over the same seasons.
+    later = {}
+    for stat, first in (partial(kind, stats, lo, hi) if hi > lo else {}).items():
+        later.setdefault(first, []).append(stat)
+    sub = {}
+    for first, group in later.items():
+        t2 = db.table(kind, first, hi, tuple(group))
+        i2 = next((i for i, r in enumerate(t2.ident) if r["pid"] == pid), None)
+        if i2 is None:
+            continue
+        need2, ok2, _m = ranked(t2, first, hi)
+        r2 = t2.ident[i2]
+        note = {"first": first, "label": years(max(first, r2.get("first", first)), min(hi, r2.get("last", hi))),
+                "pool": int(ok2.sum()), "need": float(need2[i2]), "qualified": bool(ok2[i2]), "heads": []}
+        for stat in group:
+            sub[stat] = (t2, i2, ok2, note)
+    notes = []
     groups = []
     for title, group in plan:
         rows_out = []
         for stat in group:
             c = column(kind, stat)
-            col = t.cols.get(stat)
-            if c is None or col is None or np.isnan(col[idx]):
+            table, i, pool_ok, note = sub.get(stat, (t, idx, ok, None))
+            col = table.cols.get(stat)
+            if c is None or col is None or np.isnan(col[i]):
                 continue
-            pool = col[ok & ~np.isnan(col)]
+            pool = col[pool_ok & ~np.isnan(col)]
             if len(pool) < 10:
                 continue
-            v = col[idx]
+            v = col[i]
+            mine_in = 1 if pool_ok[i] else 0
             below, same_v = (pool < v).sum(), (pool == v).sum()
-            share = (below + max(same_v - (1 if ok[idx] else 0), 0) / 2) / max(len(pool) - (1 if ok[idx] else 0), 1)
+            share = (below + max(same_v - mine_in, 0) / 2) / max(len(pool) - mine_in, 1)
             pct = round(100 * (share if c["better"] else 1 - share))
-            rows_out.append({"col": c, "value": float(v), "pct": max(0, min(100, pct))})
+            row = {"col": c, "value": float(v), "pct": max(0, min(100, pct))}
+            if note is not None:
+                row["cover"] = note["label"]
+                note["heads"].append(c["head"])
+                if note not in notes:
+                    notes.append(note)
+            rows_out.append(row)
         if rows_out:
             groups.append({"title": title, "rows": rows_out})
     return {"season": lo if lo == hi else None, "lo": lo, "hi": hi, "qualified": bool(ok[idx]),
             "pool": int(ok.sum()), "groups": groups, "need": float(need[idx]),
-            "group": "AL and NL" if mine == "MLB" else mine}
+            "group": "AL and NL" if mine == "MLB" else mine, "cover_notes": notes}
 
 
 @db.cached
