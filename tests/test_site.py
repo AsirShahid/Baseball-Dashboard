@@ -192,7 +192,10 @@ def test_traded_player_shows_both_clubs(client):
 def test_player_page_marks_qualified_seasons_and_leads(client):
     html = page(client, f"/player/{JUDGE}")
     assert '<span class="qmark"' in html
-    assert 'class=" lead"' in html or 'class="lead"' in html or ' lead"' in html   # 58 HR led the majors
+    row = html[html.index('data-v="2024"'):]
+    row = row[:row.index("</tr>")]
+    assert '<td data-v="58.0" class=" lead">58</td>' in row        # 58 HR led the majors
+    assert '<td data-v="0.0" class=" lead">' not in row             # 0 CS is not a lead
 
 
 def test_standings_groups(client):

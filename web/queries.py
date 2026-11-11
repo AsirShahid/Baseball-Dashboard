@@ -453,6 +453,8 @@ def player(pid: int, kind: str, mode: str) -> dict | None:
             v = values.get(c["key"])
             if v is None or (c["rule"] and not row["qualified"]):
                 continue
+            if not c["rule"] and not c["better"]:   # fewest caught stealing is not a lead
+                continue
             best = season_best(kind, r["season"], c["key"])
             if best is not None and abs(v - best) < 1e-6 and c["key"] not in ("G", "PA", "AB", "IP", "TBF", "GS"):
                 row["led"].add(c["key"])
