@@ -243,3 +243,14 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
   changed; players with career bWAR 23,590 -> 23,627. All 82 pairings checked (renamed players such
   as Bill Banks = BR banksbi01 "Bill Yerrick"; Willie Wells Jr. = BR wellswi01, Memphis 1945-46).
 - Schema 6 (rebuild after deploy). New code serves a schema-5 database: the column is simply absent.
+
+## Pinned name column when a table scrolls sideways (2026-11-11)
+
+- Bug (iPad, teams table over a span): highlighted rows (favourite team, and on basketball the
+  picked/span seasons) tinted their sticky name cell with a translucent colour, so the columns
+  scrolling under it showed through; and only body cells were sticky, so the header cell above the
+  names scrolled away and the headings slid out of line.
+- Fix: rows set `--tint` (and `--base` where their cells are not on the plain surface: total rows
+  raised, group rows bg); a sticky `td.name`/`th.name` paints the tint over that solid base. app.js
+  marks the header cell above a pinned column `name`, so it is pinned too. Checked at iPad portrait
+  with every wide table scrolled 420px: header pinned and aligned, no translucent pinned cell.

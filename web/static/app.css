@@ -142,7 +142,8 @@ table.stats { width: 100%; border-collapse: collapse; font-size: 13px; }
 .stats tr.total td { border-top: 1px solid var(--line); font-weight: 600; background: var(--raised); }
 .stats tr.stint td { color: var(--muted); font-size: 12px; }
 .stats tr.group td { background: var(--bg); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; text-align: left; padding-top: 10px; }
-.stats tr.me td, .stats tr.me .name { background: rgba(249, 115, 22, 0.07); }
+.stats tr.me { --tint: rgba(249, 115, 22, 0.07); }
+.stats tr.me td { background: var(--tint); }
 .stats .best { color: var(--good); font-weight: 650; }
 .stats.compact td, .stats.compact th { padding: 5px 7px; }
 .pos { color: var(--muted); font-size: 11px; margin-left: 5px; }
@@ -337,14 +338,18 @@ a.game:hover { border-color: #3a475d; color: inherit; }
 /* Player pages: picking a span of seasons */
 .stats button.yr { background: none; border: 0; padding: 2px 4px; margin: -2px -4px; border-radius: 5px; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline dotted rgba(249, 115, 22, 0.5); text-underline-offset: 3px; }
 .stats button.yr:hover { background: var(--accent-soft); }
-.stats tr.inspan td { background: rgba(249, 115, 22, 0.06); }
-.stats tr.pick td { background: rgba(249, 115, 22, 0.18); }
-.stats tr.spanrow td { background: rgba(249, 115, 22, 0.12); font-weight: 650; border-top: 1px solid var(--accent); }
+.stats tr.inspan { --tint: rgba(249, 115, 22, 0.06); }
+.stats tr.inspan td { background: var(--tint); }
+.stats tr.pick { --tint: rgba(249, 115, 22, 0.18); }
+.stats tr.pick td { background: var(--tint); }
+.stats tr.spanrow { --tint: rgba(249, 115, 22, 0.12); }
+.stats tr.spanrow td { background: var(--tint); font-weight: 650; border-top: 1px solid var(--accent); }
 .spanbar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 12px; max-width: calc(100% - 24px); padding: 10px 12px 10px 16px; border-radius: 12px; border: 1px solid var(--accent); background: var(--surface); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); font-size: 14px; }
 .spanbar[hidden] { display: none; }
 
 /* League-average rows (rates only), in the style of Baseball Savant's MLB row */
-.stats tr.lgrow td { color: var(--muted); font-style: italic; font-size: 12px; background: rgba(148, 163, 184, 0.06); }
+.stats tr.lgrow { --tint: rgba(148, 163, 184, 0.06); }
+.stats tr.lgrow td { color: var(--muted); font-style: italic; font-size: 12px; background: var(--tint); }
 .stats tr.lgrow td:first-child { font-style: normal; font-weight: 600; letter-spacing: 0.02em; }
 .stats tbody.lgbody tr.lgrow td { border-bottom: 1px solid var(--line); }
 .stats tr.lgrow.every { display: none; }
@@ -400,3 +405,15 @@ sup.cov { color: var(--accent); font-size: 9px; margin-left: 1px; vertical-align
 .pbar.partial .fill { opacity: 0.75; }
 .covnote { margin: 6px 0 0; font-size: 12px; }
 .covnote .dag { color: var(--accent); }
+
+/* Pinned name cells (sticky on the left) are opaque: the row's tint painted over
+   a solid base, or the columns scrolling underneath show through. Rows set
+   --tint (and --base when their cells are not on the plain surface). */
+.stats tr.total { --base: var(--raised); }
+.stats tr.group { --base: var(--bg); }
+.stats tr.spanrow { --base: var(--surface); }
+.stats tr td.name, .stats tr th.name {
+  background: linear-gradient(var(--tint, transparent), var(--tint, transparent)) var(--base, var(--surface));
+}
+.stats tbody tr:hover td.name { background: var(--raised); }
+.stats th.name { font-weight: 600; z-index: 2; }   /* set by app.js on the header above a pinned column */

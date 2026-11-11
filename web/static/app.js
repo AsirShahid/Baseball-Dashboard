@@ -264,4 +264,21 @@
       });
     });
   }
+
+  // Pin the header cell above a pinned (sticky) name column too, so the headings
+  // stay in line with the cells when a wide table scrolls sideways.
+  document.querySelectorAll("table.stats").forEach(function (table) {
+    var cell = table.querySelector("tbody td.name");
+    if (!cell || !table.tHead) return;
+    var index = 0;
+    for (var i = 0; i < cell.cellIndex; i++) index += cell.parentNode.cells[i].colSpan || 1;
+    Array.prototype.forEach.call(table.tHead.rows, function (row) {
+      var at = 0;
+      Array.prototype.some.call(row.cells, function (th) {
+        if (at === index) { th.classList.add("name"); return true; }
+        at += th.colSpan || 1;
+        return at > index;
+      });
+    });
+  });
 })();
