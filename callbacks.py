@@ -6,10 +6,12 @@ import time
 from urllib.parse import urlencode
 
 import pandas as pd
-from dash import Input, Output, State, MATCH, ALL, no_update, ctx, dcc
+from dash import Input, Output, State, MATCH, ALL, no_update, ctx, dcc, html
 
 from data import (
-    config, current_year, season_list,
+    config, current_year, season_list, span_totals, span_qualified_min,
+    threshold_cohort, team_games, threshold_options, snap_threshold,
+    QUALIFIED_RATE,
     load_csv, load_stats, load_stats_pct, season_bounds, season_label,
     season_tag, fmt_stat, round_stats,
     process_columns,
@@ -18,12 +20,12 @@ from data import (
     TEAM_FULL_NAME, TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS, ramp_color,
 )
 from charts import (
-    render_team, render_player, player_frame, team_frame,
+    render_team, render_player, player_frame, team_frame, playing_time_rule,
     compute_composite_rank, rank_items,
 )
 from components import (
     leaderboard_cards, detail_body, player_detail_body, player_preset_chips,
-    detail_loading,
+    detail_loading, detail_message,
 )
 
 # Curated, direction-aware stats for the team detail panel.
@@ -106,14 +108,63 @@ def _spark(stat, dir_key, team, season, years_in=None):
             "last": fmt_stat(stat, values[-1]) if values else "—"}
 
 
-def _player_dir(ptype, mpa, mip) -> str:
+def _player_dir(ptype, mpa, mip, lo=None, hi=None) -> str:
     """Season-file directory behind the player pool for these filters (the
-    same choice player_frame makes)."""
-    is_batter = (ptype != "Pitchers")
-    qualified = (mpa if is_batter else mip) == "Qualified"
-    if is_batter:
-        return "qualified_batting_dir" if qualified else "all_batting_dir"
-    return "qualified_pitching_dir" if qualified else "all_pitching_dir"
+    same choice player_frame makes: the qualified files only for "Qualified"
+    on a single season; a range uses every player's full totals)."""
+    return playing_time_rule(lo, hi, ptype or "Batters", mpa, mip)[0]
+
+
+def _threshold_hint(season, ptype, mpa, mip, tf, split):
+    """FanGraphs-style note under the Min playing time control: what the cut
+    means for this span and how many players it leaves."""
+    lo, hi = season_bounds(season)
+    if lo is None:
+        return ""
+    ptype = ptype or "Batters"
+    per_season = _split_on(split, lo, hi)
+    key, col, thr, span_rule = playing_time_rule(lo, hi, ptype, mpa, mip,
+                                                 split=per_season)
+    val = mpa if ptype == "Batters" else mip
+    span = season_label(lo, hi)
+    unit = "PA" if col == "PA" else "IP"
+    rate = "3.1 PA" if col == "PA" else "1 IP"
+    count, noun = None, "players"
+    if val == "Qualified" and not span_rule:
+        if hi > lo:
+            text = [f"Qualified in each season: {rate} per team game."]
+            noun = "player-seasons"
+        else:
+            text = [f"Qualified: {rate} per team game "
+                    f"({fmt_stat(col, QUALIFIED_RATE[col] * team_games(lo))} {unit} in {lo})."]
+        if tf in (None, "All Teams"):
+            count = int(sum(span_totals(key, y, y).shape[0] for y in range(lo, hi + 1)))
+    elif val == "Qualified":
+        cut = f"{thr:,.0f}"
+        text = [f"Qualified over {span}: ", html.B(f"{cut}+ {unit}"),
+                " total (FanGraphs' multi-season rule)."]
+        if tf in (None, "All Teams"):
+            count = len(threshold_cohort(key, lo, hi, thr) or [])
+    else:
+        n = f"{int(thr):,}"
+        if hi <= lo:
+            text = [html.B(f"{n}+ {unit}"), f" in {lo}."]
+            if tf in (None, "All Teams"):
+                tot = span_totals(key, lo, lo)
+                count = int((tot["total"] >= thr).sum()) if thr else len(tot)
+        elif per_season and not span_rule:
+            text = [html.B(f"{n}+ {unit}"), " in each season shown."]
+            noun = "player-seasons"
+        else:
+            text = [html.B(f"{n}+ {unit}"), f" total over {span}."]
+            if per_season:
+                text.append(" Every season of those players is shown.")
+            elif tf in (None, "All Teams"):
+                tot = span_totals(key, lo, hi)
+                count = int((tot["total"] >= thr).sum()) if thr else len(tot)
+    if count is not None:
+        text.append(f" {count:,} {noun}.")
+    return text
 
 
 def _player_season_rows(idfg, dir_key, years) -> pd.DataFrame:
@@ -192,18 +243,22 @@ def _player_detail(idfg, lo, hi, ptype, mpa, mip, tf):
     """Build the player detail panel: percentile tiles vs the current player
     pool (same filters as the chart), a composite badge, the player's own
     seasons/teams/position in the header, and per-season sparklines."""
-    dir_key = _player_dir(ptype, mpa, mip)
+    dir_key = _player_dir(ptype, mpa, mip, lo, hi)
     pool = player_frame(lo, hi, ptype, mpa, mip, tf)
     prow = pool[pool["IDfg"] == idfg] if "IDfg" in pool.columns else pool.iloc[0:0]
     if prow.empty:
         # The clicked player can sit outside the filtered pool (e.g. an active
         # team filter, or a min-PA threshold). Fall back to the unfiltered
         # all-teams pool so the panel still renders the player in context.
-        dir_key = _player_dir(ptype, "Qualified", "Qualified")
+        dir_key = _player_dir(ptype, "Qualified", "Qualified", lo, hi)
         pool = player_frame(lo, hi, ptype, "Qualified", "Qualified", "All Teams")
         prow = pool[pool["IDfg"] == idfg] if "IDfg" in pool.columns else pool.iloc[0:0]
     if prow.empty:
-        return None
+        # Typically: the panel stayed open while the slider moved to seasons
+        # this player never played (the panel re-renders on slider changes).
+        return detail_message(f"No {'qualified ' if dir_key.startswith('qualified') else ''}"
+                              f"seasons in {season_label(lo, hi)}",
+                              title="Player")
     prow = prow.iloc[0]
     name = str(prow.get("Name", "—"))
     is_pitch = (ptype == "Pitchers")
@@ -539,6 +594,45 @@ def register_callbacks(app):
         if ptype == "Pitchers":
             return {"display": "none"}, {}
         return {}, {"display": "none"}
+
+    def _typed_options(search, value):
+        """Ladder + current value + a typed number (e.g. 2750), so any
+        threshold can be picked, not only the FanGraphs rungs."""
+        cur = value if isinstance(value, int) else None
+        opts_ = threshold_options(cur)
+        digits = re.sub(r"[,\s]", "", str(search or ""))
+        if digits.isdigit():
+            n = snap_threshold(digits)
+            if isinstance(n, int) and all(o["value"] != n for o in opts_):
+                opts_ = [opts_[0]] + sorted(opts_[1:] + [{"label": str(n), "value": n}],
+                                            key=lambda o: o["value"])
+        return opts_
+
+    @app.callback(
+        Output("min-pa", "options"),
+        Input("min-pa", "search_value"), Input("min-pa", "value"),
+    )
+    def min_pa_options(search, value):
+        return _typed_options(search, value)
+
+    @app.callback(
+        Output("min-ip", "options"),
+        Input("min-ip", "search_value"), Input("min-ip", "value"),
+    )
+    def min_ip_options(search, value):
+        return _typed_options(search, value)
+
+    @app.callback(
+        Output("min-pa-hint", "children"), Output("min-ip-hint", "children"),
+        Input("season-slider", "value"),
+        Input({"kind": "seg-store", "group": "ptype"}, "data"),
+        Input("min-pa", "value"), Input("min-ip", "value"),
+        Input("team-filter", "value"),
+        Input({"kind": "seg-store", "group": "split"}, "data"),
+    )
+    def playing_time_hint(season, ptype, mpa, mip, tf, split):
+        hint = _threshold_hint(season, ptype, mpa, mip, tf, split)
+        return (hint, no_update) if (ptype or "Batters") == "Batters" else (no_update, hint)
 
     @app.callback(
         Output("rank-legend", "style"),

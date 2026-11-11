@@ -8,7 +8,7 @@ import dash_bootstrap_components as dbc
 
 from data import (
     config, current_year, opts, season_label, decade_marks, team_display,
-    MIN_PA_LIST, MIN_IP_LIST, LEAGUE_FILTERS,
+    MIN_PA_LIST, MIN_IP_LIST, LEAGUE_FILTERS, threshold_options,
     TEAM_PRESETS, BATTER_PRESETS, PITCHER_PRESETS,
     TEAM_COLORS, TEAM_COLOR_ALT, TEAM_FULL_NAME, TEAM_DIVISION, logo_b64,
 )
@@ -272,15 +272,23 @@ def sidebar(init):
         ]),
         html.Div(className="sb-section", children=[
             sb_label("PLAYER FILTERS"),
+            # Same control as FanGraphs' "Min Playing Time": Qualified plus
+            # the 0…10,000 ladder, and any typed number (search_value
+            # callback). The hint line says what the cut means for the
+            # selected span and how many players it leaves.
             html.Div(id="min-pa-div", children=[
-                html.Div("Min plate appearances", className="field-label"),
-                dcc.Dropdown(id="min-pa", options=opts(MIN_PA_LIST),
-                             value=init["min_pa"], clearable=False),
+                html.Div("Min playing time (PA)", className="field-label"),
+                dcc.Dropdown(id="min-pa", options=threshold_options(init["min_pa"]),
+                             value=init["min_pa"], clearable=False,
+                             placeholder="Qualified, or type a number"),
+                html.Div(id="min-pa-hint", className="field-hint"),
             ]),
             html.Div(id="min-ip-div", children=[
-                html.Div("Min innings pitched", className="field-label"),
-                dcc.Dropdown(id="min-ip", options=opts(MIN_IP_LIST),
-                             value=init["min_ip"], clearable=False),
+                html.Div("Min playing time (IP)", className="field-label"),
+                dcc.Dropdown(id="min-ip", options=threshold_options(init["min_ip"]),
+                             value=init["min_ip"], clearable=False,
+                             placeholder="Qualified, or type a number"),
+                html.Div(id="min-ip-hint", className="field-hint"),
             ]),
             html.Div("Team", className="field-label"),
             dcc.Dropdown(id="team-filter", value=init["team"], clearable=False),
@@ -589,6 +597,17 @@ def detail_loading(label=None):
         html.Div(className="dt-name-block", children=[
             html.Div("Loading…", className="dt-eyebrow"),
             html.H2(str(label) if label else "\u00a0", className="dt-name"),
+        ]),
+    ])]
+
+
+def detail_message(text, title=None):
+    """Panel body for when there is nothing to show (e.g. the open player has
+    no seasons in the newly selected range)."""
+    return [html.Div(className="dt-head dt-loading", children=[
+        html.Div(className="dt-name-block", children=[
+            html.Div(str(title or "").upper(), className="dt-eyebrow"),
+            html.H2(text, className="dt-name", style={"fontSize": "20px"}),
         ]),
     ])]
 

@@ -12,8 +12,13 @@ from data import (
     season_bounds, season_label, season_tag, team_in_league,
     stat_d3, fmt_stat, stat_precision,
     TEAM_COLORS, MULTI_TEAM, PALETTE, RANK_COLORSCALE, SEASON_THRESHOLD_CAP,
-    logo_b64, logo_aspect,
+    logo_b64, logo_aspect, span_qualified_min, threshold_cohort,
+    season_row_count,
 )
+
+# Most player-seasons the per-season view will plot. 1871–2026 at Min PA 0 is
+# ~109,000 — unreadable as a scatter and ~0.5 GB to build.
+MAX_SEASON_POINTS = 40_000
 
 RANK_COLORS = [c for _, c in RANK_COLORSCALE]   # flat list for plotly express
 MEAN_LINE = "rgba(245,165,36,0.55)"             # amber reference line
@@ -618,17 +623,47 @@ def _add_war_rate(df, is_batter):
 
 
 def _career_cohort(key, lo, hi, col, thr):
-    """IDfg of every player whose total `col` (PA/IP) over lo..hi reaches `thr`.
+    """IDfg of every player whose total `col` (PA/IP) over lo..hi reaches `thr`
+    (None when there is no cut).
 
-    Used when a threshold is larger than any single season can reach: it can
-    only mean a career/span total, so per-season views (era percentiles,
-    per-season rows, trajectories) keep each season's rows for the players who
-    clear it over the whole range instead of judging each season alone."""
-    totals = load_stats(key, lo, hi, group_key="IDfg")
-    if totals.empty or col not in totals.columns or "IDfg" not in totals.columns:
-        return set()
-    tot = pd.to_numeric(totals[col], errors="coerce").fillna(0)
-    return set(totals.loc[tot >= thr, "IDfg"])
+    Used when a threshold is a span total — a career-scale number, or
+    "Qualified" over a range — so per-season views (era percentiles, per-season
+    rows, trajectories) keep each season's rows for the players who clear it
+    over the whole range instead of judging each season alone. Read from the
+    light per-season index, not a full roll-up."""
+    return threshold_cohort(key, lo, hi, thr)
+
+
+def playing_time_rule(lo, hi, player_type, min_pa, min_ip, split=False,
+                      cohort_span=None):
+    """How the Min PA / Min IP control applies to a view (FanGraphs rules).
+
+    Returns (key, col, thr, span_rule):
+      key       data directory: the qualified files only for "Qualified" on a
+                single season or the per-season view, all players otherwise;
+      col       "PA" or "IP";
+      thr       playing-time cut (None = none: the qualified files already
+                applied it);
+      span_rule True when thr is judged on the total over the span (range
+                "Qualified", or a number no single season reaches)."""
+    is_batter = (player_type == "Batters")
+    val, col = (min_pa, "PA") if is_batter else (min_ip, "IP")
+    span_lo, span_hi = cohort_span or (lo, hi)
+    multi = span_hi is not None and span_lo is not None and span_hi > span_lo
+    q_key = "qualified_batting_dir" if is_batter else "qualified_pitching_dir"
+    all_key = "all_batting_dir" if is_batter else "all_pitching_dir"
+    if val == "Qualified":
+        if multi and not split:
+            # FanGraphs' multi-season Qualified: full totals, 1,000 PA / 300 IP.
+            return all_key, col, span_qualified_min(col, span_lo, span_hi), True
+        return q_key, col, None, False
+    try:
+        thr = int(val)
+    except (TypeError, ValueError):
+        return q_key, col, None, False
+    # A number above what one season allows is a span total — but only when
+    # there is a span; on a single season it simply filters that season.
+    return all_key, col, thr, multi and thr > SEASON_THRESHOLD_CAP[col]
 
 
 def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None,
@@ -655,23 +690,18 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None,
     (default: lo..hi) and keep every season of the players who clear it."""
     split = bool(split) and hi is not None and lo is not None and hi > lo
     is_batter    = (player_type == "Batters")
-    min_val, col = (min_pa, "PA") if is_batter else (min_ip, "IP")
-    use_qualified = (min_val == "Qualified")
-    q_key   = "qualified_batting_dir"  if is_batter else "qualified_pitching_dir"
-    all_key = "all_batting_dir"        if is_batter else "all_pitching_dir"
-    key = q_key if use_qualified else all_key
-
-    try:
-        thr = None if use_qualified else int(min_val)
-    except (TypeError, ValueError):
-        thr = None
-    career = thr is not None and thr > SEASON_THRESHOLD_CAP[col]
-    # Plain aggregate view: the span's summed PA/IP is already the career
-    # total, so the cohort is only needed where rows are per season.
+    key, col, thr, career = playing_time_rule(lo, hi, player_type, min_pa,
+                                              min_ip, split, cohort_span)
+    span_cut = career and thr is not None
+    # Plain aggregate view: load_stats applies the span cut itself (reading
+    # only the qualifying players' rows); the cohort is only needed where rows
+    # are per season.
     cohort = None
-    if career and (pct_stats or split or cohort_span):
+    if span_cut and (pct_stats or split or cohort_span):
         c_lo, c_hi = cohort_span or (lo, hi)
         cohort = _career_cohort(key, c_lo, c_hi, col, thr)
+    # Per-season cut: a single season, or a number a season can reach.
+    season_thr = thr if (thr is not None and not span_cut) else None
 
     if pct_stats:
         def _prep(season_df):
@@ -679,11 +709,8 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None,
             if cohort is not None:
                 if "IDfg" in season_df.columns:
                     season_df = season_df[season_df["IDfg"].isin(cohort)]
-            elif not use_qualified and col in season_df.columns:
-                try:
-                    season_df = season_df[season_df[col] >= int(min_val)]
-                except (TypeError, ValueError):
-                    pass
+            elif season_thr is not None and col in season_df.columns:
+                season_df = season_df[season_df[col] >= season_thr]
             return season_df
 
         stats = list(dict.fromkeys(s for s in pct_stats if s))
@@ -692,18 +719,38 @@ def player_frame(lo, hi, player_type, min_pa, min_ip, team, pct_stats=None,
         if df.empty:
             return df
     else:
-        df = load_stats(key, lo, hi, group_key="IDfg", split=split)
+        combined = (not split) and hi is not None and lo is not None and hi > lo
+        if combined:
+            # Span roll-up restricted to players whose span total clears the
+            # cut (career numbers, range Qualified, and smaller numbers alike).
+            df = load_stats(key, lo, hi, group_key="IDfg",
+                            min_total=thr if thr else None)
+        elif split:
+            n = season_row_count(key, lo, hi, col=col if season_thr else None,
+                                 thr=season_thr, ids=cohort)
+            if n > MAX_SEASON_POINTS:
+                out = pd.DataFrame()
+                out.attrs["too_many"] = n
+                return out
+
+            def _keep(season_df):
+                if cohort is not None and "IDfg" in season_df.columns:
+                    return season_df[season_df["IDfg"].isin(cohort)]
+                if season_thr is not None and col in season_df.columns:
+                    return season_df[season_df[col] >= season_thr]
+                return season_df
+            df = load_stats(key, lo, hi, group_key="IDfg", split=True,
+                            row_filter=_keep)
+        else:
+            df = load_stats(key, lo, hi, group_key="IDfg", split=False)
         if df.empty:
             return df
         df = _add_war_rate(df, is_batter)
         if cohort is not None:
             if "IDfg" in df.columns:
                 df = df[df["IDfg"].isin(cohort)]
-        elif not use_qualified and col in df.columns:
-            try:
-                df = df[df[col] >= int(min_val)]
-            except (TypeError, ValueError):
-                pass
+        elif season_thr is not None and not combined and col in df.columns:
+            df = df[df[col] >= season_thr]
 
     # Traded players carry the MULTI_TEAM sentinel instead of a team code.
     # The data doesn't say which league(s) they played in, so the AL/NL
@@ -748,6 +795,10 @@ def render_player(season, player_type, x_stat, y_stat, min_pa, min_ip, team,
     df = player_frame(lo, hi, player_type, min_pa, min_ip, team,
                       pct_stats=[x_stat, y_stat, z_stat] if era else None,
                       split=split)
+    if df.attrs.get("too_many"):
+        unit = "PA" if player_type == "Batters" else "IP"
+        return _err(f"{df.attrs['too_many']:,} player-seasons is too many to plot: "
+                    f"raise Min {unit} or narrow the seasons", theme)
     if df.empty:
         return _err(f"No data for {span}", theme)
     if x_stat not in df.columns or y_stat not in df.columns:

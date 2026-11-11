@@ -339,16 +339,28 @@ def fetch_team(stats: str, year: int, month: int = FULL_SEASON_SPLIT,
 
 # ── Atomic CSV write ──────────────────────────────────────────────────────────
 
-def atomic_to_csv(df: pd.DataFrame, path) -> None:
+def atomic_to_csv(df: pd.DataFrame, path) -> bool:
     """Write a CSV via temp-file + rename so concurrent readers (the dashboard,
-    the other updater) never see a half-written file."""
+    the other updater) never see a half-written file.
+
+    Skips the write when the file already holds exactly this content, so the
+    4-hourly refresh of a finished season keeps its mtime — the dashboard's
+    roll-up caches are keyed on mtimes and would otherwise all rebuild.
+    Returns True when the file changed."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    text = df.to_csv(index=False)
+    try:
+        if path.exists() and path.read_text() == text:
+            return False
+    except OSError:
+        pass
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", newline="") as f:
-            df.to_csv(f, index=False)
+            f.write(text)
         os.replace(tmp, path)
+        return True
     except BaseException:
         try:
             os.unlink(tmp)

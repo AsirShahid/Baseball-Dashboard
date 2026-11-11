@@ -19,6 +19,9 @@ COPY . .
 RUN chown -R app:app /app
 USER app
 ENV HOST=0.0.0.0 PORT=8050
+# Fewer malloc arenas: pandas-heavy gunicorn workers otherwise fragment memory
+# across one arena per thread and RSS drifts toward the container limit.
+ENV MALLOC_ARENA_MAX=2
 EXPOSE 8050
 # Report unhealthy if the Dash server stops answering (hung worker, crashed
 # import). Uses python so the image needs no curl.

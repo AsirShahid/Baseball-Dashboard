@@ -13,7 +13,7 @@ import dash
 from dash import dcc, html
 import flask
 
-from data import safe_int, snap_threshold, config, current_year
+from data import safe_int, snap_threshold, config, current_year, _release_memory
 from components import dashboard_view, about_view
 from callbacks import register_callbacks
 
@@ -31,6 +31,14 @@ app = dash.Dash(
                 "content": "width=device-width, initial-scale=1"}],
 )
 server = app.server
+
+
+@server.after_request
+def _return_heap(resp):
+    # Big callbacks leave freed pandas buffers in glibc's heap; trimming after
+    # each request keeps a worker's RSS near its live data (~1 ms).
+    _release_memory()
+    return resp
 
 app.index_string = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">

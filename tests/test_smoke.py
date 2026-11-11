@@ -425,8 +425,10 @@ def test_player_detail_panel_builds():
     assert _player_detail(idfg, SEASON, SEASON, "Batters",
                           "Qualified", "Qualified", "BOS") is not None
     # Unknown id → no panel
-    assert _player_detail(10 ** 12, SEASON, SEASON, "Batters",
-                          "Qualified", "Qualified", "All Teams") is None
+    # Unknown / out-of-range player: a message, not a blank panel.
+    msg = _player_detail(10 ** 12, SEASON, SEASON, "Batters",
+                         "Qualified", "Qualified", "All Teams")
+    assert "No qualified seasons in 2024" in " ".join(_texts(msg))
 
 
 def test_player_point_carries_idfg_for_detail():
@@ -1017,8 +1019,9 @@ def test_min_threshold_ladder_matches_fangraphs():
         assert v in nums
     assert 260 not in nums and 1050 not in nums      # FanGraphs' coarser steps
     assert snap_threshold("Qualified") == "Qualified"
-    assert snap_threshold("320") == 300 and snap_threshold(3250) == 3000
-    assert snap_threshold(20000) == 10000 and snap_threshold("0") == 0
+    # Custom numbers are kept as typed (a shared ?min_pa=2750 reopens at 2750).
+    assert snap_threshold("320") == 320 and snap_threshold(3250) == 3250
+    assert snap_threshold(25000) == 20000 and snap_threshold("0") == 0
     assert snap_threshold("junk") == "Qualified" and snap_threshold(-5) == "Qualified"
 
 
@@ -1228,7 +1231,9 @@ def test_player_panel_header_shows_player_not_slider_range():
     assert name in txt
     assert "Bats " in txt                     # handedness in the eyebrow
     assert " PA" in txt and "Age " in txt      # facts line
-    assert "qualified season" in txt           # Qualified filter → labeled
+    # A range with "Qualified" uses full totals (FanGraphs' 1,000 PA rule),
+    # so the facts count every season, not only qualified ones.
+    assert "qualified season" not in txt and " seasons" in txt
     # The header's season span is the player's own (ends before 2023), and the
     # trajectory covers his seasons rather than an empty 2020–2024 window.
     assert "TRAJECTORY · 2019–" in txt
@@ -1313,4 +1318,187 @@ def test_aggregate_team_sums_true_innings():
     agg = aggregate_team(toy, "pit")
     assert agg.IP[0] == pytest.approx(16.1)
     assert agg.ERA[0] == pytest.approx(9 * 6 / (16 + 1 / 3))
+
+
+# ── Memory-bounded full-history roll-ups ─────────────────────────────────────
+
+def _span_frames(dir_key, lo, hi):
+    from data import load_csv, config
+    return [load_csv(f"{config[dir_key]}/{y}.csv", fetch=False) for y in range(lo, hi + 1)]
+
+
+def test_chunked_rollup_matches_exact():
+    """The streamed aggregator must reproduce _aggregate_span (to float32
+    precision), including display columns, _first/_last and column order,
+    even when every chunk is tiny."""
+    from data import _aggregate_span, _aggregate_span_chunked, PLAYER_DISPLAY_COLS
+    frames = [f for f in _span_frames("qualified_batting_dir", 2019, 2024) if not f.empty]
+    exact = _aggregate_span(pd.concat(frames, ignore_index=True), "IDfg", "PA",
+                            PLAYER_DISPLAY_COLS)
+    chunked = _aggregate_span_chunked(iter(frames), "IDfg", "PA",
+                                      PLAYER_DISPLAY_COLS, chunk_rows=50)
+    assert list(chunked.columns) == list(exact.columns)
+    a = exact.set_index("IDfg").sort_index()
+    b = chunked.set_index("IDfg").sort_index()
+    assert list(a.index) == list(b.index)
+    num = a.select_dtypes("number").columns
+    pd.testing.assert_frame_equal(a[num], b[num].astype(a[num].dtypes.to_dict()),
+                                  check_exact=False, rtol=1e-5, atol=1e-6)
+    for c in ("Name", "Team", "position", "Bats"):
+        if c in a.columns:
+            assert (a[c].fillna("") == b[c].fillna("")).all(), c
+
+
+def test_load_stats_streams_large_spans(monkeypatch):
+    """Spans over the disk threshold take the streamed path (no CSV caching)
+    and agree with the exact path, rate rebuild included."""
+    import data
+    from data import load_stats
+    data._SPAN_CACHE.clear()
+    exact = load_stats("qualified_batting_dir", 2019, 2024, group_key="IDfg")
+    data._SPAN_CACHE.clear()
+    monkeypatch.setattr(data, "_STREAM_ROWS", 1)
+    before = dict(data._CSV_CACHE)
+    data._CSV_CACHE.clear(); data._CSV_BYTES.clear()
+    streamed = load_stats("qualified_batting_dir", 2019, 2024, group_key="IDfg")
+    assert not data._CSV_CACHE                      # read through, not cached
+    data._CSV_CACHE.update(before)
+    a = exact.set_index("IDfg").sort_index()
+    b = streamed.set_index("IDfg").sort_index()
+    for c in ("PA", "WAR", "AVG", "OBP", "wRC+", "_first", "_last"):
+        assert b[c].values == pytest.approx(a[c].values, rel=1e-5, nan_ok=True), c
+
+
+def test_csv_cache_byte_budget(monkeypatch):
+    import data
+    from data import load_csv
+    data._CSV_CACHE.clear(); data._CSV_BYTES.clear()
+    load_csv(f"{data.config['qualified_batting_dir']}/2019.csv", fetch=False)
+    one = sum(data._CSV_BYTES.values())
+    monkeypatch.setattr(data, "_CSV_CACHE_BYTES", int(one * 1.5))
+    load_csv(f"{data.config['qualified_batting_dir']}/2020.csv", fetch=False)
+    assert len(data._CSV_CACHE) == 1
+    assert sum(data._CSV_BYTES.values()) <= data._CSV_CACHE_BYTES
+    data._CSV_CACHE.clear(); data._CSV_BYTES.clear()
+
+
+# ── FanGraphs playing-time rules ─────────────────────────────────────────────
+
+def test_span_qualified_min_matches_fangraphs():
+    from data import span_qualified_min, team_games
+    # Single season: 3.1 PA / 1 IP per team game.
+    assert span_qualified_min("PA", 2024, 2024) == pytest.approx(3.1 * team_games(2024))
+    assert span_qualified_min("IP", 2024, 2024) == pytest.approx(team_games(2024))
+    # Any normal range: FanGraphs' flat 1,000 PA / 300 IP.
+    assert span_qualified_min("PA", 2021, 2024) == 1000
+    assert span_qualified_min("IP", 2022, 2024) == 300
+    # 2020 (60 games) + 2021: capped at the summed single-season minimums
+    # instead of FanGraphs' empty board.
+    two = span_qualified_min("PA", 2020, 2021)
+    assert two == pytest.approx(3.1 * (team_games(2020) + team_games(2021)))
+    assert two < 1000
+
+
+def test_range_qualified_uses_full_totals(career_data, monkeypatch):
+    """Qualified over a range keeps players with 1,000+ PA on their full
+    totals — including seasons they did not qualify in."""
+    import data
+    from charts import player_frame
+    monkeypatch.setattr(data, "team_games", lambda y: 162.0)
+    agg = player_frame(2001, 2003, "Batters", "Qualified", "Qualified", "All Teams")
+    assert dict(zip(agg["IDfg"], agg["PA"])) == {1: 1200, 2: 1950}
+    # Per-season view keeps per-season qualification (FanGraphs' Split Seasons).
+    per = player_frame(2001, 2003, "Pitchers", "Qualified", "Qualified", "All Teams",
+                       split=True)
+    assert per.empty or "IDfg" in per.columns
+
+
+def test_restricted_rollup_equals_filtered_full_rollup(career_data):
+    """Rolling up only the cohort's rows gives the same numbers as rolling up
+    everyone and filtering afterwards."""
+    import data
+    from data import load_stats
+    full = load_stats("all_batting_dir", 2001, 2003, group_key="IDfg")
+    cut = load_stats("all_batting_dir", 2001, 2003, group_key="IDfg", min_total=1000)
+    want = full[full["PA"] >= 1000].set_index("IDfg").sort_index()
+    got = cut.set_index("IDfg").sort_index()
+    assert list(got.index) == list(want.index) == [1, 2]
+    for c in ("PA", "WAR", "wRC+"):
+        assert got[c].values == pytest.approx(want[c].values), c
+
+
+def test_span_rollup_disk_cache_shared(career_data):
+    """A second worker (empty memory cache) loads the roll-up from disk."""
+    import data
+    from data import load_stats
+    a = load_stats("all_batting_dir", 2001, 2003, group_key="IDfg")
+    data._SPAN_CACHE.clear()
+    calls = []
+    real = data._aggregate_span
+    data._aggregate_span = lambda *a_, **k: calls.append(1) or real(*a_, **k)
+    try:
+        b = load_stats("all_batting_dir", 2001, 2003, group_key="IDfg")
+    finally:
+        data._aggregate_span = real
+    assert not calls                                # served from disk
+    assert b["PA"].tolist() == a["PA"].tolist()
+
+
+def test_typed_threshold_options():
+    import app  # registers callbacks
+    from data import threshold_options, MIN_THRESHOLD_LADDER
+    vals = [o["value"] for o in threshold_options(2750)]
+    assert vals[0] == "Qualified" and 2750 in vals and vals[1:] == sorted(vals[1:])
+    assert [o["value"] for o in threshold_options("Qualified")][1:] == MIN_THRESHOLD_LADDER
+    assert threshold_options(3000)[-1]["label"] == "10000"   # plain labels, as FanGraphs
+
+
+def test_threshold_hint_text():
+    import app  # registers callbacks
+    from callbacks import _threshold_hint
+    def txt(*a):
+        return "".join(x if isinstance(x, str) else x.children for x in _threshold_hint(*a))
+    one = txt(2024, "Batters", "Qualified", "Qualified", "All Teams", "combined")
+    assert "3.1 PA per team game" in one and "players." in one
+    rng = txt([2019, 2024], "Batters", "Qualified", "Qualified", "All Teams", "combined")
+    assert "1,000+ PA" in rng and "FanGraphs" in rng
+    car = txt([2019, 2024], "Batters", 3000, "Qualified", "All Teams", "combined")
+    assert "3,000+ PA" in car and "total over 2019–2024" in car
+    per = txt([2019, 2024], "Batters", 300, "Qualified", "All Teams", "season")
+    assert "in each season" in per
+
+
+def test_atomic_to_csv_skips_unchanged(tmp_path):
+    """Rewriting identical content keeps the mtime (caches stay valid)."""
+    import os
+    from fangraphs_api import atomic_to_csv
+    p = tmp_path / "x.csv"
+    df = pd.DataFrame({"a": [1, 2], "b": [0.5, 0.25]})
+    assert atomic_to_csv(df, p) is True
+    os.utime(p, ns=(1, 1_000_000_000))
+    assert atomic_to_csv(df, p) is False and os.stat(p).st_mtime_ns == 1_000_000_000
+    assert atomic_to_csv(df.assign(a=[1, 3]), p) is True
+
+
+def test_float32_keeps_ids_and_order():
+    from data import _float32
+    df = pd.DataFrame({"Name": ["a"], "IDfg": [1015737.0], "WAR": [1.25], "PA": [500.0]})
+    out = _float32(df.copy())
+    assert list(out.columns) == list(df.columns)
+    assert out["IDfg"].dtype == "float64" and out["WAR"].dtype == "float32"
+
+
+def test_per_season_view_refuses_huge_pools(career_data, monkeypatch):
+    import charts
+    from charts import player_frame, render_player
+    monkeypatch.setattr(charts, "MAX_SEASON_POINTS", 5)
+    df = player_frame(2001, 2003, "Batters", 0, "Qualified", "All Teams", split=True)
+    assert df.empty and df.attrs["too_many"] == 9
+    _fig, _eb, title = render_player([2001, 2003], "Batters", "WAR", "wRC+", 0,
+                                     "Qualified", "All Teams", False, None,
+                                     split=True)
+    assert "too many to plot" in str(title)
+    # A cut that leaves few rows still plots, filtered season by season.
+    ok = player_frame(2001, 2003, "Batters", 600, "Qualified", "All Teams", split=True)
+    assert sorted(ok["IDfg"]) == [2, 2, 2]
 

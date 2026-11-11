@@ -114,7 +114,7 @@ Edit `config.json` to change:
 
 | Key | Default | Description |
 |---|---|---|
-| `current_year` | `2026` | Latest season shown in dropdowns |
+| `current_year` | `2026` | Forward pin only: the latest season is this or the current calendar year, whichever is later (recomputed per request, so New Year rolls over without an edit or restart) |
 | `update_interval` | `14400` | Seconds between live-data refreshes (watch mode) |
 | `request_delay` | `5` | Seconds between pybaseball requests |
 | `*_dir` keys | various | Directories where CSVs are stored |
@@ -126,6 +126,53 @@ Environment variables for `app.py` / `launcher.sh`:
 | `HOST` | `127.0.0.1` | Bind address — set `0.0.0.0` to serve on the network |
 | `PORT` | `8050` | Listen port |
 | `DASH_DEBUG` | off | Set `1` to enable the dev reloader and Werkzeug debugger (never in production — the debugger allows code execution) |
+| `WEB_CONCURRENCY` | `2` | gunicorn workers in Docker. A warm worker holds ~0.5 GB of caches; keep workers × 0.6 GB under the compose `mem_limit` (1.5 GB) |
+
+## Deployment (VPS)
+
+- Operate the stack from `~/vps-infra/stacks/baseball-dashboard` (its
+  `docker-compose.yml` includes this repo's); the compose project name stays
+  `baseball-dashboard`. Build from a clean checkout, then
+  `docker compose up -d --no-build --force-recreate`.
+- The image runs as uid 1001 (`app`), which matches the host `ubuntu` user that
+  owns the bind-mounted CSV directories. Files written by an older root
+  container must be `chown ubuntu:ubuntu` before deploying, or the app and the
+  watcher cannot read or replace them.
+- The container has a `HEALTHCHECK`; `docker inspect baseball-dashboard` shows
+  `healthy` once the Dash server answers.
+- Memory: per-worker CSV cache ≤128 MB and roll-up cache ≤64 MB, stats stored
+  as float32. Player spans with more than 8,000 season rows (all players over
+  decades) are rolled up in chunks, and anything over 2,000 rows is built by
+  one worker at a time behind a file lock. Finished roll-ups and a light
+  per-season index (id, PA/IP, G, team) are pickled to
+  `/tmp/baseball-dashboard-cache` (≤300 MB) so the other worker reuses them.
+  The per-season view refuses more than 40,000 player-seasons. Measured
+  2026-11-10 in the 1.5 GB container: every full-history view (including all
+  22,608 batters at Min PA 0) loads with a 1.11 GB peak and no OOM kills.
+- `atomic_to_csv` skips identical rewrites, so the 4-hourly refresh of a
+  finished season keeps file mtimes and the caches stay valid.
+- Team CSVs come from FanGraphs' native team split. Seasons written before the
+  2026-07-03 fix undercounted (traded players dropped); they were re-fetched on
+  2026-11-10, with the old files in
+  `~/archive/baseball-dashboard/team-csv-before-native-refetch-20261110.tar.zst`.
+- Rollback: earlier images are tagged
+  `baseball-dashboard-baseball-dashboard:pre-<change>-<date>`; retag one as
+  `:latest` and recreate.
+
+## Min playing time (PA / IP)
+
+The control mirrors FanGraphs' "Min Playing Time": Qualified, then 0, 1, 5,
+10–250 by 10s, 300–1,000 by 50s and 1,500–10,000 by 500s. Any other number can
+be typed in and is kept in the share link. How it applies:
+
+| View | Qualified | A number |
+|---|---|---|
+| One season | 3.1 PA / 1 IP per team game (the qualified files) | that season's PA/IP |
+| A range, combined | full totals of players with **1,000 PA / 300 IP** over the range (FanGraphs' multi-season rule, measured against their API: 4,539 batters and 3,572 pitchers for 1871–2026), capped at the summed single-season minimums so 2020–21 is not empty | total PA/IP over the range |
+| A range, per season | each season's own qualification | each season's PA/IP, or the range total when the number is above 700 PA / 300 IP |
+
+A line under the control states the rule in effect and how many players it
+leaves.
 
 ## Data sources
 
