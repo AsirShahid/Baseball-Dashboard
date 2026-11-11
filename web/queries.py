@@ -189,7 +189,8 @@ def lines_for(kind: str, lo: int, hi: int, stats: tuple, *, min_mode="q", min_va
     """Player rows for a table or chart, filtered. Returns (lines, info)."""
     stats = tuple(dict.fromkeys(stats))
     extra = ("G", "GS") if kind == PIT else ("G",)
-    t = db.table(kind, lo, hi, tuple(dict.fromkeys(stats + extra)))
+    # With AL or NL picked, the table holds only play in that league (db.table).
+    t = db.table(kind, lo, hi, tuple(dict.fromkeys(stats + extra)), league)
     need, have, ok = qualifying(kind, t)
     names = people()
     unit = "PA" if kind == BAT else "IP"
@@ -203,9 +204,6 @@ def lines_for(kind: str, lo: int, hi: int, stats: tuple, *, min_mode="q", min_va
         if team and code != team:
             continue
         season = r.get("last") or lo
-        if league and T.league(code, season) != league:
-            if not (code == T.MULTI_TEAM and league in ("AL", "NL")):
-                continue
         position = r.get("pos") or p.get("pos") or ""
         if pos and kind == BAT and not _pos_match(position, pos):
             continue
@@ -463,7 +461,7 @@ TEAM_ALWAYS = ("G", "PA", "IP")
 
 
 @db.cached
-def team_gaps(kind: str, lo: int, hi: int, stat: str = "bWAR") -> frozenset:
+def team_gaps(kind: str, lo: int, hi: int, league: str = "", stat: str = "bWAR") -> frozenset:
     """Clubs with a season in lo..hi that has no team bWAR (its players matched to
     Baseball-Reference cover under 95% of its PA or IP: some Negro League clubs,
     two 1875 clubs, 1884 St. Paul). Their total over the span would leave those
@@ -474,6 +472,8 @@ def team_gaps(kind: str, lo: int, hi: int, stat: str = "bWAR") -> frozenset:
         col = db.column(tkind, season, stat)
         rows = db.rows("SELECT team, teamid, i FROM rows WHERE kind = ? AND season = ?", tkind, season)
         for r in rows:
+            if league and not T.in_league(r["team"], season, league):
+                continue
             if col is False or np.isnan(col[r["i"]]):
                 gaps.add(team_key(r))
     return frozenset(gaps)
@@ -488,17 +488,15 @@ TEAM_MODES = {kind: {k: v for k, v in modes.items() if k != "savant"} for kind, 
 def team_table(kind, lo, hi, mode, league, sort):
     cols = columns(kind, mode)
     stats = tuple(c["key"] for c in cols) + ("WAR",)
-    t = db.table(TEAM_KIND[kind], lo, hi, tuple(dict.fromkeys(stats)))
+    t = db.table(TEAM_KIND[kind], lo, hi, tuple(dict.fromkeys(stats)), league)   # only its seasons in the league
     # Baseball Savant's stats are per player (a traded player's season is not split
     # by club), so team tables have none: keep only columns with team data.
     cols = [c for c in cols if c["key"] in TEAM_ALWAYS or (c["key"] in t.cols and not np.isnan(t.cols[c["key"]]).all())]
-    gaps = team_gaps(kind, lo, hi) if hi > lo and "bWAR" in t.cols else frozenset()
+    gaps = team_gaps(kind, lo, hi, league) if hi > lo and "bWAR" in t.cols else frozenset()
     lines = []
     for i, r in enumerate(t.ident):
         code = r["team"]
         season = r.get("last") or hi
-        if league and T.league(code, season) != league:
-            continue
         line = {"team": code, "season": season, "name": T.team_name(code, season),
                 "logo": T.logo(code, season), "teamid": r.get("teamid")}
         for s in t.cols:
@@ -506,7 +504,7 @@ def team_table(kind, lo, hi, mode, league, sort):
             line[s] = None if np.isnan(v) else float(v)
         if team_key(r) in gaps:
             line["bWAR"] = None
-        rec = _record(r.get("teamid"), code, lo, hi)
+        rec = _record(r.get("teamid"), code, lo, hi, league)
         line.update(rec)
         lines.append(line)
     sort = sort if any(c["key"] == sort for c in cols) or sort in ("WAR", "w", "pct") else "WAR"
@@ -516,10 +514,12 @@ def team_table(kind, lo, hi, mode, league, sort):
 
 
 @db.cached
-def _records(lo: int, hi: int) -> dict:
+def _records(lo: int, hi: int, league: str = "") -> dict:
     out = {}
-    for r in db.rows("SELECT teamid, team, SUM(w) AS w, SUM(l) AS l, SUM(rs) AS rs, SUM(ra) AS ra "
-                     "FROM team_seasons WHERE season BETWEEN ? AND ? GROUP BY teamid, team", lo, hi):
+    for r in db.rows("SELECT teamid, team, season, w, l, rs, ra FROM team_seasons WHERE season BETWEEN ? AND ?",
+                     lo, hi):
+        if league and not T.in_league(r["team"], r["season"], league):
+            continue
         key = r["teamid"] if lo != hi else r["team"]
         have = out.setdefault(key, {"w": 0, "l": 0, "rs": 0, "ra": 0})
         for k in have:
@@ -527,8 +527,8 @@ def _records(lo: int, hi: int) -> dict:
     return out
 
 
-def _record(teamid, code, lo, hi) -> dict:
-    rec = _records(lo, hi).get(teamid if lo != hi else code) or {}
+def _record(teamid, code, lo, hi, league: str = "") -> dict:
+    rec = _records(lo, hi, league).get(teamid if lo != hi else code) or {}
     w, l = rec.get("w"), rec.get("l")
     return {"w": w, "l": l, "pct": (w / (w + l)) if w is not None and (w + l) else None,
             "rs": rec.get("rs"), "ra": rec.get("ra")}

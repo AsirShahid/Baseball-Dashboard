@@ -3,7 +3,7 @@
 {% block title %}{{ kinds[kind] }} {{ span_label(lo, hi) }}{% endblock %}
 {% block main %}
 <div class="head">
-  <div><h1>Players</h1><div class="sub">{{ kinds[kind] }} · {{ span_label(lo, hi) }}{% if lo != hi %} (one row per player, totals and rates over the span){% endif %}</div></div>
+  <div><h1>Players</h1><div class="sub">{{ kinds[kind] }} · {{ span_label(lo, hi) }}{% if lo != hi %} (one row per player, totals and rates over the span){% endif %}{% if league %} · {{ league }} play only{% endif %}</div></div>
   <div class="toolbar" style="margin:0">{{ m.span_picker(lo, hi) }}</div>
 </div>
 <div class="toolbar">

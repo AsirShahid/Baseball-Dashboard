@@ -8,7 +8,9 @@ services:
     build: .
     image: baseball-site:latest
     container_name: baseball-dashboard
-    mem_limit: 512m
+    # 768m: two workers each cache tables; separate AL and NL all-time tables
+    # (league-only play) took a full sweep of pages to ~390 MiB.
+    mem_limit: 768m
     restart: unless-stopped
     environment:
       - DATA_ROOT=/data

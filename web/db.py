@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 
 from pipeline import aggregate, savant
+from pipeline import teams as T
 
 _local = threading.local()
 _lock = threading.Lock()
@@ -173,26 +174,55 @@ def _season_table(kind: str, season: int, stats: tuple) -> Table:
     return Table([dict(r) for r in who], cols, (season, season))
 
 
-@cached
-def table(kind: str, lo: int, hi: int, stats: tuple) -> Table:
-    """One row per player (or team) over seasons lo..hi; one season when lo == hi.
+def _subset(t: Table, keep: list) -> Table:
+    idx = np.asarray(keep, dtype=int)
+    return Table([t.ident[i] for i in idx], {s: v[idx] for s, v in t.cols.items()}, t.seasons)
 
-    Ranges roll up per player: counts add, rates are averaged by what they
-    are measured over, and AVG/OBP/SLG/ERA/WHIP/K%/BB% are rebuilt from the
-    summed parts. A player's team over a range is his team in his last
-    season in it (or "- - -" for a traded player)."""
-    weight = "IP" if PITCHING[kind] else "PA"
-    extra = _SAVANT_PARTS if any(s in _SAVANT_REBUILT for s in stats) else ()
-    need = tuple(dict.fromkeys(stats + (weight, "TG") + _PARTS[PITCHING[kind]] + extra))
-    if lo == hi:
-        t = _season_table(kind, lo, need)
-        return Table(t.ident, {s: t.cols[s] for s in need}, t.seasons)
-    if kind in ("bat", "pit") and lo <= first_season() and hi >= latest():
-        t = _season_table(kind, 0, need)
-        _fill_careers(kind, t)
-        return Table(t.ident, t.cols, (lo, hi))
-    years = [s for s in seasons_with(kind) if lo <= s <= hi]
-    parts = [_season_table(kind, s, need) for s in years]
+
+def _league_season(kind: str, season: int, stats: tuple, which: str) -> Table:
+    """One season of play in one league (AL, NL or a division): its clubs, and its
+    players' lines there. A player traded within the league keeps his season line;
+    one traded across leagues counts only his stints with its clubs (his per-club
+    rows added up), the way a league's own leaderboard counts him."""
+    t = _season_table(kind, season, stats)
+    if kind not in ("bat", "pit"):
+        return _subset(t, [i for i, r in enumerate(t.ident) if T.in_league(r["team"], season, which)])
+    clubs = ident("s" + kind, season)
+    stints: dict = {}
+    for j, r in enumerate(clubs):
+        stints.setdefault(r["pid"], []).append(j)
+    keep, split = [], []
+    for i, r in enumerate(t.ident):
+        if r["team"] != T.MULTI_TEAM:
+            if T.in_league(r["team"], season, which):
+                keep.append(i)
+            continue
+        mine = stints.get(r["pid"], [])
+        inside = [j for j in mine if T.in_league(clubs[j]["team"], season, which)]
+        if inside and len(inside) == len(mine):
+            keep.append(i)
+        elif inside:
+            split.append((i, inside))
+    out = _subset(t, keep)
+    if not split:
+        return out
+    st = _season_table("s" + kind, season, stats)
+    rows = [j for _, inside in split for j in inside]
+    key = np.array([n for n, (_, inside) in enumerate(split) for _ in inside])
+    _uniq, _first, agg = aggregate.group_rows(key, {s: st.cols[s][rows] for s in stats}, PITCHING[kind])
+    who = []
+    for n, (i, inside) in enumerate(split):
+        r = dict(t.ident[i])
+        r["team"] = clubs[inside[0]]["team"] if len(inside) == 1 else T.MULTI_TEAM
+        if "TG" in agg:   # his clubs' games, not their sum: qualifying is per season
+            agg["TG"][n] = max(st.cols["TG"][j] for j in inside)
+        r["tg"] = agg["TG"][n] if "TG" in agg else r.get("tg")
+        who.append(r)
+    cols = {s: np.concatenate([out.cols[s], agg.get(s, np.full(len(split), np.nan))]) for s in stats}
+    return Table(out.ident + who, cols, out.seasons)
+
+
+def _roll_up(kind: str, parts: list, need: tuple, lo: int, hi: int) -> Table:
     if not parts:
         return Table([], {s: np.zeros(0) for s in need}, (lo, hi))
     who = [r for p in parts for r in p.ident]
@@ -200,6 +230,8 @@ def table(kind: str, lo: int, hi: int, stats: tuple) -> Table:
     key = np.array([(r["pid"] if r["pid"] is not None else hash(r["team"])) for r in who])
     if kind in ("tbat", "tpit"):
         key = np.array([r["teamid"] or hash(r["team"]) for r in who])
+    if not len(key):
+        return Table([], {s: np.zeros(0) for s in need}, (lo, hi))
     uniq, first, agg = aggregate.group_rows(key, cols, PITCHING[kind])
     # Representative identity: the row from each key's last season in the range.
     last = {}
@@ -217,6 +249,37 @@ def table(kind: str, lo: int, hi: int, stats: tuple) -> Table:
         r["first"], r["last"], r["n"] = seasons_of[k]
         out_ident.append(r)
     return Table(out_ident, agg, (lo, hi))
+
+
+@cached
+def table(kind: str, lo: int, hi: int, stats: tuple, league: str = "") -> Table:
+    """One row per player (or team) over seasons lo..hi; one season when lo == hi.
+
+    Ranges roll up per player: counts add, rates are averaged by what they
+    are measured over, and AVG/OBP/SLG/ERA/WHIP/K%/BB% are rebuilt from the
+    summed parts. A player's team over a range is his team in his last
+    season in it (or "- - -" for a traded player).
+
+    With `league` (AL, NL or a division) only play in it counts: a club's seasons
+    in it, a player's seasons and stints with its clubs (_league_season)."""
+    weight = "IP" if PITCHING[kind] else "PA"
+    extra = _SAVANT_PARTS if any(s in _SAVANT_REBUILT for s in stats) else ()
+    need = tuple(dict.fromkeys(stats + (weight, "TG") + _PARTS[PITCHING[kind]] + extra))
+    if league:
+        years = [s for s in seasons_with(kind) if lo <= s <= hi]
+        parts = [_league_season(kind, s, need, league) for s in years]
+        if lo == hi:
+            return parts[0] if parts else Table([], {s: np.zeros(0) for s in need}, (lo, hi))
+        return _roll_up(kind, parts, need, lo, hi)
+    if lo == hi:
+        t = _season_table(kind, lo, need)
+        return Table(t.ident, {s: t.cols[s] for s in need}, t.seasons)
+    if kind in ("bat", "pit") and lo <= first_season() and hi >= latest():
+        t = _season_table(kind, 0, need)
+        _fill_careers(kind, t)
+        return Table(t.ident, t.cols, (lo, hi))
+    years = [s for s in seasons_with(kind) if lo <= s <= hi]
+    return _roll_up(kind, [_season_table(kind, s, need) for s in years], need, lo, hi)
 
 
 # Baseball Savant stats are rebuilt from their counts over a span (pipeline/savant.py).

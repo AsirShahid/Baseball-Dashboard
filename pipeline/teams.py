@@ -313,6 +313,13 @@ def league(code: str, season: int):
     return None
 
 
+def in_league(code: str, season: int, which: str) -> bool:
+    """Whether the club played in `which` that season: 'AL', 'NL' or a division
+    ('NL Central'). The Brewers are AL to 1997 and NL from 1998, the Astros NL to
+    2012 and AL from 2013."""
+    return league(code, season) == which or division(code, season) == which
+
+
 def other_leagues(season: int) -> str:
     """What the teams outside the AL and NL played in that season."""
     names = []

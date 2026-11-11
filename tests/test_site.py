@@ -608,3 +608,30 @@ def test_bwar_id_stem_and_club_codes():
     b.stints["pit"] = {("id", "1", 1899): {"x01": [("CHC", 300.0, 2.0, 100.0, 90.0)]}}
     clubs = b.clubs("pit", 1899, [{"team": "CHI", "mlbam": 1}, {"team": "- - -", "mlbam": 1}])
     assert clubs == {"CHI": "CHC"}
+
+
+def test_league_filter_counts_only_play_in_that_league(app, client):
+    """AL or NL shows only play in that league: a player traded across leagues
+    counts his stints there; one traded within a league keeps his season line."""
+    from web import db, queries
+    from pipeline import teams as T
+    assert T.in_league("MIL", 1997, "AL") and T.in_league("MIL", 1998, "NL")
+    assert T.in_league("HOU", 2012, "NL") and T.in_league("HOU", 2013, "AL")
+    assert not T.in_league("KCM", 1943, "NL") and not T.in_league("KCM", 1943, "AL")
+    with app.app_context():
+        def line(lg, name):
+            lines, _ = queries.lines_for("bat", 2024, 2024, ("PA", "AVG"), min_mode="n", min_value=1, league=lg)
+            return next((l for l in lines if l["name"] == name), None)
+        whole = line("", "Isaac Paredes")           # TBR then CHC: 641 PA
+        al, nl = line("AL", "Isaac Paredes"), line("NL", "Isaac Paredes")
+        assert whole["team"] == T.MULTI_TEAM and whole["PA"] == 641
+        assert (al["team"], al["PA"]) == ("TBR", 429) and (nl["team"], nl["PA"]) == ("CHC", 212)
+        assert line("NL", "Randy Arozarena") is None  # TBR then SEA: AL only
+        aro = line("AL", "Randy Arozarena")
+        assert aro["team"] == T.MULTI_TEAM and aro["PA"] == line("", "Randy Arozarena")["PA"]
+        # Over a span the league-only table still adds up every NL club's batters.
+        nl_t = db.table("bat", 1955, 2024, ("PA",), "NL")
+        nl_teams = db.table("tbat", 1955, 2024, ("PA",), "NL")
+        assert math.isclose(float(np.nansum(nl_t.cols["PA"])), float(np.nansum(nl_teams.cols["PA"])), rel_tol=0.002)
+    assert "NL play only" in page(client, "/players?league=NL")
+    assert "NL seasons only" in page(client, "/teams?league=NL&season=1955&to=2024")

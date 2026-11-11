@@ -3,7 +3,7 @@
 {% block title %}Teams {{ span_label(lo, hi) }}{% endblock %}
 {% block main %}
 <div class="head">
-  <div><h1>Teams</h1><div class="sub">{{ kinds[kind] }} · {{ span_label(lo, hi) }}{% if lo != hi %} (franchises over the span){% endif %}</div></div>
+  <div><h1>Teams</h1><div class="sub">{{ kinds[kind] }} · {{ span_label(lo, hi) }}{% if lo != hi %} (franchises over the span{% if league %}, {{ league }} seasons only{% endif %}){% endif %}</div></div>
   <div class="toolbar" style="margin:0">{{ m.span_picker(lo, hi) }}</div>
 </div>
 <div class="toolbar">

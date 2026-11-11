@@ -254,3 +254,21 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
   raised, group rows bg); a sticky `td.name`/`th.name` paints the tint over that solid base. app.js
   marks the header cell above a pinned column `name`, so it is pinned too. Checked at iPad portrait
   with every wide table scrolled 420px: header pinned and aligned, no translucent pinned cell.
+
+## AL / NL filters count only play in that league (2026-11-11)
+
+- Bugs: the AL/NL filter took a span line's league from its last season, so all-time NL batting was
+  led by Babe Ruth (whole career; last season the 1935 Braves), Aaron and Hornsby were AL, and the
+  Brewers' 1969-97 AL seasons counted under NL. And every traded player ("- - -") passed both
+  filters, so 1943 NL pitchers included Satchel Paige and Bill Byrd (two Negro League clubs).
+- Now `db.table(kind, lo, hi, stats, league)` builds each season from that league's play
+  (`db._league_season`): clubs in it (`teams.in_league`, also divisions), one-club players there, a
+  traded player's season line if all his clubs were there, else his per-club rows with its clubs added
+  up (TG = his largest club's games, so 1990 McGee qualifies in the NL on 542 PA at .335 and not in
+  the AL). Team W-L (`_records`) and the bWAR gap check take the league too. MLB is unchanged.
+- Checked: Brewers AL 2200-2367 (1969-97, Pilots included) + NL 2308-2287 = franchise; Astros NL
+  3999-4134 + AL 1178-987; fWAR halves add to the MLB totals; Ruth NL = 1935 BSN 92 PA; fixture test:
+  NL batters' PA over 1955-2024 equal NL clubs' PA within 0.2%.
+- Not cached per season (one all-time query would add ~150 entries to a 400-entry cache that clears
+  when full); `db.table` caches the result. A 72-page sweep: worst 3.9 s uncached, 391 MiB vs 300 MiB
+  for the old image, so mem_limit 512m -> 768m.
