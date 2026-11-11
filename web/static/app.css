@@ -196,7 +196,7 @@ a.game:hover { border-color: #3a475d; color: inherit; }
 
 /* ---------- profile pages ---------- */
 .profile { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-.profile .photo { width: 132px; height: 96px; object-fit: cover; object-position: top; border-radius: 12px; background: var(--raised); border: 1px solid var(--line); }
+.profile .photo { width: 88px; height: 132px; object-fit: cover; object-position: center top; border-radius: 12px; background: var(--raised); border: 1px solid var(--line); flex: none; }
 .profile .biglogo { width: 84px; height: 84px; }
 .profile h1 { font-size: 30px; }
 .profile .line { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--dim); margin-top: 6px; }
@@ -242,7 +242,16 @@ a.game:hover { border-color: #3a475d; color: inherit; }
 .check { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; cursor: pointer; }
 .check input { accent-color: var(--accent); width: 15px; height: 15px; }
 .plot { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 10px 4px; }
-.plot svg { display: block; width: 100%; height: auto; touch-action: manipulation; }
+.plot svg { display: block; width: 100%; height: auto; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.plot svg text { -webkit-user-select: none; user-select: none; }
+.plot .zoombar { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; padding: 0 6px 6px; }
+.plot .zoombar .btn.small { min-width: 34px; height: 30px; padding: 0 10px; font-size: 14px; line-height: 1; }
+.plot .zoombar .btn.small.on { border-color: var(--accent); color: var(--accent); }
+.plot .zoombar .seg.small button { height: 30px; padding: 0 10px; font-size: 12px; }
+.plot .zoombar .seg[hidden] { display: none; }
+.plot .hint { color: var(--muted); font-size: 11px; padding: 2px 6px 4px; }
+.plot .zoombox { fill: rgba(249, 115, 22, 0.12); stroke: #f97316; stroke-width: 1; stroke-dasharray: 4 3; }
+.plot .tick3d { fill: var(--muted); }
 .plot .title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; padding: 2px 6px 6px; color: var(--muted); font-size: 12px; }
 .plot .title b { color: var(--text); font-weight: 600; }
 .plot text { font-family: inherit; }
@@ -289,7 +298,7 @@ a.game:hover { border-color: #3a475d; color: inherit; }
   .explorer > .stage { order: -1; }
   .explorer .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .explorer .controls .wide { grid-column: 1 / -1; }
-  .profile .photo { width: 104px; height: 76px; }
+  .profile .photo { width: 64px; height: 96px; }
   .profile h1 { font-size: 24px; }
   .pbar { grid-template-columns: 92px 1fr 40px 30px; }
   .games { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 9px; }
@@ -322,3 +331,12 @@ a.game:hover { border-color: #3a475d; color: inherit; }
 .pct-groups .pbar { grid-template-columns: 92px 1fr 52px 30px; }
 .hint { margin: -4px 0 10px; }
 .chipcode.long { font-size: 6.5px; letter-spacing: -0.06em; overflow: hidden; }
+
+/* Player pages: picking a span of seasons */
+.stats button.yr { background: none; border: 0; padding: 2px 4px; margin: -2px -4px; border-radius: 5px; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline dotted rgba(249, 115, 22, 0.5); text-underline-offset: 3px; }
+.stats button.yr:hover { background: var(--accent-soft); }
+.stats tr.inspan td { background: rgba(249, 115, 22, 0.06); }
+.stats tr.pick td { background: rgba(249, 115, 22, 0.18); }
+.stats tr.spanrow td { background: rgba(249, 115, 22, 0.12); font-weight: 650; border-top: 1px solid var(--accent); }
+.spanbar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 12px; max-width: calc(100% - 24px); padding: 10px 12px 10px 16px; border-radius: 12px; border: 1px solid var(--accent); background: var(--surface); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); font-size: 14px; }
+.spanbar[hidden] { display: none; }

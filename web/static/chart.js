@@ -33,7 +33,15 @@
     find: init.find || "", labels: init.labels || "standouts"
   };
   var data = null, shown = [], pinned = null, hovered = null, loads = 0;
-  var rot = { yaw: -0.6, pitch: 0.35 }, drag = null;
+  var rot = { yaw: -0.6, pitch: 0.35, zoom: 1 };
+  // Zoom: a 2D window in data units ({x: [lo, hi], y: [lo, hi]}) or null for
+  // everything; geo is the last 2D geometry, for turning screen points into data.
+  var zoom = null, geo = null, dragMode = "box";
+  var pointers = {}, gesture = null, lastTap = null, frame = 0;
+  function schedule() {
+    if (frame) return;
+    frame = requestAnimationFrame(function () { frame = 0; draw(); });
+  }
 
   // ------------------------------------------------------------ helpers
   function make(tag, attrs, parent) {
@@ -65,6 +73,7 @@
   }
   function ticks(lo, hi, want) {
     var raw = (hi - lo) / Math.max(want, 1);
+    if (!(raw > 0) || !isFinite(raw)) return { values: [], step: 1 };
     var power = Math.pow(10, Math.floor(Math.log10(raw)));
     var step = [1, 2, 2.5, 5, 10].map(function (m) { return m * power; })
       .filter(function (s) { return s >= raw; })[0] || raw;
@@ -218,6 +227,7 @@
         return row;
       });
       pinned = null; hovered = null; tip.hidden = true;
+      zoom = null; rot.zoom = 1;
       draw();
     }).catch(function () { drawMessage("Could not load the data. Reload to try again."); });
   }
@@ -271,6 +281,13 @@
     });
     if (az) draw3d(width, height, narrow); else draw2d(width, height, narrow, players, needle);
     drawBoard(players);
+    var zoomed = az ? rot.zoom !== 1 : !!zoom;
+    $("zreset").classList.toggle("on", zoomed);
+    $("zmode").hidden = !!az;
+    $("hint").textContent = az
+      ? "Drag to rotate \u00b7 pinch, Ctrl + scroll or +/\u2212 to zoom \u00b7 double-tap to reset"
+      : (dragMode === "box" ? "Drag a box to zoom" : "Drag to pan") +
+        " \u00b7 pinch or Ctrl + scroll to zoom \u00b7 double-tap to reset \u00b7 tap a dot for details";
   }
 
   function seasonTag(r) { return r.season ? " \u2019" + String(r.season).slice(2) : ""; }
@@ -284,8 +301,14 @@
       var pad = (hi - lo) * 0.07 || Math.abs(hi) * 0.05 || 1;
       return [lo - pad, hi + pad];
     }
-    var ex = extent("x"), ey = extent("y");
+    var full = { x: extent("x"), y: extent("y") };
+    var ex = zoom ? zoom.x.slice() : full.x, ey = zoom ? zoom.y.slice() : full.y;
     var pw = width - m.l - m.r, ph = height - m.t - m.b;
+    geo = { m: m, pw: pw, ph: ph, ex: ex, ey: ey, bx: ax.better, by: ay.better, full: full };
+    var clipId = "c-plotclip";
+    var clipPath = make("clipPath", { id: clipId }, make("defs", {}, svg));
+    make("rect", { x: m.l, y: m.t, width: pw, height: ph }, clipPath);
+    var inner = make("g", { "clip-path": "url(#" + clipId + ")" }, svg);
     // "Better" points right and up: lower-is-better axes are flipped.
     function sx(v) { var t = (v - ex[0]) / (ex[1] - ex[0]); return m.l + (ax.better ? t : 1 - t) * pw; }
     function sy(v) { var t = (v - ey[0]) / (ey[1] - ey[0]); return m.t + (ay.better ? 1 - t : t) * ph; }
@@ -307,10 +330,10 @@
       var mx = 0, my = 0;
       shown.forEach(function (r) { mx += r.x; my += r.y; });
       mx /= shown.length; my /= shown.length;
-      make("line", { class: "mean", x1: sx(mx), x2: sx(mx), y1: m.t, y2: m.t + ph }, svg);
-      make("line", { class: "mean", x1: m.l, x2: m.l + pw, y1: sy(my), y2: sy(my) }, svg);
-      make("text", { class: "axis", x: sx(mx) + 4, y: m.t + 10 }, svg).textContent = "avg " + show(mx, ax.fmt);
-      make("text", { class: "axis", x: m.l + pw - 4, y: sy(my) - 4, "text-anchor": "end" }, svg).textContent = "avg " + show(my, ay.fmt);
+      make("line", { class: "mean", x1: sx(mx), x2: sx(mx), y1: m.t, y2: m.t + ph }, inner);
+      make("line", { class: "mean", x1: m.l, x2: m.l + pw, y1: sy(my), y2: sy(my) }, inner);
+      if (mx >= ex[0] && mx <= ex[1]) make("text", { class: "axis", x: sx(mx) + 4, y: m.t + 10 }, svg).textContent = "avg " + show(mx, ax.fmt);
+      if (my >= ey[0] && my <= ey[1]) make("text", { class: "axis", x: m.l + pw - 4, y: sy(my) - 4, "text-anchor": "end" }, svg).textContent = "avg " + show(my, ay.fmt);
     }
     if (state.trend && shown.length > 2) {
       var n = shown.length, sxv = 0, syv = 0, sxx = 0, sxy = 0, syy = 0;
@@ -320,14 +343,18 @@
         var slope = cxy / vx, icpt = (syv - slope * sxv) / n, r2 = cxy * cxy / (vx * vy);
         var x0 = ex[0], x1 = ex[1];
         var y0 = slope * x0 + icpt, y1 = slope * x1 + icpt;
-        var clip = make("clipPath", { id: "c-clip" }, svg);
-        make("rect", { x: m.l, y: m.t, width: pw, height: ph }, clip);
-        make("line", { class: "trend", x1: sx(x0), y1: sy(y0), x2: sx(x1), y2: sy(y1), "clip-path": "url(#c-clip)" }, svg);
+        make("line", { class: "trend", x1: sx(x0), y1: sy(y0), x2: sx(x1), y2: sy(y1) }, inner);
         make("text", { class: "axis trend-label", x: m.l + 6, y: m.t + ph - 8 }, svg)
           .textContent = "trend r\u00b2 = " + r2.toFixed(2) + (cxy < 0 ? " (negative)" : "");
       }
     }
-    shown.forEach(function (r) { r._x = sx(r.x); r._y = sy(r.y); r._r = players ? (shown.length > 1500 ? 3 : 4.4) : 7; });
+    shown.forEach(function (r) {
+      r._x = sx(r.x); r._y = sy(r.y);
+      r._in = r._x >= m.l - 1 && r._x <= m.l + pw + 1 && r._y >= m.t - 1 && r._y <= m.t + ph + 1;
+    });
+    // Dot size: smaller when crowded, larger as you zoom in.
+    var visible = zoom ? shown.filter(function (r) { return r._in; }).length : shown.length;
+    shown.forEach(function (r) { r._r = players ? (visible > 1500 ? 3 : visible > 300 ? 4.4 : 5.5) : 7; });
 
     // Trajectories: each one's seasons in order.
     if (data.split && state.path) {
@@ -342,7 +369,7 @@
         var g = groups[id].sort(function (a, b) { return a.season - b.season; });
         if (g.length < 2) return;
         var color = ["#f97316", "#60a5fa", "#3ecf8e", "#e879f9", "#facc15", "#f2555a", "#22d3ee", "#a3e635", "#fb7185", "#c4b5fd"][i % 10];
-        make("polyline", { class: "path", points: g.map(function (r) { return r._x + "," + r._y; }).join(" "), stroke: color }, svg);
+        make("polyline", { class: "path", points: g.map(function (r) { return r._x + "," + r._y; }).join(" "), stroke: color }, inner);
         g.forEach(function (r) { r._path = color; });
         var last = g[g.length - 1];
         make("text", { class: "lbl", x: last._x + 7, y: last._y + 4, fill: color }, svg).textContent = shortName(last.name, narrow);
@@ -350,9 +377,9 @@
     }
 
     var logos = !players && state.logos;
-    var layer = make("g", {}, svg);
+    var layer = make("g", {}, inner);
     var faded = !!needle || (data.split && state.path);
-    shown.slice().sort(function (a, b) { return (a._hit - b._hit) || (!!a._path - !!b._path); }).forEach(function (r) {
+    shown.filter(function (r) { return r._in; }).sort(function (a, b) { return (a._hit - b._hit) || (!!a._path - !!b._path); }).forEach(function (r) {
       var on = r._hit || r._path;
       var group = make("g", { class: "pt" + (faded && !on ? " faded" : "") + (r._hit ? " hit" : "") }, layer);
       var size = narrow ? 22 : 28;
@@ -381,7 +408,7 @@
     if (!players && !logos && state.labels !== "none") want = shown.length;
     if (!players && logos && state.labels === "standouts") want = 0;
     if (players && state.team && state.labels === "standouts") want = Math.min(shown.length, 40);
-    var order = shown.slice().sort(function (a, b) {
+    var order = shown.filter(function (r) { return r._in; }).sort(function (a, b) {
       function reach(r) {
         var dx = r._px - 0.5, dy = r._py - 0.5;
         return (dx * dx + dy * dy) * (0.3 + 0.7 * r._score) + 0.35 * Math.max(dy, 0);
@@ -425,7 +452,7 @@
     });
     function unit(r, k) { var t = (r[k] - ext[k][0]) / (ext[k][1] - ext[k][0]); return (axes[k].better ? t : 1 - t) * 2 - 1; }
     var cy = Math.cos(rot.yaw), sy = Math.sin(rot.yaw), cp = Math.cos(rot.pitch), sp = Math.sin(rot.pitch);
-    var scale = Math.min(width, height) * 0.3, ox = width / 2, oy = height / 2 + 10;
+    var scale = Math.min(width, height) * 0.3 * rot.zoom, ox = width / 2, oy = height / 2 + 10;
     function project(x, y, z) {   // x right, y up, z depth
       var x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
       var y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
@@ -440,6 +467,21 @@
         if (diff !== 2) return;
         var a = project(p[0], p[1], p[2]), b = project(q[0], q[1], q[2]);
         make("line", { class: "gridline", x1: a[0], y1: a[1], x2: b[0], y2: b[1] }, svg);
+      });
+    });
+    // Tick values along the three labelled edges, pushed away from the centre.
+    var centre = project(0, 0, 0);
+    var edges = { x: function (u) { return [u, -1, -1]; }, y: function (u) { return [-1, u, -1]; }, z: function (u) { return [-1, -1, u]; } };
+    ["x", "y", "z"].forEach(function (k) {
+      var t = ticks(ext[k][0], ext[k][1], narrow ? 3 : 4);
+      t.values.forEach(function (v) {
+        var f = (v - ext[k][0]) / (ext[k][1] - ext[k][0]);
+        var e = edges[k]((axes[k].better ? f : 1 - f) * 2 - 1);
+        var p = project(e[0], e[1], e[2]);
+        var dx = p[0] - centre[0], dy = p[1] - centre[1], len = Math.hypot(dx, dy) || 1;
+        make("circle", { class: "tick3d", cx: p[0], cy: p[1], r: 1.8 }, svg);
+        make("text", { class: "axis", x: p[0] + dx / len * 15, y: p[1] + dy / len * 15 + 3.5, "text-anchor": "middle" }, svg)
+          .textContent = tickText(v, data.era ? "pctl" : axes[k].fmt, t.step);
       });
     });
     [["x", [1.25, -1, -1]], ["y", [-1, 1.2, -1]], ["z", [-1, -1, 1.3]]].forEach(function (e) {
@@ -462,7 +504,7 @@
       make("text", { class: "lbl" + (r._hit ? " hit" : ""), x: r._x + r._r + 3, y: r._y + 4 }, svg)
         .textContent = (data.view === "player" ? shortName(r.name, narrow) : r.team) + (data.split ? seasonTag(r) : "");
     });
-    make("text", { class: "axis", x: 8, y: height - 8 }, svg).textContent = "Drag to rotate. Better is right, up and toward you.";
+    make("text", { class: "axis", x: 8, y: height - 8 }, svg).textContent = "Better is right, up and toward you.";
   }
 
   function teamColor(code) { return TEAM_COLORS[code] || "#7fa3d9"; }
@@ -496,6 +538,7 @@
     var px = (event.clientX - box.left) * scale, py = (event.clientY - box.top) * scale;
     var best = null, bestD = Infinity;
     shown.forEach(function (r) {
+      if (r._in === false) return;
       var d = Math.hypot(r._x - px, r._y - py) - r._r * 0.6;
       if (d < bestD) { bestD = d; best = r; }
     });
@@ -543,33 +586,169 @@
     tip.style.left = Math.max(4, left) + "px";
     tip.style.top = Math.max(4, top) + "px";
   }
+  // Gestures. One pointer: rotate (3D), drag a zoom box or pan (2D); a short
+  // press is a tap (pin a dot). Two pointers: pinch to zoom, and move to pan.
+  function svgPoint(event) {
+    var box = svg.getBoundingClientRect(), k = (svg.viewBox.baseVal.width || box.width) / box.width;
+    return [(event.clientX - box.left) * k, (event.clientY - box.top) * k];
+  }
+  function toData(p, g) {
+    var tx = (p[0] - g.m.l) / g.pw, ty = (p[1] - g.m.t) / g.ph;
+    var fx = g.bx ? tx : 1 - tx, fy = g.by ? 1 - ty : ty;
+    return [g.ex[0] + fx * (g.ex[1] - g.ex[0]), g.ey[0] + fy * (g.ey[1] - g.ey[0])];
+  }
+  // A window of size f times the start window that keeps the data point `anchor`
+  // under the screen point p.
+  function windowAt(g, anchor, p, f) {
+    var tx = (p[0] - g.m.l) / g.pw, ty = (p[1] - g.m.t) / g.ph;
+    var fx = g.bx ? tx : 1 - tx, fy = g.by ? 1 - ty : ty;
+    var wx = (g.ex[1] - g.ex[0]) * f, wy = (g.ey[1] - g.ey[0]) * f;
+    var x0 = anchor[0] - fx * wx, y0 = anchor[1] - fy * wy;
+    return { x: [x0, x0 + wx], y: [y0, y0 + wy] };
+  }
+  function setZoom(w) {
+    if (!w || !geo || !(w.x[1] > w.x[0]) || !(w.y[1] > w.y[0]) || !isFinite(w.x[0] + w.x[1] + w.y[0] + w.y[1])) { zoom = null; return; }
+    var fx = geo.full.x, fy = geo.full.y;
+    zoom = (w.x[0] <= fx[0] && w.x[1] >= fx[1] && w.y[0] <= fy[0] && w.y[1] >= fy[1]) ? null : w;
+  }
+  function zoomBy(f, p) {
+    if (!data) return;
+    if (data.axes.z) { rot.zoom = Math.max(0.5, Math.min(8, rot.zoom / f)); schedule(); return; }
+    if (!geo) return;
+    p = p || [geo.m.l + geo.pw / 2, geo.m.t + geo.ph / 2];
+    setZoom(windowAt(geo, toData(p, geo), p, f));
+    tip.hidden = true; pinned = null;
+    schedule();
+  }
+  function resetZoom() {
+    zoom = null; rot.zoom = 1; rot.yaw = -0.6; rot.pitch = 0.35;
+    tip.hidden = true; pinned = null;
+    schedule();
+  }
+  function freeze() {   // the geometry at the start of a gesture
+    return geo && { m: geo.m, pw: geo.pw, ph: geo.ph, ex: geo.ex.slice(), ey: geo.ey.slice(), bx: geo.bx, by: geo.by };
+  }
+  function startGesture() {
+    var ids = Object.keys(pointers);
+    if (!data) { gesture = null; return; }
+    if (ids.length >= 2) {
+      var a = pointers[ids[0]], b = pointers[ids[1]];
+      var mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      var g = freeze();
+      gesture = { type: "pinch", d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, g: g, zoom0: rot.zoom,
+                  anchor: g ? toData(mid, g) : null, moved: true };
+      removeBox();
+    } else if (ids.length === 1) {
+      var p = pointers[ids[0]];
+      var type = data.axes.z ? "rotate" : (dragMode === "pan" || gesture && gesture.shift ? "pan" : "box");
+      var g1 = freeze();
+      gesture = { type: type, start: p, yaw: rot.yaw, pitch: rot.pitch, g: g1, anchor: g1 ? toData(p, g1) : null, moved: false };
+    }
+  }
+  var boxNode = null;
+  function removeBox() { if (boxNode) { boxNode.remove(); boxNode = null; } }
   svg.addEventListener("pointerdown", function (event) {
-    if (!data || !data.axes.z) return;
-    drag = { x: event.clientX, y: event.clientY, yaw: rot.yaw, pitch: rot.pitch, moved: false };
-    svg.setPointerCapture(event.pointerId);
+    if (!data) return;
+    pointers[event.pointerId] = svgPoint(event);
+    try { svg.setPointerCapture(event.pointerId); } catch (e) { /* ignore */ }
+    gesture = { shift: event.shiftKey };
+    startGesture();
+    if (event.pointerType !== "mouse") event.preventDefault();
   });
   svg.addEventListener("pointermove", function (event) {
-    if (drag) {
-      var dx = event.clientX - drag.x, dy = event.clientY - drag.y;
-      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-      rot.yaw = drag.yaw + dx * 0.01;
-      rot.pitch = Math.max(-1.4, Math.min(1.4, drag.pitch + dy * 0.01));
+    if (pointers[event.pointerId] && gesture) {
+      var p = svgPoint(event);
+      pointers[event.pointerId] = p;
+      if (gesture.type === "pinch") {
+        var ids = Object.keys(pointers);
+        if (ids.length < 2) return;
+        var a = pointers[ids[0]], b = pointers[ids[1]];
+        var d = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        if (data.axes.z) rot.zoom = Math.max(0.5, Math.min(8, gesture.zoom0 * d / gesture.d0));
+        else if (gesture.g) setZoom(windowAt(gesture.g, gesture.anchor, mid, gesture.d0 / d));
+        tip.hidden = true;
+        schedule();
+        return;
+      }
+      if (!gesture.start) return;
+      var dx = p[0] - gesture.start[0], dy = p[1] - gesture.start[1];
+      if (!gesture.moved && Math.abs(dx) + Math.abs(dy) < 6) return;
+      gesture.moved = true;
       tip.hidden = true;
-      draw();
+      if (gesture.type === "rotate") {
+        rot.yaw = gesture.yaw + dx * 0.01;
+        rot.pitch = Math.max(-1.4, Math.min(1.4, gesture.pitch + dy * 0.01));
+        schedule();
+      } else if (gesture.type === "pan" && gesture.g) {
+        setZoom(windowAt(gesture.g, gesture.anchor, p, 1));
+        schedule();
+      } else if (gesture.type === "box") {
+        if (!boxNode) boxNode = make("rect", { class: "zoombox" }, svg);
+        boxNode.setAttribute("x", Math.min(p[0], gesture.start[0]));
+        boxNode.setAttribute("y", Math.min(p[1], gesture.start[1]));
+        boxNode.setAttribute("width", Math.abs(dx));
+        boxNode.setAttribute("height", Math.abs(dy));
+      }
       return;
     }
-    if (pinned || event.pointerType === "touch") return;
+    if (pinned || event.pointerType !== "mouse" || !data) return;
     var r = nearest(event);
     if (r !== hovered) { hovered = r; showTip(r, false); }
-    svg.style.cursor = r ? "pointer" : (data && data.axes.z ? "grab" : "default");
+    svg.style.cursor = r ? "pointer" : (data.axes.z ? "grab" : (dragMode === "pan" ? "move" : "crosshair"));
   });
-  svg.addEventListener("pointerup", function () { setTimeout(function () { drag = null; }, 0); });
-  svg.addEventListener("pointerleave", function () { if (!pinned) { hovered = null; tip.hidden = true; } });
-  svg.addEventListener("click", function (event) {
-    if (drag && drag.moved) return;
+  function endPointer(event, cancelled) {
+    if (!pointers[event.pointerId]) return;
+    var p = svgPoint(event);
+    delete pointers[event.pointerId];
+    var g = gesture;
+    if (Object.keys(pointers).length) { startGesture(); return; }   // a pinch became a one-finger drag
+    gesture = null;
+    if (!g || cancelled) { removeBox(); return; }
+    if (g.type === "box" && g.moved && g.g) {
+      var a = toData(g.start, g.g), b = toData(p, g.g);
+      var wide = Math.abs(p[0] - g.start[0]) > 8, tall = Math.abs(p[1] - g.start[1]) > 8;
+      removeBox();
+      if (wide || tall) {
+        setZoom({ x: wide ? [Math.min(a[0], b[0]), Math.max(a[0], b[0])] : g.g.ex.slice(),
+                  y: tall ? [Math.min(a[1], b[1]), Math.max(a[1], b[1])] : g.g.ey.slice() });
+        pinned = null;
+        schedule();
+      }
+      return;
+    }
+    removeBox();
+    if (g.moved || g.type === "pinch") return;
+    // A tap: twice in a row resets the zoom; once pins the nearest dot.
+    var now = Date.now();
+    if (lastTap && now - lastTap.t < 320 && Math.hypot(p[0] - lastTap.p[0], p[1] - lastTap.p[1]) < 30) {
+      lastTap = null;
+      resetZoom();
+      return;
+    }
+    lastTap = { t: now, p: p };
     var r = nearest(event);
     pinned = r && r !== pinned ? r : null;
     showTip(pinned, true);
+  }
+  svg.addEventListener("pointerup", function (event) { endPointer(event, false); });
+  svg.addEventListener("pointercancel", function (event) { endPointer(event, true); });
+  svg.addEventListener("pointerleave", function () { if (!pinned && !gesture) { hovered = null; tip.hidden = true; } });
+  svg.addEventListener("wheel", function (event) {
+    // Trackpad pinches arrive as Ctrl + wheel; plain scrolling still scrolls the page.
+    if (!data || !(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    zoomBy(Math.exp(event.deltaY * 0.01), data.axes.z ? null : svgPoint(event));
+  }, { passive: false });
+  svg.addEventListener("contextmenu", function (event) { if (event.pointerType !== "mouse") event.preventDefault(); });
+  $("zin").addEventListener("click", function () { zoomBy(1 / 1.6); });
+  $("zout").addEventListener("click", function () { zoomBy(1.6); });
+  $("zreset").addEventListener("click", resetZoom);
+  $("zmode").addEventListener("click", function (event) {
+    var v = event.target.dataset.v;
+    if (!v) return;
+    dragMode = v;
+    Array.prototype.forEach.call(this.children, function (b) { b.classList.toggle("on", b.dataset.v === dragMode); });
+    draw();
   });
 
   // -------------------------------------------------------------- CSV
@@ -646,7 +825,12 @@
   $("path").addEventListener("change", function () { state.path = this.checked; if (this.checked) state.split = true; syncControls(); load(); });
   $("era").addEventListener("change", function () { state.era = this.checked; load(); });
   ["color", "labels"].forEach(function (id) { $(id).addEventListener("change", function () { state[id] = this.value; update(); }); });
-  $("find").addEventListener("input", function () { state.find = this.value; update(); });
+  var findTimer = null;
+  $("find").addEventListener("input", function () {
+    var value = this.value;
+    clearTimeout(findTimer);
+    findTimer = setTimeout(function () { state.find = value; update(); }, shown.length > 3000 ? 200 : 60);
+  });
   ["mean", "trend", "logos"].forEach(function (id) { $(id).addEventListener("change", function () { state[id] = this.checked; update(); }); });
   $("csv").addEventListener("click", csv);
   $("copy").addEventListener("click", function () {

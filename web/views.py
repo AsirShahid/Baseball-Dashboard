@@ -141,16 +141,43 @@ def player(pid: int):
     order = ["pit", "bat"] if info["primary"] == "pit" else ["bat", "pit"]
     main = pitching if info["primary"] == "pit" and pitching else (batting or pitching)
     pkind = "pit" if main is pitching else "bat"
+    # A span of his seasons, picked by tapping two seasons in a table (?from=&to=).
+    played = sorted({r["season"] for t in (batting, pitching) if t for r in t["rows"]})
+    span = None
+    lo_raw, hi_raw = request.args.get("from", ""), request.args.get("to", "")
+    if played and lo_raw.isdigit() and hi_raw.isdigit():
+        lo, hi = sorted((int(lo_raw), int(hi_raw)))
+        lo, hi = max(lo, played[0]), min(hi, played[-1])
+        if lo <= hi:
+            span = (lo, hi)
+    span_rows = {}
+    if span:
+        for kind, table, mode in (("bat", batting, bmode), ("pit", pitching, pmode)):
+            if table:
+                span_rows[kind] = queries.player_span(pid, kind, mode, span[0], span[1])
     pct_seasons = [r["season"] for r in reversed(main["rows"])] if main else []
     qualified = [r["season"] for r in reversed(main["rows"]) if r["qualified"]] if main else []
-    default = qualified[0] if qualified else (pct_seasons[0] if pct_seasons else 0)
-    pseason = _int("pseason", default)
-    if pct_seasons and pseason not in pct_seasons:
-        pseason = pct_seasons[0]
-    pct = queries.percentiles(pid, pkind, pseason) if pct_seasons else None
+    choice = request.args.get("pseason", "")
+    if not choice:
+        choice = "span" if span else str(qualified[0] if qualified else (pct_seasons[0] if pct_seasons else ""))
+    pct = None
+    if pct_seasons:
+        seasons = sorted(pct_seasons)
+        if choice == "career":
+            pct = queries.percentiles(pid, pkind, seasons[0], seasons[-1])
+            if pct:
+                pct = {**pct, "label": "Career"}
+        elif choice == "span" and span:
+            pct = queries.percentiles(pid, pkind, span[0], span[1])
+            if pct:
+                pct = {**pct, "label": f"{span[0]}\u2013{span[1]}"}
+        if pct is None:
+            season = int(choice) if choice.isdigit() and int(choice) in pct_seasons else pct_seasons[0]
+            choice = str(season)
+            pct = queries.percentiles(pid, pkind, season)
     return render_template("player.html", p=info, batting=batting, pitching=pitching, order=order,
                            bmode=bmode, pmode=pmode, modes=queries.MODES, main=main, pkind=pkind,
-                           pct=pct, pct_seasons=pct_seasons)
+                           pct=pct, pct_seasons=pct_seasons, pchoice=choice, span=span, span_rows=span_rows)
 
 
 @bp.route("/team/<code>")

@@ -467,7 +467,8 @@ def season_best(kind: str, season: int, stat: str):
 @db.cached
 def player(pid: int, kind: str, mode: str) -> dict | None:
     cols = columns(kind, mode)
-    stats = tuple(dict.fromkeys(tuple(c["key"] for c in cols) + ("WAR", "PA" if kind == BAT else "IP")))
+    # G and PA/IP always, so the summary line has them in every table mode.
+    stats = tuple(dict.fromkeys(tuple(c["key"] for c in cols) + ("WAR", "G", "PA" if kind == BAT else "IP")))
     found = db.rows("SELECT kind, season, i, team, age, pos, tg FROM rows WHERE pid = ? AND kind IN (?, ?) "
                     "ORDER BY season, kind", pid, kind, "s" + kind)
     if not found:
@@ -513,6 +514,23 @@ def player(pid: int, kind: str, mode: str) -> dict | None:
     return {"cols": cols, "rows": seasons_rows, "career": career, "facts": facts}
 
 
+def player_span(pid: int, kind: str, mode: str, lo: int, hi: int) -> dict | None:
+    """His line over seasons lo..hi, rolled up like any span (counts add up,
+    ratios are rebuilt from the summed parts)."""
+    cols = columns(kind, mode)
+    weight = "PA" if kind == BAT else "IP"
+    stats = tuple(dict.fromkeys(tuple(c["key"] for c in cols) + ("WAR", "G", weight)))
+    t = db.table(kind, lo, hi, stats)
+    idx = next((i for i, r in enumerate(t.ident) if r["pid"] == pid), None)
+    if idx is None:
+        return None
+    _need, have, ok = qualifying(kind, t)
+    values = {s: (None if np.isnan(t.cols[s][idx]) else float(t.cols[s][idx])) for s in stats if s in t.cols}
+    r = t.ident[idx]
+    return {"lo": lo, "hi": hi, "values": values, "qualified": bool(ok[idx]), "have": float(have[idx]),
+            "first": r.get("first", lo), "last": r.get("last", hi), "n": r.get("n", 1)}
+
+
 PCT_STATS = {
     BAT: [("Value", ["WAR", "bWAR", "wRC+", "Offense", "BaseRunning", "Defense"]),
           ("Hitting", ["OBP", "SLG", "ISO", "AVG", "BABIP"]),
@@ -526,17 +544,39 @@ PCT_STATS = {
 
 
 @db.cached
-def percentiles(pid: int, kind: str, season: int) -> dict | None:
-    """His percentile in each stat that season among the qualified players of his
-    league group (AL and NL together; other leagues on their own), the way
-    Baseball Savant ranks them (100 = best)."""
+def range_groups(kind: str, lo: int, hi: int) -> dict:
+    """pid -> league group over seasons lo..hi: where he had the most PA (IP)."""
+    if lo == hi:
+        return player_groups(kind, lo)
+    weight = "PA" if kind == BAT else "IP"
+    tally: dict = {}
+    for season in range(lo, hi + 1):
+        groups = player_groups(kind, season)
+        t = db.table(kind, season, season, (weight,))
+        col = t.cols.get(weight)
+        for i, r in enumerate(t.ident):
+            w = 0.0 if col is None or np.isnan(col[i]) else float(col[i])
+            g = groups.get(r["pid"], "MLB")
+            tally.setdefault(r["pid"], {}).setdefault(g, 0.0)
+            tally[r["pid"]][g] += w
+    return {pid: max(by, key=by.get) for pid, by in tally.items()}
+
+
+@db.cached
+def percentiles(pid: int, kind: str, lo: int, hi: int | None = None) -> dict | None:
+    """His percentile in each stat among the qualified players of his league group
+    (AL and NL together; other leagues on their own), the way Baseball Savant
+    ranks them (100 = best). Over several seasons, his line for lo..hi against
+    everyone's line for the same seasons, qualified by FanGraphs' multi-season
+    cut, so every player is measured over the same years."""
+    hi = lo if hi is None else hi
     stats = tuple(s for _g, group in PCT_STATS[kind] for s in group)
-    t = db.table(kind, season, season, stats)
+    t = db.table(kind, lo, hi, stats)
     idx = next((i for i, r in enumerate(t.ident) if r["pid"] == pid), None)
     if idx is None:
         return None
-    _need, _have, ok = qualifying(kind, t)
-    group_of = player_groups(kind, season)
+    need, _have, ok = qualifying(kind, t)
+    group_of = range_groups(kind, lo, hi)
     mine = group_of.get(pid, "MLB")
     same = np.array([group_of.get(r["pid"], "MLB") == mine for r in t.ident])
     ok = ok & same
@@ -552,13 +592,14 @@ def percentiles(pid: int, kind: str, season: int) -> dict | None:
             if len(pool) < 10:
                 continue
             v = col[idx]
-            below, same = (pool < v).sum(), (pool == v).sum()
-            share = (below + max(same - (1 if ok[idx] else 0), 0) / 2) / max(len(pool) - (1 if ok[idx] else 0), 1)
+            below, same_v = (pool < v).sum(), (pool == v).sum()
+            share = (below + max(same_v - (1 if ok[idx] else 0), 0) / 2) / max(len(pool) - (1 if ok[idx] else 0), 1)
             pct = round(100 * (share if c["better"] else 1 - share))
             rows_out.append({"col": c, "value": float(v), "pct": max(0, min(100, pct))})
         if rows_out:
             groups.append({"title": title, "rows": rows_out})
-    return {"season": season, "qualified": bool(ok[idx]), "pool": int(ok.sum()), "groups": groups,
+    return {"season": lo if lo == hi else None, "lo": lo, "hi": hi, "qualified": bool(ok[idx]),
+            "pool": int(ok.sum()), "groups": groups, "need": float(need[idx]),
             "group": "AL and NL" if mine == "MLB" else mine}
 
 

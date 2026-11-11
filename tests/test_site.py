@@ -403,3 +403,29 @@ def test_war_is_labelled_fwar(client):
     assert "fWAR and bWAR" in page(client, "/about")
     data = client.get("/api/chart?view=player&kind=bat&x=bWAR&y=WAR&season=2024").get_json()
     assert data["axes"]["y"]["label"] == "fWAR" and data["axes"]["x"]["label"] == "bWAR"
+
+
+# ---------- player page: spans, career percentiles, summary ----------
+
+def test_player_span_row_and_percentiles(client, app):
+    from web import queries
+    html = page(client, f"/player/{JUDGE}?from=1955&to=2024&bmode=advanced")
+    assert 'class="total spanrow fixed"' in html and ">Clear</a>" in html
+    assert 'button type="button" class="yr" data-season="2024"' in html
+    assert '<option value="span" selected>' in html               # the span drives the percentile panel
+    with app.app_context():
+        span = queries.player_span(JUDGE, "bat", "standard", 2024, 2024)
+        season = queries.percentiles(JUDGE, "bat", 2024)
+        same = queries.percentiles(JUDGE, "bat", 2024, 2024)
+        both = queries.percentiles(JUDGE, "bat", 1955, 2024)   # the fixtures hold 1955 and 2024 only
+    assert span["values"]["HR"] == 58 and span["qualified"]
+    assert season == same
+    assert both["season"] is None and (both["lo"], both["hi"]) == (1955, 2024)
+    assert both["need"] == 1000 or both["need"] < 1000          # FanGraphs' multi-season cut
+    html = page(client, f"/player/{JUDGE}?pseason=career")
+    assert '<option value="career" selected>Career</option>' in html and "qualified line over the same seasons" in html
+
+
+def test_player_summary_counts_games_in_every_mode(client):
+    html = page(client, f"/player/{JUDGE}?bmode=advanced")
+    assert "PA · 0 G" not in html and re.search(r"PA · \d{2,3} G", html)

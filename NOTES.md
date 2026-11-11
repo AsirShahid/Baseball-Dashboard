@@ -91,3 +91,19 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
   players; stints by club, else nearest PA/IP. Coverage 99.4-100% of player-seasons, 96% in
   1920-48. Career bWAR equals Baseball-Reference's totals (Ruth 182.6, Bonds 162.8).
   No team bWAR. Build peak memory 457 MB (was 275). `SCHEMA_VERSION = 3`.
+
+## Chart zoom and touch; player spans (2026-11-11)
+
+- Touch: the chart SVG is `touch-action: none` and `user-select: none`. Before, a touch drag
+  scrolled the page (cancelling the 3D rotate) and a long press selected the SVG text, which
+  showed as big blue blocks on iPad and could leave the page stuck in selection mode.
+- Zoom (2D): drag a box (or Pan mode), pinch, Ctrl/trackpad-pinch wheel, +/- buttons; double-tap
+  or Reset shows everything. Points outside the window are not drawn; ticks follow the window.
+  New data resets the zoom. 3D: pinch/+/- zoom, and tick values along the three labelled edges.
+- `ticks()` returns nothing for an empty or non-finite range (it could loop forever).
+- Player pages: tap one season and then another (`?from=&to=`) for a span row in each table
+  (`queries.player_span`) and a span option in the percentile panel. Career and span
+  percentiles rank his line against everyone's line over the same seasons (FanGraphs'
+  multi-season cut, same league group), via `queries.percentiles(pid, kind, lo, hi)`.
+- The season number no longer links to that season's leaderboard (it picks the span).
+- Photo is 2:3 like MLB's headshots (88x132; phones 64x96). The summary line always has G.

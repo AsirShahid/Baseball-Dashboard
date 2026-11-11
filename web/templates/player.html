@@ -8,17 +8,21 @@
 <thead><tr><th class="t" data-key="season" data-dir="asc">Season</th><th class="t">Team</th><th data-key="age" data-dir="asc">Age</th>{{ m.heads(data.cols) }}</tr></thead>
 <tbody>
 {% for r in data.rows %}
-<tr class="{{ 'q' if r.qualified }}">
-  <td class="t" data-v="{{ r.season }}"><a href="{{ url_for('site.players', kind=kind, season=r.season, mode=mode, min='q' if r.qualified else 1) }}">{{ r.season }}</a>{% if r.qualified %}<span class="qmark" title="Qualified ({{ '{:,}'.format(r.need|int) }} {{ 'PA' if kind == 'bat' else 'IP' }} needed)">q</span>{% endif %}</td>
+{% set inspan = span and span[0] <= r.season <= span[1] %}
+<tr class="{{ 'q' if r.qualified }}{{ ' inspan' if inspan }}">
+  <td class="t" data-v="{{ r.season }}"><button type="button" class="yr" data-season="{{ r.season }}" title="Tap two seasons to see that span">{{ r.season }}</button>{% if r.qualified %}<span class="qmark" title="Qualified ({{ '{:,}'.format(r.need|int) }} {{ 'PA' if kind == 'bat' else 'IP' }} needed)">q</span>{% endif %}</td>
   <td class="t">{{ m.team(r.team, r.season, size=16) }}</td>
   <td data-v="{{ r.age }}">{{ r.age or '' }}</td>
   {{ m.cells(r['values'], data.cols, led=r.led) }}
 </tr>
 {% for s in r.stints %}
-<tr class="stint fixed"><td class="t"></td><td class="t">{{ m.team(s.team, r.season, size=14) }}</td><td></td>{{ m.cells(s['values'], data.cols) }}</tr>
+<tr class="stint fixed{{ ' inspan' if inspan }}"><td class="t"></td><td class="t">{{ m.team(s.team, r.season, size=14) }}</td><td></td>{{ m.cells(s['values'], data.cols) }}</tr>
 {% endfor %}
 {% endfor %}
 </tbody>
+{% if span %}{% set sp = span_rows.get(kind) %}
+<tbody><tr class="total spanrow fixed"><td class="t">{{ span[0] }}{% if span[1] != span[0] %}&ndash;{{ span[1] }}{% endif %}</td><td class="t muted">{% if sp %}{{ sp.n }} season{{ 's' if sp.n != 1 }}{% else %}None{% endif %} &middot; <a href="{{ url_with(**{'from': None, 'to': None, 'pseason': None}) }}#t-{{ kind }}">Clear</a></td><td></td>{% if sp %}{{ m.cells(sp['values'], data.cols, fails={} if sp.qualified else {'q': 'Not qualified over the span'}) }}{% else %}{% for c in data.cols %}<td></td>{% endfor %}{% endif %}</tr></tbody>
+{% endif %}
 {% if data.career and data.rows|length > 1 %}
 <tbody><tr class="total fixed"><td class="t">Career</td><td class="t muted">{{ data.rows|length }} seasons</td><td></td>{{ m.cells(data.career, data.cols) }}</tr></tbody>
 {% endif %}
@@ -54,7 +58,7 @@
 <section class="section card">
   <div class="section-head">
     <h2>Percentile ranks · {{ 'hitting' if pkind == 'bat' else 'pitching' }}</h2>
-    <span class="toolbar" style="margin:0"><select data-nav="pseason" aria-label="Season">{% for s in pct_seasons %}<option value="{{ s }}"{{ ' selected' if s == pct.season }}>{{ s }}</option>{% endfor %}</select></span>
+    <span class="toolbar" style="margin:0"><select data-nav="pseason" aria-label="Seasons"><option value="career"{{ ' selected' if pchoice == 'career' }}>Career</option>{% if span %}<option value="span"{{ ' selected' if pchoice == 'span' }}>{{ span[0] }}&ndash;{{ span[1] }}</option>{% endif %}{% for s in pct_seasons %}<option value="{{ s }}"{{ ' selected' if pchoice == s|string }}>{{ s }}</option>{% endfor %}</select></span>
   </div>
   <div class="cols-2 pct-groups">
     {% for g in pct.groups %}
@@ -65,7 +69,11 @@
     </div>
     {% endfor %}
   </div>
+  {% if pct.label %}
+  <p class="sub" style="margin-bottom:0">{{ pct.label }}{% if pct.label == 'Career' %} ({{ pct.lo }}&ndash;{{ pct.hi }}){% endif %}: his line over those seasons against the {{ pct.pool }} {{ pct.group }} {{ 'hitters' if pkind == 'bat' else 'pitchers' }} with a qualified line over the same seasons ({{ '{:,}'.format(pct.need|int) }} {{ 'PA' if pkind == 'bat' else 'IP' }}, FanGraphs' multi-season cut), so everyone is measured over the same years. 100 is best; lower-is-better stats count the right way round.{% if not pct.qualified %} His own line falls short of that cut.{% endif %}</p>
+  {% else %}
   <p class="sub" style="margin-bottom:0">Against the {{ pct.pool }} qualified {{ pct.group }} {{ 'hitters' if pkind == 'bat' else 'pitchers' }} in {{ pct.season }}; 100 is best, and lower-is-better stats (K% for hitters, ERA for pitchers) count the right way round.{% if not pct.qualified %} He was not qualified that season, so his numbers come from fewer {{ 'plate appearances' if pkind == 'bat' else 'innings' }}.{% endif %}</p>
+  {% endif %}
 </section>
 {% endif %}
 
@@ -79,7 +87,8 @@
 
 {% for kind in order %}
 {% set data = batting if kind == 'bat' else pitching %}
-{% if data %}<section class="section">{{ career_table(kind, data, bmode if kind == 'bat' else pmode, 'bmode' if kind == 'bat' else 'pmode') }}</section>{% endif %}
+{% if data %}<section class="section" id="t-{{ kind }}">{{ career_table(kind, data, bmode if kind == 'bat' else pmode, 'bmode' if kind == 'bat' else 'pmode') }}</section>{% endif %}
 {% endfor %}
-<p class="sub">Bold: led the majors that season (rates among qualified players). <span class="qmark">q</span> marks a qualified season. Seasons with more than one club show the split under the combined line.</p>
+<p class="sub">Tap one season and then another to see that span (it also adds the span to the percentile menu). Bold: led the majors that season (rates among qualified players). <span class="qmark">q</span> marks a qualified season. Seasons with more than one club show the split under the combined line.</p>
+<div class="spanbar" id="spanbar" hidden><span></span><button type="button" class="btn">Cancel</button></div>
 {% endblock %}

@@ -206,4 +206,36 @@
       main.focus();
     }
   });
+
+  // Player pages: tap one season, then another, to see that span (?from=&to=).
+  var bar = document.getElementById("spanbar");
+  var years = document.querySelectorAll("button.yr");
+  if (bar && years.length) {
+    var picked = null;
+    var clear = function () {
+      picked = null;
+      bar.hidden = true;
+      years.forEach(function (b) { b.closest("tr").classList.remove("pick"); });
+    };
+    bar.querySelector("button").addEventListener("click", clear);
+    years.forEach(function (button) {
+      button.addEventListener("click", function () {
+        var season = +button.dataset.season;
+        if (picked === null) {
+          picked = season;
+          years.forEach(function (b) { b.closest("tr").classList.toggle("pick", +b.dataset.season === season); });
+          bar.querySelector("span").textContent = season + " picked. Tap another season for the span, or " + season + " again for that season alone.";
+          bar.hidden = false;
+          return;
+        }
+        var url = new URL(window.location.href);
+        url.searchParams.set("from", Math.min(picked, season));
+        url.searchParams.set("to", Math.max(picked, season));
+        url.searchParams.delete("pseason");
+        var section = button.closest("section");
+        url.hash = section && section.id ? section.id : "";
+        window.location.href = url.toString();
+      });
+    });
+  }
 })();

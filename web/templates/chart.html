@@ -45,7 +45,14 @@
   <div class="stage">
     <div class="plot" id="plot">
       <div class="title"><span><b id="c-title"></b></span><span id="c-count"></span></div>
+      <div class="zoombar">
+        <span class="seg small" id="c-zmode" title="What a one-finger or mouse drag does"><button type="button" data-v="box" class="on">Box zoom</button><button type="button" data-v="pan">Pan</button></span>
+        <button type="button" class="btn small" id="c-zin" title="Zoom in" aria-label="Zoom in">+</button>
+        <button type="button" class="btn small" id="c-zout" title="Zoom out" aria-label="Zoom out">&minus;</button>
+        <button type="button" class="btn small" id="c-zreset" title="Show everything (or double-tap the chart)">Reset</button>
+      </div>
       <svg id="c-svg" role="img" aria-label="Scatter chart"></svg>
+      <div class="hint" id="c-hint"></div>
       <div class="tip" id="tip" hidden></div>
     </div>
     <div class="card" style="margin-top:14px">
