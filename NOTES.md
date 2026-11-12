@@ -328,3 +328,14 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
   stats (PA or IP weighted, AL and NL clubs only); player tables keep 100. All-time: NL 94, AL 97,
   MLB 95; 2026 NL 100. A footnote under batting team tables says why.
 - Rollback image: `baseball-site:pre-teamg-20261112`.
+
+## Chart: Qualified always means qualified (2026-11-12)
+
+- Bug (Asir, iPad): Players, hitters, 2000-2026 season by season, bWAR vs fWAR, Min PA Qualified said
+  "That is 24,168 points". The chart applied the qualified rule only when an axis was a rate stat,
+  so two counts (bWAR, fWAR; HR, SB) meant no minimum: every hitter-season, pitchers batting too.
+- Now "Qualified" on the chart is the batting- or ERA-title playing time whatever the stats, as the
+  players table and FanGraphs use it; a number from the ladder (down to 1) still shows everyone.
+  Same query: 3,961 points, 129-166 a season (2020: 142), led by Bonds 2002/2001/2004; combined
+  span (1,000 PA): 1,298. Pitchers SV vs SO 2026: 46 qualified, 858 at 1 IP.
+- Rollback image: `baseball-site:pre-chartq-20261112`.

@@ -179,16 +179,13 @@ def chart_payload(args) -> dict:
             "axes": out_axes, "fields": fields,
             "rows": [[r.get(f) for f in fields] for r in rows], "count": len(rows),
             "label": queries.span_label(lo, hi), "notes": notes,
-            "qualified": args.get("min", "q") == "q" and any(c["rule"] for _k, _s, c in axes.values()),
-            "need": _need_text(view, kind, lo, lo if split else hi, args,
-                               any(c["rule"] for _k, _s, c in axes.values()))}
+            "qualified": args.get("min", "q") == "q",
+            "need": _need_text(view, kind, lo, lo if split else hi, args)}
 
 
-def _need_text(view, kind, lo, hi, args, rated=True):
+def _need_text(view, kind, lo, hi, args):
     if view == "team":
         return ""
-    if not rated and args.get("min", "q") == "q":
-        return "No minimum: both stats are counts"
     if args.get("min", "q") == "q":
         n = queries.need_for(kind, lo, hi)
         unit = "PA" if kind == "bat" else "IP"
@@ -207,7 +204,9 @@ def _player_rows(kind, axes, seasons_list, args, era):
     min_raw = args.get("min", "q")
     min_mode, min_value = ("q", 0) if min_raw == "q" else ("n", float(min_raw) if _num(min_raw) else 0)
     stats = tuple(dict.fromkeys(s for _k, s, _c in axes.values()))
-    rated = any(c["rule"] for _k, _s, c in axes.values())
+    # "Qualified" picks who is on the chart: the batting- or ERA-title playing time, whatever the
+    # two stats are (as the players table and FanGraphs do). Two counts once meant no minimum,
+    # so bWAR against fWAR drew every hitter-season, pitchers batting included (24,168 since 2000).
     split = len(seasons_list) > 1 and args.get("split") == "season" or args.get("path") == "1"
     out = []
     for lo, hi in seasons_list:
@@ -229,7 +228,7 @@ def _player_rows(kind, axes, seasons_list, args, era):
                         l["_" + a] = None if np.isnan(p) else float(p)
         for l in lines:
             if min_mode == "q":
-                ok = l["qualified"] or not rated
+                ok = l["qualified"]
             else:
                 ok = (l["have"] or 0) >= min_value
             if (not era or split or lo == hi and len(seasons_list) == 1) and not ok:
@@ -244,7 +243,7 @@ def _player_rows(kind, axes, seasons_list, args, era):
     if era and not split and len(seasons_list) > 1:
         lo, hi = seasons_list[0][0], seasons_list[-1][1]
         out = _combine_era(out)
-        if min_mode == "q" and rated:
+        if min_mode == "q":
             need = queries.need_for(kind, lo, hi)
             out = [r for r in out if (r.get("w") or 0) >= need]
         elif min_mode == "n":

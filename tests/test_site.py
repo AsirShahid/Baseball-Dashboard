@@ -232,7 +232,11 @@ def test_chart_players_and_teams(client):
     data = client.get("/api/chart?view=player&kind=bat&x=wRC%2B&y=WAR&season=2024").get_json()
     assert data["count"] == len(ids("batting", 2024)) and data["axes"]["x"]["rule"] == "q"
     counts = client.get("/api/chart?view=player&kind=bat&x=HR&y=SB&season=2024").get_json()
-    assert counts["count"] > data["count"]          # two counts: no minimum
+    assert counts["count"] == data["count"] and counts["need"].startswith("Qualified")   # two counts: still qualified
+    everyone = client.get("/api/chart?view=player&kind=bat&x=HR&y=SB&season=2024&min=1").get_json()
+    assert everyone["count"] > 3 * counts["count"]
+    war = client.get("/api/chart?view=player&kind=bat&x=bWAR&y=WAR&season=1955&to=2024&split=season").get_json()
+    assert war["count"] == len(ids("batting", 1955)) + len(ids("batting", 2024))
     teams = client.get("/api/chart?view=team&x=pit:ERA&y=bat:wRC%2B&season=2024").get_json()
     assert teams["count"] == 30 and teams["axes"]["x"]["better"] is False
 
