@@ -457,6 +457,40 @@ def _team_war(season: int) -> dict:
     return out
 
 
+@db.cached
+def team_index_average(kind: str, lo: int, hi: int, stats: tuple, league: str = "") -> dict:
+    """The average club's index stats (wRC+, ERA-, ...) over lo..hi, weighted by PA or IP.
+
+    FanGraphs scales wRC+ to the league's non-pitchers, so a league line is 100 by
+    definition, but a club's batting line includes its pitchers' hitting: NL clubs
+    averaged 94 before the universal DH (2022), AL clubs 99.6 after 1973. Beside team
+    lines the average row shows this, not 100. AL and NL clubs only (MLB = both)."""
+    index = tuple(s for s in stats if _is_index(s))
+    if not index:
+        return {}
+    weight = "PA" if kind == BAT else "IP"
+    sums, totals = dict.fromkeys(index, 0.0), dict.fromkeys(index, 0.0)
+    for lg in ((league,) if league else ("AL", "NL")):
+        t = db.table(TEAM_KIND[kind], lo, hi, index + (weight,), lg)
+        w = t.cols[weight]
+        for s in index:
+            v = t.cols.get(s)
+            if v is None:
+                continue
+            ok = ~np.isnan(v) & ~np.isnan(w)
+            sums[s] += float((v[ok] * w[ok]).sum())
+            totals[s] += float(w[ok].sum())
+    return {s: sums[s] / totals[s] for s in index if totals[s]}
+
+
+def team_league_row(kind: str, lo: int, hi: int, stats: tuple, league: str = "") -> dict | None:
+    """The league row for the teams table: league_range, with index stats from the average club."""
+    lg = league_range(kind, lo, hi, stats, league)
+    if lg and lg.get("_name") in ("MLB", "AL", "NL"):
+        lg = {**lg, **team_index_average(kind, lo, hi, stats, league)}
+    return lg
+
+
 TEAM_ALWAYS = ("G", "PA", "IP")
 
 

@@ -28,5 +28,5 @@
 </tbody>
 </table>
 </div>
-<p class="sub">Team lines are FanGraphs' own team totals, so traded players count for each club they played for.</p>
+<p class="sub">Team lines are FanGraphs' own team totals, so traded players count for each club they played for.{% if kind == 'bat' %} wRC+ counts pitchers' hitting, which FanGraphs leaves out of its 100, so clubs whose pitchers batted (everyone before 1973, the NL until 2022) sit near 94; the average row is the average club.{% endif %}</p>
 {% endblock %}

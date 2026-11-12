@@ -127,7 +127,7 @@ def teams():
     lines, cols, sort = queries.team_table(kind, lo, hi, mode, league, request.args.get("sort", ""))
     return render_template("teams.html", kind=kind, lo=lo, hi=hi, mode=mode, modes=queries.TEAM_MODES[kind],
                            lines=lines, cols=cols, sort=sort, league=league, kinds=KINDS,
-                           lg=queries.league_range(kind, lo, hi, tuple(c["key"] for c in cols), league))
+                           lg=queries.team_league_row(kind, lo, hi, tuple(c["key"] for c in cols), league))
 
 
 @bp.route("/player/<int:pid>")

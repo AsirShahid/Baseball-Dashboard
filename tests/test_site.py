@@ -637,6 +637,30 @@ def test_league_filter_counts_only_play_in_that_league(app, client):
     assert "NL seasons only" in page(client, "/teams?league=NL&season=1955&to=2024")
 
 
+def test_team_games_and_the_average_clubs_wrc(app, client):
+    """A club's G is its games (TG), not its players' games added up; beside team
+    lines the league row's wRC+ is the average club's (pitchers' hitting included)."""
+    from web import db, queries
+    with app.app_context():
+        t = db.table("tbat", 2024, 2024, ("G",))
+        games = {r["team"]: t.cols["G"][i] for i, r in enumerate(t.ident)}
+        assert games["NYY"] == 162 and max(games.values()) <= 163
+        span = db.table("tbat", 1955, 2024, ("G",), "NL")
+        rec = queries._records(1955, 2024, "NL")
+        for i, r in enumerate(span.ident):
+            wl = rec.get(r["teamid"]) or {}
+            assert 0 <= span.cols["G"][i] - (wl.get("w", 0) + wl.get("l", 0)) <= 25, r["team"]   # ties only
+        for lg, lo, hi, low, high in (("NL", 1955, 1955, 88, 97), ("NL", 2024, 2024, 98, 102), ("AL", 2024, 2024, 98, 102)):
+            avg = queries.team_index_average("bat", lo, hi, ("wRC+",), lg)["wRC+"]
+            tt = db.table("tbat", lo, hi, ("wRC+", "PA"), lg)
+            mean = float(np.nansum(tt.cols["wRC+"] * tt.cols["PA"]) / np.nansum(tt.cols["PA"]))
+            assert math.isclose(avg, mean) and low <= avg <= high, (lg, lo, avg)
+        assert queries.team_league_row("bat", 1955, 1955, ("wRC+", "AVG"), "NL")["wRC+"] < 97
+        assert queries.league_range("bat", 1955, 1955, ("wRC+",), "NL")["wRC+"] == 100   # players: still 100
+    html = page(client, "/teams?league=NL&season=1955&kind=bat")
+    assert "the average row is the average club" in html
+
+
 # ---------------------------------------------------------------- home-screen app
 
 

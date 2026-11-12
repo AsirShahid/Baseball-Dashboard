@@ -315,3 +315,16 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
 - Chosen from ~20 variants rendered at 16, 32, 64 and 160 px beside the basketball mark: short
   round-capped stitches looked like beads, V-chains like wheat, slanted ones like cracks.
 - Rollback image: `baseball-site:pre-logo-20261111`.
+
+## Team G and the teams table's average wRC+ (2026-11-12)
+
+- G on team lines was FanGraphs' team G, which adds up its players' games: the Giants showed
+  272,253 all-time and a 2026 club about 2,400. `db._season_table` now gives team kinds TG (the
+  club's games, ties included: 1908 Giants 98-56 in 157), so tables, spans and charts agree.
+- The teams table's league row showed wRC+ 100 (FanGraphs' league line is 100 by definition, scaled
+  to non-pitchers) while every NL franchise was 88-98: team lines include pitchers' hitting. PA-
+  weighted, NL clubs averaged 94 before the universal DH (2019: 94; 1973-2021: 93.5), AL clubs 99.6
+  after 1973, both about 93 before. `queries.team_league_row` now shows the average club's index
+  stats (PA or IP weighted, AL and NL clubs only); player tables keep 100. All-time: NL 94, AL 97,
+  MLB 95; 2026 NL 100. A footnote under batting team tables says why.
+- Rollback image: `baseball-site:pre-teamg-20261112`.

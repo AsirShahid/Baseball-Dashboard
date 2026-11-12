@@ -168,6 +168,12 @@ def _season_table(kind: str, season: int, stats: tuple) -> Table:
     cols = {}
     for stat in stats:
         values = column(kind, season, stat)
+        if stat == "G" and kind in ("tbat", "tpit"):
+            # FanGraphs' team G adds up its players' games (2,400 a season); a club's
+            # games are TG, ties included (the 1908 Giants: 98-56 in 157).
+            games = column(kind, season, "TG")
+            if games is not False and not np.isnan(games).all():
+                values = games.copy() if values is False else np.where(np.isnan(games), values, games)
         cols[stat] = values if values is not False else np.full(len(who), np.nan)
     for r in who:
         r["season"] = season
