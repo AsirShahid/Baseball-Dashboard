@@ -7,7 +7,8 @@
  * Static files are versioned (?v=): cache first, all of them stored on install.
  * Images: cache first. Chart data: network first, saved copy offline.
  * Search: the server when online; offline it searches the titles of saved pages.
- * Sign-in redirects pass straight through and are never saved.
+ * Sign-in redirects are never saved. Sign-in navigations (/oauth2/) are answered with
+ * the navigation preload response so each reaches the gateway exactly once.
  * The same file runs on basketball.asir.dev and baseball.asir.dev.
  */
 "use strict";
@@ -67,7 +68,13 @@ self.addEventListener("fetch", event => {
     }
     return;
   }
-  if (SKIP.some(prefix => url.pathname.startsWith(prefix))) return;
+  if (SKIP.some(prefix => url.pathname.startsWith(prefix))) {
+    // Never saved, but a navigation still has to be answered here: navigation preload
+    // has already sent it, and passing it through sends it again, which replays the
+    // one-time code in /oauth2/callback (the gateway's 500 or 403 page after sign-in).
+    if (request.mode === "navigate") event.respondWith(preloaded(event));
+    return;
+  }
   if (request.mode === "navigate") return event.respondWith(page(event));
   if (url.pathname.startsWith("/static/")) return event.respondWith(asset(request));
   if (CONFIG.imagePaths.some(prefix => url.pathname.startsWith(prefix))) return event.respondWith(image(request, false));
@@ -76,6 +83,12 @@ self.addEventListener("fetch", event => {
 });
 
 // ------------------------------------------------------------------ pages
+
+// The navigation preload response, or one network request when there is none.
+async function preloaded(event) {
+  const response = await Promise.resolve(event.preloadResponse).catch(() => undefined);
+  return response || fetch(event.request);
+}
 
 function pageKey(href) {
   const url = new URL(href);
