@@ -34,16 +34,16 @@ from . import aggregate, bwar, catalog, savant, teams
 from .text import search_key
 
 log = logging.getLogger("build")
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 SOURCES = {
     "bat": "all_batting_stats", "pit": "all_pitching_stats",
     "tbat": "team_batting", "tpit": "team_pitching",
     "sbat": "stints_batting", "spit": "stints_pitching",
 }
 NOTATION_IP = ("IP", "Start-IP", "Relief-IP")
-# Stored but not offered as stats: TG, ERA+'s parts (ERlg, bER) and the Baseball
-# Savant counts its rates are rebuilt from.
-INTERNAL = ("TG", "ERlg", "bER") + savant.PARTS
+# Stored but not offered as stats: TG, ERA+'s parts (ERlg, bER), OPS+'s parts
+# (TOBlg, TBlg, bTOB, bTB) and the Baseball Savant counts its rates are rebuilt from.
+INTERNAL = ("TG", "ERlg", "bER") + bwar.OPS_PARTS + savant.PARTS
 
 
 def pack(values: np.ndarray) -> bytes:
@@ -118,6 +118,7 @@ def _int(text):
 _REBUILD_PARTS = {
     False: ("PA", "AB", "H", "1B", "2B", "3B", "HR", "BB", "HBP", "SF", "SO",
             "AVG", "OBP", "SLG", "OPS", "ISO", "BABIP", "K%", "BB%", "BB/K", "Barrels", "Barrel/PA")
+    + bwar.OPS_PARTS + ("OPS+",)
     + savant.PARTS + savant.SHOWN + savant.PITCHER_SHOWN,
     True: ("IP", "TBF", "ER", "H", "HR", "BB", "SO", "ERA", "WHIP", "K/9", "BB/9", "HR/9", "H/9",
            "K%", "BB%", "K-BB%", "K/BB", "ERlg", "bER", "ERA+", "Barrels", "Barrel/PA")
@@ -179,6 +180,102 @@ def _collect_era_parts(kind, season, ident, columns, era_parts, traded, stint_pa
         elif kind == "spit":
             stint_parts.setdefault(season, []).append((r.get("pid"), r["team"], float(erlg[i]), float(ber[i]),
                                                         float(ip[i])))
+
+
+# OPS+ needs FanGraphs' and Baseball-Reference's PA within max(3, 10%). Calibrated on
+# every 100+ PA line: AL/NL lines 5-10% apart still match BR's OPS+ (the gap is
+# bookkeeping outside OBP and SLG), so 10% keeps 99.9% of them; it drops mismatched
+# pairings and Negro Leagues lines the two sources record differently.
+PA_SLACK = (3, 0.10)
+
+
+def _add_ops_plus(columns) -> bool:
+    """OPS+ on hitter rows (seasons and per-club lines). The league side (TOBlg,
+    TBlg) is Baseball-Reference's; the hitter's own times on base (H + BB + HBP)
+    and total bases come from FanGraphs' counts, kept only where the league side
+    matched, so a span adds up both sides over the same seasons. Checked against
+    Baseball-Reference's own OPS+ for one-club AL/NL seasons with 100+ PA: 99.5%
+    within 1 (1990 on: 99.99% within 0.01); the misses are 1880s-90s lines where
+    the two sources' counts differ."""
+    br_pa = columns.pop("brPA", None)          # a check only, never stored
+    need = ("PA", "H", "BB", "1B", "2B", "3B", "HR", "TOBlg", "TBlg")
+    if br_pa is None or any(columns.get(k) is None for k in need):
+        for k in ("TOBlg", "TBlg"):
+            columns.pop(k, None)
+        return False
+    c = {k: np.asarray(columns[k], dtype=np.float64) for k in need}
+    br_pa = np.asarray(br_pa, dtype=np.float64)
+    hbp = columns.get("HBP")
+    hbp = np.zeros(len(c["H"])) if hbp is None else np.nan_to_num(np.asarray(hbp, dtype=np.float64))
+    # Only where both sources describe the same plate appearances: FanGraphs' counts
+    # against Baseball-Reference's league side for a different line give nonsense
+    # (FanGraphs files Harry Moore's 480-PA 1884 under Sparrow Morton's MLB id; Morton
+    # had 8 PA), and Negro Leagues lines often differ between the two.
+    with np.errstate(invalid="ignore"):
+        agree = np.abs(c["PA"] - br_pa) <= np.maximum(PA_SLACK[0], PA_SLACK[1] * br_pa)
+    have = ~np.isnan(c["TOBlg"]) & ~np.isnan(c["TBlg"]) & (c["TOBlg"] + c["TBlg"] > 0) & agree
+    tob = np.where(have, c["H"] + c["BB"] + hbp, np.nan)
+    tb = np.where(have, c["1B"] + 2 * c["2B"] + 3 * c["3B"] + 4 * c["HR"], np.nan)
+    columns["TOBlg"] = np.where(have, c["TOBlg"], np.nan).astype(np.float32)
+    columns["TBlg"] = np.where(have, c["TBlg"], np.nan).astype(np.float32)
+    columns["bTOB"], columns["bTB"] = tob.astype(np.float32), tb.astype(np.float32)
+    columns["OPS+"] = bwar.ops_plus(tob, tb, c["TOBlg"], c["TBlg"]).astype(np.float32)
+    return True
+
+
+def _collect_ops_parts(kind, season, ident, columns, ops_parts, ops_traded, ops_stints) -> None:
+    """Team OPS+ adds up its hitters' parts, like team ERA+: one-club hitters from
+    the season rows, traded ones from their per-club rows, with the PA covered."""
+    parts = [columns.get(k) for k in bwar.OPS_PARTS]
+    pa = columns.get("PA")
+    if pa is None or any(p is None for p in parts):
+        return
+    for i, r in enumerate(ident):
+        if kind == "bat" and r["team"] == "- - -":
+            ops_traded.setdefault(season, set()).add(r.get("pid"))
+            continue
+        vals = [float(p[i]) for p in parts] + [float(pa[i])]
+        if any(np.isnan(v) for v in vals):
+            continue
+        if kind == "bat":
+            acc = ops_parts.setdefault((season, r["team"]), [0.0] * 5)
+            for k, v in enumerate(vals):
+                acc[k] += v
+        else:
+            ops_stints.setdefault(season, []).append((r.get("pid"), r["team"], vals))
+
+
+def _team_ops_plus(con, ops_parts, ops_traded, ops_stints, cover: float = 0.95) -> None:
+    """OPS+ for each team season (pitchers' hitting included, as in the team's
+    batting line), from its hitters' parts. Blank when the matched hitters had
+    under 95% of the team's plate appearances."""
+    for season, rows in ops_stints.items():
+        moved = ops_traded.get(season, set())
+        for pid, team, vals in rows:
+            if pid in moved:
+                acc = ops_parts.setdefault((season, team), [0.0] * 5)
+                for k, v in enumerate(vals):
+                    acc[k] += v
+    seasons = [s for (s,) in con.execute("SELECT DISTINCT season FROM rows WHERE kind = 'tbat'")]
+    for season in seasons:
+        clubs = [t for (t,) in con.execute("SELECT team FROM rows WHERE kind = 'tbat' AND season = ? ORDER BY i",
+                                           (season,))]
+        blob = con.execute("SELECT data FROM cols WHERE kind = 'tbat' AND season = ? AND stat = 'PA'",
+                           (season,)).fetchone()
+        if not blob:
+            continue
+        team_pa = unpack(blob[0])
+        out = {k: np.full(len(clubs), np.nan, dtype=np.float32) for k in bwar.OPS_PARTS}
+        for i, club in enumerate(clubs):
+            acc = ops_parts.get((season, club))
+            if acc and team_pa[i] > 0 and acc[4] >= cover * float(team_pa[i]):
+                for k, name in enumerate(bwar.OPS_PARTS):
+                    out[name][i] = acc[k]
+        if np.isnan(out["TOBlg"]).all():
+            continue
+        out["OPS+"] = bwar.ops_plus(out["bTOB"], out["bTB"], out["TOBlg"], out["TBlg"]).astype(np.float32)
+        for stat, values in out.items():
+            con.execute("INSERT OR REPLACE INTO cols VALUES (?,?,?,?)", ("tbat", season, stat, pack(values)))
 
 
 def _collect_team_bwar(kind, season, ident, columns, war_parts, war_traded, war_stints) -> None:
@@ -346,6 +443,9 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
     era_parts: dict = {}     # (season, team) -> [ERlg, bER, IP covered]
     traded: dict = {}        # season -> pids on more than one club (FanGraphs team "- - -")
     stint_parts: dict = {}   # season -> [(pid, team, ERlg, bER, IP)]
+    ops_parts: dict = {}     # (season, team) -> [TOBlg, TBlg, bTOB, bTB, PA covered]
+    ops_traded: dict = {}    # season -> hitters on more than one club
+    ops_stints: dict = {}    # season -> [(pid, team, [TOBlg, TBlg, bTOB, bTB, PA])]
     war_parts: dict = {}     # (bat|pit, season, team) -> [bWAR, PA or IP covered]
     war_traded: dict = {}    # (bat|pit, season) -> pids on more than one club
     war_stints: dict = {}    # (bat|pit, season) -> [(pid, team, bWAR, PA or IP)]
@@ -389,6 +489,8 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
                                                     np.nan).astype(np.float32)
             if kind in ("bat", "pit", "sbat", "spit") and "bWAR" in columns:
                 _collect_team_bwar(kind, season, ident, columns, war_parts, war_traded, war_stints)
+            if kind in ("bat", "sbat") and _add_ops_plus(columns):
+                _collect_ops_parts(kind, season, ident, columns, ops_parts, ops_traded, ops_stints)
             if "ERlg" in columns and "bER" in columns:
                 columns["ERA+"] = bwar.era_plus(columns["ERlg"], columns["bER"]).astype(np.float32)
                 _collect_era_parts(kind, season, ident, columns, era_parts, traded, stint_parts)
@@ -447,6 +549,7 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
                             t[(kind, stat)] = int(round(columns[stat][i]))
             del ident, columns
     _team_era_plus(con, era_parts, traded, stint_parts)
+    _team_ops_plus(con, ops_parts, ops_traded, ops_stints)
     _team_bwar(con, war_parts, war_traded, war_stints)
     league_rows = _league_rows(con, sv if sv.loaded else None)
     if hundred:

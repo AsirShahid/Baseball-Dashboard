@@ -377,7 +377,7 @@ def league_range(kind: str, lo: int, hi: int, stats: tuple, league: str = "") ->
 # ---------- leaders ----------
 
 BOARDS = {
-    BAT: [("WAR", "fWAR (FanGraphs)"), ("bWAR", "bWAR (Baseball-Reference)"), ("wRC+", "wRC+"), ("HR", "Home runs"), ("AVG", "Batting average"),
+    BAT: [("WAR", "fWAR (FanGraphs)"), ("bWAR", "bWAR (Baseball-Reference)"), ("wRC+", "wRC+"), ("OPS+", "OPS+"), ("HR", "Home runs"), ("AVG", "Batting average"),
           ("OBP", "On-base percentage"), ("SB", "Stolen bases")],
     PIT: [("WAR", "fWAR (FanGraphs)"), ("bWAR", "bWAR (Baseball-Reference)"), ("ERA", "ERA"), ("ERA+", "ERA+"), ("SO", "Strikeouts"), ("FIP", "FIP"),
           ("K-BB%", "K-BB%"), ("SV", "Saves")],
@@ -768,7 +768,7 @@ def player_span(pid: int, kind: str, mode: str, lo: int, hi: int) -> dict | None
 
 
 PCT_STATS = {
-    BAT: [("Value", ["WAR", "bWAR", "wRC+", "Offense", "BaseRunning", "Defense"]),
+    BAT: [("Value", ["WAR", "bWAR", "wRC+", "OPS+", "Offense", "BaseRunning", "Defense"]),
           ("Hitting", ["OBP", "SLG", "ISO", "AVG", "BABIP"]),
           ("Plate skills", ["BB%", "K%", ("Chase%", "O-Swing%"), ("Whiff%", "Contact%")]),
           ("Statcast", ["xwOBA", "EV", "Barrel%", "HardHit%", "Sweet-Spot%", "AvgBatSpeed", "Sprint"])],

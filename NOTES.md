@@ -339,3 +339,47 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
   Same query: 3,961 points, 129-166 a season (2020: 142), led by Bonds 2002/2001/2004; combined
   span (1,000 PA): 1,298. Pitchers SV vs SO 2026: 46 qualified, 858 at 1 IP.
 - Rollback image: `baseball-site:pre-chartq-20261112`.
+
+## OPS+ from Baseball-Reference; traded players' per-club bWAR fixed (2026-11-17)
+
+- OPS+ is Baseball-Reference's park- and league-adjusted OPS; FanGraphs does not publish it. The
+  war_daily_bat file we already fetch has its league side per stint: `TOB_lg` and `TB_lg`, the times
+  on base and total bases a park- and league-average hitter would reach in the same PA and AB. OPS+ =
+  100 * (OBP / lgOBP + SLG / lgSLG - 1) = 100 * (TOB / TOB_lg + TB / TB_lg - 1). Hidden columns on
+  hitter season, per-club and career rows: `TOBlg`, `TBlg` (BR) and `bTOB`, `bTB` (FanGraphs' H + BB +
+  HBP and total bases, kept only where the league side matched), so any span is 100 * (sum bTOB / sum
+  TOBlg + sum bTB / sum TBlg - 1), Baseball-Reference's career method (`aggregate.rebuild_rates`).
+- Checked against Baseball-Reference pages (2026-11-17): careers Ruth 206, Williams 191, Bonds 182,
+  Gehrig 179, Hornsby 175, Mantle 172, Cobb 168, Trout 166, Aaron 155, Mays 155, Pujols 145, Judge
+  176, A-Rod 140, Jeter 115 (14 of 14); 2026 Judge 140, Trout 131. Against BR's published OPS+ for
+  every one-club AL/NL season with 100+ PA (n = 38,435): 99.5% within 1, 99.99% of seasons since 1990 to
+  0.01; the misses are 1880s-90s lines where the counts differ (1889 Chicago up to 16).
+- Only where FanGraphs and BR agree on the line's PA within max(3, 10%) (`build.PA_SLACK`; BR's PA
+  rides along as `brPA` and is never stored). FanGraphs files Harry Moore (1884 WST, 480 PA) under
+  Sparrow Morton's MLB id (8 PA): OPS+ 14,652 without the check. Calibrated on all 100+ PA lines: AL/NL
+  lines 5-10% apart still match BR (bookkeeping outside OBP and SLG), Negro Leagues lines 3-5% apart
+  are already ~8 points off (the two sources record different lines). Coverage: 45,639 of 46,157
+  seasons with 100+ PA; 99.7-100% per decade except 1920-48 (93-95%).
+- BR rows with no WAR stay out, as before. Letting in the 60 that batted moved six Negro Leagues
+  players' bWAR through new name collisions (Johnny Taylor 6.8 -> 6.9); they get no OPS+.
+- Team OPS+ adds up the club's hitters (one-club from season rows, traded from per-club rows), blank
+  under 95% of the club's PA: 3,288 of 3,480 team-seasons. 2024 NYY 115, LAD 120, SEA 102, CHW 76
+  equal BR's team pages. League rows are 100.
+- Shown in hitter Standard and Advanced tables, the leaders boards, the percentile Value group,
+  Compare, and a chart preset "OPS+ vs wRC+" (2026 qualified: 135 hitters, r = 0.987).
+- Bug fixed, found while checking OPS+ per club: `BWar.clubs()` learned the FanGraphs -> BR club
+  code pairing from the per-club file too, where every player had several clubs, so the only votes
+  were odd lines (2022: NYY -> KCR, KCR -> ARI) and real stints swapped. Live since bWAR was added:
+  Benintendi 2022 showed KCR 0.55 / NYY 2.30 (BR: 2.30 / 0.55); also Iglesias 2013, Leonys Martin
+  2018, Crisp 2016, Smoak 2010, Kazmir 2015. `season_columns` now keeps each season's map and
+  `stint_columns` reuses it. 294 per-club lines changed: 155 now equal BR's same-club stint, 139
+  pitchers' 0.0 lines moved to the club BR lists, none worse (per-club bWAR = BR same-club stint:
+  13,328 of 13,329, was 13,173). Team bWAR changed in 35 team-seasons, all now equal BR's club sums
+  (2022 KCR 9.89 -> 11.65, NYY 37.37 -> 35.62; 2013 BOS/DET, 2018 CLE/DET); worst gap since 1950
+  1.76 -> 0.22. Season and career bWAR, every FanGraphs column, rows and players are byte-identical
+  to the previous database.
+- Schema 7. Build ~107 s, peak 569 MB (updater limit 768 MB). New code serves a schema-6 database
+  (20 page types return 200, OPS+ simply absent), so the rebuild after deploy is safe.
+- Also deployed with this: ad3cb58 (service worker /oauth2/ navigation fix, committed 11-16).
+- Rollback: tag `baseball-site:pre-opsplus-20261117` as `baseball-site:latest`, `docker compose up -d`;
+  its updater sees schema 7 and rebuilds to schema 6.

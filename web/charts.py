@@ -14,7 +14,8 @@ PRESETS = {
         ("Run prevention", "pit:FIP", "pit:ERA"), ("Hitting vs pitching fWAR", "pit:WAR", "bat:WAR"),
     ],
     "bat": [
-        ("wRC+ vs fWAR", "wRC+", "WAR"), ("fWAR vs bWAR", "bWAR", "WAR"), ("Power and contact", "HardHit%", "Barrel%"),
+        ("wRC+ vs fWAR", "wRC+", "WAR"), ("fWAR vs bWAR", "bWAR", "WAR"), ("OPS+ vs wRC+", "OPS+", "wRC+"),
+        ("Power and contact", "HardHit%", "Barrel%"),
         ("Plate discipline", "K%", "BB%"), ("Speed and contact", "SB", "AVG"),
         ("Expected vs actual", "xwOBA", "wOBA"), ("Chase and whiff", "O-Swing%", "SwStr%"),
     ],
@@ -325,7 +326,7 @@ def _combine_era(rows):
 # ---------- compare ----------
 
 COMPARE_STATS = {
-    "bat": ["G", "PA", "HR", "R", "RBI", "SB", "AVG", "OBP", "SLG", "OPS", "BB%", "K%", "ISO", "wOBA",
+    "bat": ["G", "PA", "HR", "R", "RBI", "SB", "AVG", "OBP", "SLG", "OPS", "OPS+", "BB%", "K%", "ISO", "wOBA",
             "wRC+", "Batting", "BaseRunning", "Fielding", "WAR", "bWAR"],
     "pit": ["W", "L", "G", "GS", "SV", "IP", "SO", "ERA", "WHIP", "K%", "BB%", "K-BB%", "HR/9", "FIP",
             "xFIP", "SIERA", "ERA+", "ERA-", "WAR", "bWAR"],

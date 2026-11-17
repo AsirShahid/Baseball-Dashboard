@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import catalog, savant
+from . import bwar, catalog, savant
 
 def _weights(cols: dict, family: str, pitching: bool, n: int):
     base = cols.get("IP" if pitching else "PA")
@@ -126,6 +126,10 @@ def rebuild_rates(c: dict, pitching: bool) -> None:
                            ab + parts["BB"] + parts["HBP"] + parts["SF"]))
         if "OBP" in c and "SLG" in c:
             put("OPS", c["OBP"] + c["SLG"])
+    if all(g(k) is not None for k in bwar.OPS_PARTS):
+        # Baseball-Reference's career OPS+: summed times on base and total bases
+        # against the summed park- and league-average expectations.
+        put("OPS+", bwar.ops_plus(g("bTOB"), g("bTB"), g("TOBlg"), g("TBlg")))
     if pa is not None:
         if parts["SO"] is not None:
             put("K%", div(parts["SO"], pa))

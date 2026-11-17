@@ -464,6 +464,95 @@ def test_era_plus_from_baseball_reference(app, con):
     assert con.execute("SELECT COUNT(*) FROM catalog WHERE stat IN ('ERlg', 'bER')").fetchone()[0] == 0
 
 
+def _br_ops_plus(name, year):
+    """Baseball-Reference's own OPS+ for a one-club season, from the fixture file."""
+    import csv
+    with gzip.open(FIXTURES / "bwar" / "war_daily_bat.txt.gz", "rt", encoding="utf-8", newline="") as handle:
+        hits = [r for r in csv.DictReader(handle) if r["name_common"] == name and r["year_ID"] == str(year)]
+    assert len(hits) == 1
+    return float(hits[0]["OPS_plus"])
+
+
+def test_ops_plus_from_baseball_reference(app, con):
+    """OPS+ = 100 * (TOB / TOB_lg + TB / TB_lg - 1): Baseball-Reference's league side,
+    FanGraphs' counts. Equals Baseball-Reference's published OPS+; spans and teams add
+    up the parts; the league line is 100."""
+    from web import db, queries
+    with app.app_context():
+        t = db.table("bat", 2024, 2024, ("OPS+", "OPS", "wRC+"))
+        pids = [r["pid"] for r in t.ident]
+        for pid, name in ((JUDGE, "Aaron Judge"), (SOTO, "Juan Soto"), (OHTANI, "Shohei Ohtani")):
+            assert math.isclose(t.cols["OPS+"][pids.index(pid)], _br_ops_plus(name, 2024), abs_tol=0.05), name
+        span = db.table("bat", 1955, 2024, ("OPS+",))
+        j = [r["pid"] for r in span.ident].index(JUDGE)
+        assert math.isclose(span.cols["OPS+"][j], t.cols["OPS+"][pids.index(JUDGE)], abs_tol=0.01)   # parts add up
+        career = db.table("bat", 1871, 2026, ("OPS+",))
+        k = [r["pid"] for r in career.ident].index(JUDGE)
+        assert math.isclose(career.cols["OPS+"][k], t.cols["OPS+"][pids.index(JUDGE)], abs_tol=0.01)
+        teams_ = db.table("tbat", 2024, 2024, ("OPS+", "wRC+"))
+        both = [(teams_.cols["OPS+"][i], teams_.cols["wRC+"][i]) for i in range(len(teams_.ident))
+                if not np.isnan(teams_.cols["OPS+"][i])]
+        assert len(both) == 30 and all(abs(o - w) < 12 for o, w in both)
+        assert queries.league_season("bat", 2024, "MLB", ("OPS+",))["OPS+"] == 100
+    row = con.execute("SELECT lower, fmt, grp FROM catalog WHERE kind='bat' AND stat='OPS+'").fetchone()
+    assert tuple(row) == (0, "d0", "standard")
+    assert con.execute("SELECT COUNT(*) FROM catalog WHERE stat IN ('TOBlg', 'TBlg', 'bTOB', 'bTB')").fetchone()[0] == 0
+
+
+def test_traded_hitter_lines_pair_with_the_same_club(app):
+    """A traded player's per-club lines take Baseball-Reference's stint for that club.
+    Chisholm 2024 on Baseball-Reference: MIA 1.40 bWAR, OPS+ 101; NYY 1.52, OPS+ 131."""
+    from web import db
+    with app.app_context():
+        t = db.table("sbat", 2024, 2024, ("bWAR", "OPS+", "PA"))
+        lines = {r["team"]: i for i, r in enumerate(t.ident) if r["pid"] == CHISHOLM}
+        assert set(lines) == {"MIA", "NYY"}
+        assert math.isclose(t.cols["bWAR"][lines["MIA"]], 1.40, abs_tol=0.005)
+        assert math.isclose(t.cols["bWAR"][lines["NYY"]], 1.52, abs_tol=0.005)
+        assert math.isclose(t.cols["OPS+"][lines["MIA"]], 101.50, abs_tol=0.05)
+        assert math.isclose(t.cols["OPS+"][lines["NYY"]], 130.85, abs_tol=0.05)
+
+
+def test_per_club_file_never_teaches_club_codes():
+    """Club codes come from the season file. Learned from the per-club file, where
+    every player had several clubs, the only votes were odd lines (a FanGraphs NYY
+    line whose one Baseball-Reference stint is KCR) and they swapped real stints:
+    2022 Benintendi showed his KCR 2.30 bWAR under the Yankees and 0.55 under KC."""
+    from pipeline import bwar
+    b = bwar.BWar(None)
+    b.loaded = True
+    row = lambda name, pid, mlb, team, stint, pa, war: {
+        "name_common": name, "player_ID": pid, "mlb_ID": mlb, "year_ID": "2022", "team_ID": team,
+        "stint_ID": stint, "PA": pa, "WAR": war, "TOB_lg": "1.0", "TB_lg": "1.0"}
+    b._load("bat", [row("Andrew Benintendi", "beninan01", "643217", "KCR", "1", "390", "2.30"),
+                    row("Andrew Benintendi", "beninan01", "643217", "NYY", "2", "131", "0.55"),
+                    row("Odd One", "oddon01", "1", "KCR", "1", "4", "0.0"),
+                    row("Odd Two", "oddtw01", "2", "ARI", "1", "3", "0.0")])
+    ident = [{"pid": 1, "mlbam": 643217, "name": "Andrew Benintendi", "team": "KCR"},
+             {"pid": 1, "mlbam": 643217, "name": "Andrew Benintendi", "team": "NYY"},
+             {"pid": 2, "mlbam": 1, "name": "Odd One", "team": "NYY"},
+             {"pid": 2, "mlbam": 1, "name": "Odd One", "team": "TEX"},
+             {"pid": 3, "mlbam": 2, "name": "Odd Two", "team": "KCR"},
+             {"pid": 3, "mlbam": 2, "name": "Odd Two", "team": "SEA"}]
+    assert b.clubs("bat", 2022, ident) == {"NYY": "KCR", "TEX": "KCR", "KCR": "ARI", "SEA": "ARI"}   # the old votes
+    war = b.stint_columns("sbat", 2022, ident, np.array([390, 131, 2, 2, 2, 1], dtype=np.float64))["bWAR"]
+    assert math.isclose(war[0], 2.30, abs_tol=1e-6) and math.isclose(war[1], 0.55, abs_tol=1e-6)
+
+
+def test_bwar_hitter_rows_carry_ops_plus_parts_and_rows_without_war_stay_out():
+    """OPS+'s league side rides on the bWAR stints; a row with no WAR stays out even
+    if he batted, so namesakes never enter the name matching (bWAR unchanged)."""
+    from pipeline import bwar
+    b = bwar.BWar(None)
+    b.loaded = True
+    base = {"year_ID": "2024", "team_ID": "ABC", "PA": "3", "WAR": "NULL", "TOB_lg": "1.000", "TB_lg": "1.100"}
+    b._load("bat", [{**base, "name_common": "No War", "player_ID": "now01", "mlb_ID": "1"},
+                    {**base, "name_common": "Some War", "player_ID": "som01", "mlb_ID": "2", "WAR": "0.2"}])
+    assert b._find("bat", 2024, 1, None, None) is None
+    hit = b._find("bat", 2024, 2, None, None)
+    assert hit and abs(hit[0][2] - 0.2) < 1e-9 and abs(hit[0][3] - 1.0) < 1e-9 and abs(hit[0][4] - 1.1) < 1e-9
+
+
 def test_bwar_names_with_accents_are_repaired():
     from pipeline import bwar
     assert bwar.fix_text("David G\u00c3\u00b3mez") == "David G\u00f3mez"

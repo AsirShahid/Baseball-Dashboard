@@ -83,9 +83,13 @@ def _num(text) -> float:
 
 
 # What each Baseball-Reference stint carries, after (team, weight):
-#   bWAR, ERlg (earned runs a park- and league-average pitcher allows in the
-#   same innings) and bER (earned runs, as ERA+ = 100 * ER_lg / ER).
-FIELDS = {"bat": ("bWAR",), "pit": ("bWAR", "ERlg", "bER")}
+#   bWAR; for hitters TOBlg and TBlg (times on base and total bases a park- and
+#   league-average hitter would have in the same PA and AB: OPS+'s league side);
+#   for pitchers ERlg (earned runs a park- and league-average pitcher allows in
+#   the same innings) and bER (earned runs, as ERA+ = 100 * ER_lg / ER).
+#   brPA is Baseball-Reference's PA for the line, used only to check that both
+#   sources describe the same plate appearances before OPS+ is computed.
+FIELDS = {"bat": ("bWAR", "TOBlg", "TBlg", "brPA"), "pit": ("bWAR", "ERlg", "bER")}
 
 
 def fix_text(name: str) -> str:
@@ -129,6 +133,7 @@ class BWar:
         self.rosters = {"bat": {}, "pit": {}}    # (kind) -> {(year, team): {surname: {player}}}
         self.by_player = {"bat": {}, "pit": {}}  # (kind) -> {(player, year): [stint]}
         self.stems = {"bat": {}, "pit": {}}      # (kind) -> {(year, id stem): {player}}
+        self.club_maps = {}                      # (kind, year) -> FanGraphs club -> Baseball-Reference's
         self.loaded = False
         if root is None:
             return
@@ -149,6 +154,13 @@ class BWar:
             except (TypeError, ValueError):
                 continue
             values = [_num(r.get("WAR"))]
+            if kind == "bat":
+                # A row with no WAR stays out, as before OPS+: letting in the 60 such
+                # rows that batted (Negro Leagues, a few PA each) adds namesakes to the
+                # name matching and moved six players' bWAR. They get no OPS+.
+                if values[0] != values[0]:
+                    continue
+                values += [_num(r.get("TOB_lg")), _num(r.get("TB_lg")), weight]
             if kind == "pit":
                 erlg, plus = _num(r.get("ER_lg")), _num(r.get("ERA_plus"))
                 # ERA+ is blank for a stint with no earned runs (it would be infinite).
@@ -217,13 +229,13 @@ class BWar:
         return same_team[0] if len(same_team) == 1 else None
 
     def season_columns(self, kind: str, year: int, ident: list, weights=None) -> dict:
-        """bWAR (and for pitchers ERlg and bER) for each row of a FanGraphs season
+        """bWAR (hitters also TOBlg and TBlg; pitchers ERlg and bER) for each row of a FanGraphs season
         file; weights (PA, or IP for pitchers) let a surname-only match be checked."""
         if not self.loaded:
             return {}
         fields = FIELDS[kind]
         out = {f: np.full(len(ident), np.nan, dtype=np.float32) for f in fields}
-        clubs = self.clubs(kind, year, ident)
+        clubs = self.club_maps[(kind, year)] = self.clubs(kind, year, ident)
         for i, r in enumerate(ident):
             w = None if weights is None else float(weights[i])
             team = clubs.get(r.get("team"), r.get("team"))
@@ -254,7 +266,11 @@ class BWar:
         rows_by_pid: dict = {}
         for i, r in enumerate(ident):
             rows_by_pid.setdefault(r.get("pid"), []).append(i)
-        clubs = self.clubs(base, year, ident)
+        # The club codes paired on the season file (build reads it first). Learned here,
+        # from players who all had several clubs, the only votes came from odd lines and
+        # paired clubs wrongly (2022 NYY -> KCR), which swapped stints: Benintendi's 2.3
+        # bWAR showed under the Yankees and his 0.55 under the Royals.
+        clubs = self.club_maps.get((base, year), {})
         for _pid, idx in rows_by_pid.items():
             first = ident[idx[0]]
             stints = self._find(base, year, first.get("mlbam"), first.get("name"), None)
@@ -291,6 +307,22 @@ def era_plus(erlg, ber):
     erlg, ber = np.asarray(erlg, dtype=np.float64), np.asarray(ber, dtype=np.float64)
     with np.errstate(invalid="ignore", divide="ignore"):
         return np.where(ber > 0, 100 * erlg / np.where(ber > 0, ber, 1), np.nan)
+
+
+# OPS+'s parts on a hitter's row: league side from Baseball-Reference, his own
+# side from FanGraphs' counts (pipeline/build.py), stored for the same seasons.
+OPS_PARTS = ("TOBlg", "TBlg", "bTOB", "bTB")
+
+
+def ops_plus(tob, tb, tob_lg, tb_lg):
+    """OPS+ as Baseball-Reference computes it, 100 * (OBP / lgOBP + SLG / lgSLG - 1),
+    from its parts: 100 * (TOB / TOB_lg + TB / TB_lg - 1), where TOB_lg and TB_lg are
+    what a park- and league-average hitter would reach in the same PA and AB. Summed
+    parts give a career or span the way Baseball-Reference builds its career OPS+."""
+    tob, tb, tob_lg, tb_lg = (np.asarray(a, dtype=np.float64) for a in (tob, tb, tob_lg, tb_lg))
+    ok = (tob_lg > 0) & (tb_lg > 0) & ~np.isnan(tob) & ~np.isnan(tb)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(ok, 100 * (tob / np.where(ok, tob_lg, 1) + tb / np.where(ok, tb_lg, 1) - 1), np.nan)
 
 
 def main(argv=None):

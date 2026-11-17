@@ -19,7 +19,7 @@ NOT_STATS = {
 # values). Everything else is a rate and is averaged or rebuilt. From the Dash
 # site's fangraphs_api.COUNTING_STATS, plus the pitching value splits.
 COUNTING = frozenset({
-    "G", "GS", "WAR", "bWAR", "ERlg", "bER",
+    "G", "GS", "WAR", "bWAR", "ERlg", "bER", "TOBlg", "TBlg", "bTOB", "bTB",
     # Baseball Savant counts (pipeline/savant.PARTS)
     "svPA", "svAB", "svPit", "svIZ", "svOZ", "svIZSw", "svOZSw", "svIZCon", "svOZCon", "svWhiff", "svEdge",
     "svMB", "svMBSw", "svBBE", "svSweet", "svXWcon", "svXH", "svXTB", "svXW", "svSpW", "svSpSum",
@@ -92,6 +92,7 @@ NAMES = {
     "xERA": "Expected ERA (Statcast)", "ERA-": "ERA minus: ERA adjusted for park and league (100 is league average, lower is better)",
     "FIP-": "FIP minus: FIP adjusted for park and league (100 is league average, lower is better)",
     "ERA+": "ERA+: Baseball-Reference's ERA adjusted for park and league (100 is league average, higher is better)",
+    "OPS+": "OPS+: Baseball-Reference's OPS adjusted for park and league (100 is league average)",
     "Barrel/PA": "Barrels per plate appearance (Statcast)",
     "Sweet-Spot%": "Launch angle sweet-spot rate: batted balls at 8 to 32 degrees (Baseball Savant)",
     "xwOBAcon": "Expected wOBA on contact: batted balls only (Baseball Savant)",
@@ -133,9 +134,9 @@ NAMES = {
 # the "columns" lists; the chart menu lists every stat under its group.
 BAT_GROUPS = [
     ("standard", "Standard", ["G", "PA", "AB", "H", "2B", "3B", "HR", "R", "RBI", "BB", "SO",
-                              "SB", "CS", "AVG", "OBP", "SLG", "OPS", "wRC+", "WAR", "bWAR"]),
+                              "SB", "CS", "AVG", "OBP", "SLG", "OPS", "OPS+", "wRC+", "WAR", "bWAR"]),
     ("advanced", "Advanced", ["PA", "BB%", "K%", "BB/K", "ISO", "BABIP", "AVG", "OBP", "SLG",
-                              "wOBA", "xwOBA", "wRC+", "Spd", "wBsR"]),
+                              "wOBA", "xwOBA", "OPS+", "wRC+", "Spd", "wBsR"]),
     ("value", "Value", ["PA", "Batting", "BaseRunning", "Fielding", "Positional", "Offense",
                         "Defense", "RAR", "WAR", "bWAR", "WPA", "RE24", "Clutch"]),
     ("battedball", "Batted ball", ["PA", "GB/FB", "LD%", "GB%", "FB%", "IFFB%", "HR/FB", "Pull%",

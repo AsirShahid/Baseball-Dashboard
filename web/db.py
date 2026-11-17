@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pipeline import aggregate, savant
+from pipeline import aggregate, bwar, savant
 from pipeline import teams as T
 
 _local = threading.local()
@@ -293,7 +293,7 @@ _SAVANT_REBUILT = frozenset(savant.SHOWN + savant.PITCHER_SHOWN + ("Barrel/PA",)
 _SAVANT_PARTS = savant.PARTS + ("Barrels",)
 
 _PARTS = {
-    False: ("AB", "H", "1B", "2B", "3B", "HR", "BB", "HBP", "SF", "SO", "Events", "Pitches"),
+    False: ("AB", "H", "1B", "2B", "3B", "HR", "BB", "HBP", "SF", "SO", "Events", "Pitches") + bwar.OPS_PARTS,
     True: ("TBF", "ER", "H", "HR", "BB", "SO", "Events", "Pitches", "ERlg", "bER"),
 }
 
