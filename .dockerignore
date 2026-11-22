@@ -19,3 +19,6 @@ tests/
 .gitignore
 .dockerignore
 docker-compose.yml
+# Fetched while the image is built (web/offline.py).
+web/offline_rt/
+.env

@@ -301,16 +301,21 @@
       .catch(function () {});
   }
 
+  // data-saved: a copy of this page saved from the server. data-local: the page as the
+  // full offline copy on this device renders it (web/offline.py), with that copy's data time.
   var saved = document.documentElement.getAttribute("data-saved");
+  var local = document.documentElement.getAttribute("data-local");
   var main = document.querySelector("main.page");
-  if (saved && main) {
-    var when = new Date(saved), note = document.createElement("div"), again = document.createElement("a");
+  if ((saved || local != null) && main) {
+    var when = new Date(saved || local), note = document.createElement("div"), again = document.createElement("a");
+    var stamp = isNaN(when) ? "earlier" : when.toLocaleString([], {
+      weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+    });
     note.className = "note offline-note";
     note.setAttribute("role", "status");
-    note.textContent = "Offline: saved copy from " + (isNaN(when) ? "earlier" : when.toLocaleString([], {
-      weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
-    })) + ". ";
+    note.textContent = (saved ? "Offline: saved copy from " + stamp : "Offline copy: data as of " + stamp) + ". ";
     again.href = window.location.href;
+    again.target = "_top";          // out of the offline shell's frame, back to the server
     again.textContent = navigator.onLine ? "Try again" : "Reload when back online";
     note.appendChild(again);
     main.insertBefore(note, main.firstChild);

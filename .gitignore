@@ -21,3 +21,9 @@ fg_cookie.txt
 /data/
 /stints_batting/
 /stints_pitching/
+
+# The offline copy's Python runtime: fetched by `python web/offline.py fetch-runtime`.
+/web/offline_rt/
+
+# OFFLINE_KEY for docker compose. Secret, never commit.
+.env

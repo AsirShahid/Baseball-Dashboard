@@ -25,5 +25,17 @@ jobs:
       - name: Byte-compile
         run: python -m compileall -q app.py pipeline web
 
+      # Pyodide and the wheels for the offline copy (18 MB, pinned by SHA-256 in web/offline.py).
+      - uses: actions/cache@v4
+        with:
+          path: web/offline_rt
+          key: offline-rt-${{ hashFiles('web/offline.py') }}
+
+      - name: Fetch the offline runtime
+        run: python web/offline.py fetch-runtime
+
       - name: Run tests
         run: python -m pytest tests/ -q
+
+      - name: Service worker tests
+        run: node tests/test_sw.js

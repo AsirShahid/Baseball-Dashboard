@@ -23,6 +23,9 @@ _COMPRESSIBLE = ("text/", "application/json", "application/javascript", "image/s
 
 
 def _asset_version() -> str:
+    # The offline copy (web/offline.py) has no static folder: the device tells it the version.
+    if os.environ.get("ASSET_VERSION"):
+        return os.environ["ASSET_VERSION"]
     newest = max((path.stat().st_mtime_ns for path in (ROOT / "static").rglob("*") if path.is_file()),
                  default=0)
     return format(newest // 1_000_000, "x")
@@ -109,6 +112,19 @@ def create_app(data_root=None) -> Flask:
         shortcuts=[("Standings", "/standings"), ("Players", "/players"), ("Charts", "/chart"),
                    ("My team", "/team/{favorite}")],
         image_paths=["/logos/"], image_hosts=["img.mlbstatic.com"], data_paths=["/api/chart"],
+    )
+    # The full offline copy. The site is public, so the copy needs OFFLINE_KEY (web/offline.py).
+    from . import offline
+    offline.register(
+        app, site="Baseball", access="key", packages=offline.FLASK + ["numpy"],
+        data_files=lambda: [("baseball.sqlite", db.db_path())],
+        bundles=lambda: {"app.zip": [("app.py", ROOT.parent / "app.py"), ("web", ROOT),
+                                     ("pipeline", ROOT.parent / "pipeline")],
+                         "logos.zip": [("Logos", T.LOGO_DIR)]},
+        env=lambda: {"FAVORITE_TEAM": app.config["FAVORITE_TEAM"]},
+        # This season's players' photos, as the player page asks for them (about 15 KB each).
+        photos=lambda: [{"url": headshot("{id}", 96), "each": 15500, "ids": [row["mlbam"] for row in db.rows(
+            "SELECT mlbam FROM players WHERE last = ? AND mlbam IS NOT NULL ORDER BY mlbam", db.latest())]}],
     )
 
     @app.context_processor

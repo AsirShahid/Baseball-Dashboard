@@ -5,6 +5,9 @@ WORKDIR /app
 RUN useradd -m -u 1001 -s /usr/sbin/nologin app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# The offline copy's Python (Pyodide and its wheels, 18 MB), pinned by SHA-256 in web/offline.py.
+COPY web/offline.py web/offline.py
+RUN python web/offline.py fetch-runtime
 COPY app.py ./
 COPY pipeline pipeline
 COPY web web

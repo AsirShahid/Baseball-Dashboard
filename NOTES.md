@@ -383,3 +383,69 @@ clubs with no logo (code squares) and several Dash features; all are in the Flas
 - Also deployed with this: ad3cb58 (service worker /oauth2/ navigation fix, committed 11-16).
 - Rollback: tag `baseball-site:pre-opsplus-20261117` as `baseball-site:latest`, `docker compose up -d`;
   its updater sees schema 7 and rebuilds to schema 6.
+
+## Full offline copy (2026-11-22)
+
+Asir asked for both sports sites to work fully offline. Saving pages cannot do that
+(27,000 player and team pages before any tab, filter, span, compare or chart), so a
+device keeps the database and runs the site's own code on it.
+
+- What a device holds: `baseball.sqlite` (111 MB), this repo's `app.py`, `web/` and
+  `pipeline/` (app.zip), the logos, Pyodide 314.0.8 (Python 3.14 as WebAssembly) with
+  numpy, Flask and its dependencies (18 MB), and this season's 1,472 player photos (23 MB).
+  Measured in Chromium, Firefox and WebKit: 162 to 166 MB on the device, a 115 MB
+  download plus the photos.
+- Server, `web/offline.py` (same file on basketball): `/offline/manifest.json`,
+  `/offline/chunk/<sha256>`, `/offline/rt/<version>/<file>`. Every file is cut into
+  256 KB pieces named by SHA-256, gzipped when that is smaller. A device downloads the
+  pieces it lacks, so an interrupted download resumes and a refresh costs only the
+  pieces that changed. The pieces are built under `OFFLINE_ROOT` (default
+  `/tmp/offline-pack/<site>` in the container, about 90 MB) by a separate small process
+  the manifest route starts when the database or code changed (about 15 s). The runtime is
+  fetched into `web/offline_rt/` when the image is built (`python web/offline.py
+  fetch-runtime`, every file pinned by SHA-256); it is not in git.
+- Access: the site is public, so the copy is offered only to a device holding
+  `OFFLINE_KEY` (in `.env` beside docker-compose.yml, not in git; sent as `X-Offline-Key`).
+  Without the variable the three routes answer 404 and About shows no card. A device gets
+  the key once from `https://baseball.asir.dev/about?offline_key=<key>` (kept in
+  localStorage, removed from the address). Other visitors see no card. If the key is
+  changed, the card on a device with the old one asks for the new one.
+- Device, `web/static/offline/` (same files on basketball):
+  - `ui.js`: the "Offline copy" card on About (Download, Pause, Update, Remove) and a check
+    on every other page at most every 20 minutes. An update under 40 MB, or any update on a
+    connection the browser reports as Wi-Fi, downloads by itself; a larger one waits for a tap.
+  - `sync.js` (worker): downloads and verifies pieces into the browser's private file system
+    (`offline/chunks/<sha256>`), Pyodide into a cache, then the photos into the `photos-v1`
+    cache. When the pieces are complete it records the manifest in the `meta-v1` cache;
+    that record is what "this device has a copy" means. Old pieces are deleted afterwards.
+  - `engine.js` (module worker): starts Pyodide, mounts the pieces as read-only files under
+    `/data` (read on demand, 48 MB kept in memory), unpacks the code into `/app`, calls
+    `create_app()` and answers requests through Flask's test client.
+  - `shell.js`: the page shown with no connection. It starts the engine once and runs the
+    site in a full-size frame; the window's address and title follow the frame.
+- `web/sw.js`: with a copy on the device and no connection (or no answer in 5 s, or a
+  5xx), a page opens in the shell; pages, `/api/search`, `/api/chart` and logos requested
+  inside it are rendered by the engine and marked `data-local` ("Offline copy: data as of
+  ..."). A page the server sent after it last confirmed the copy as current is still
+  preferred, since it may be newer. Online, pages come from the server as before.
+  Without a copy nothing changes: saved pages and the offline list.
+- Firefox: navigation preload is now off there. With it on, an unreachable server gave
+  "Problem loading page" instead of the saved page (the failed preload fails the
+  navigation), so offline use on Firefox for Android did not work with a poor connection.
+  Chrome and Safari keep preload.
+- Safari books 1 MB against the site's storage allowance for every file written through
+  a sync access handle until the next launch (501 MB shown for 138 MB). `sync.js` writes
+  with `createWritable()` where it exists (162 MB shown) and falls back to the handle.
+  A private window in Safari has no file storage; the card says so.
+- Speed, measured on this server: first page with no connection 8 to 17 s (Python starting),
+  then 0.1 to 2.6 s per page. The all-time career table takes about 6 s.
+- Stays online only: nothing on this site. A photo of a player who did not play this
+  season shows only if it was seen before.
+- Tests: `tests/test_offline.py` (pieces rebuild every file byte for byte, the key, the
+  code bundle holds no secrets, and the engine's pages equal the server's byte for byte
+  through `tests/test_offline.mjs` under Node), `tests/test_sw.js` (the worker's routing).
+  `tools/offline_browser.py <url> --key K --browser chromium|firefox|webkit` downloads the
+  copy in a real browser, cuts the connection with a relay it controls and uses the site:
+  29 of 29 checks in each of the three browsers. Not tested on the real phone or iPad.
+- Rollback image: `baseball-site:pre-offline-20261122`. Removing `OFFLINE_KEY` from `.env`
+  and recreating the container switches the feature off without a rollback.

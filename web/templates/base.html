@@ -40,6 +40,8 @@
   <a href="{{ url_for('site.about') }}">About the data</a>
 </footer>
 <script src="{{ asset('app.js') }}" defer></script>
+{% if offline_card and offline_card.access != 'off' %}<script src="{{ asset('offline/ui.js') }}" defer></script>
+{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

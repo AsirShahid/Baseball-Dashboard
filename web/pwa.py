@@ -69,6 +69,9 @@ def register(app: Flask, *, site: str, description: str, pages: list[str], favor
             "imagePaths": list(image_paths),
             "imageHosts": list(image_hosts),
             "dataPaths": list(data_paths),
+            # The full offline copy (web/offline.py); None when this deploy does not offer it.
+            "offline": {"shell": asset("offline/shell.js"), "engine": asset("offline/engine.js")}
+            if app.jinja_env.globals.get("offline_card", {}).get("access") in ("open", "key") else None,
         }
         body = f"const CONFIG = {json.dumps(config, separators=(',', ':'))};\n{script}"
         response = app.response_class(body, mimetype="application/javascript")

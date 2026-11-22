@@ -15,6 +15,9 @@ services:
     environment:
       - DATA_ROOT=/data
       - FAVORITE_TEAM=NYY
+      # The full offline copy is offered only to devices holding this key (web/offline.py).
+      # It is read from .env beside this file, which is not in git. Unset = not offered.
+      - OFFLINE_KEY=${OFFLINE_KEY:-}
     volumes:
       - baseball-data:/data:ro
     expose:
