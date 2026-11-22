@@ -455,7 +455,10 @@ device keeps the database and runs the site's own code on it.
   31 of 31 checks in each of the three browsers. Not tested on the real phone or iPad.
 - Live since 2026-11-22 18:52 UTC (commit bc167f6). On https://baseball.asir.dev in Chromium
   and on the production container in Firefox and WebKit the browser check passed 29 of 29.
-  The quiet "Offline copy" line with the key field came after that (31 of 31 against a
-  local server in Chromium) and is not deployed yet.
-- Rollback image: `baseball-site:pre-offline-20261122`. Removing `OFFLINE_KEY` from `.env`
+  The quiet "Offline copy" line with the key field went live at 20:17 UTC (commit 68b67a5):
+  31 of 31 on https://baseball.asir.dev in Chromium. Firefox and WebKit were not rerun on
+  that build (only `ui.js` and `app.css` differ from the one they passed). The copy's
+  version did not change, so a device that already had it downloaded nothing again.
+- Rollback images: `baseball-site:pre-offline-20261122` (before the feature) and
+  `baseball-site:offline-20261122-first` (the first deploy, without the key field). Removing `OFFLINE_KEY` from `.env`
   and recreating the container switches the feature off without a rollback.
