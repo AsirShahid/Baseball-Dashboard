@@ -174,11 +174,30 @@ def run(args):
             reference.goto(args.base + path)
             expect[path] = main_text(reference, site.get("left_out", ()))
         plain.close()
-        if args.key:                        # a public site: nothing is shown to a visitor without the key
+        if args.key:
+            # A public site. The link with the key unlocks a device (checked in a profile of its own)...
+            with tempfile.TemporaryDirectory() as other:
+                linked = getattr(p, args.browser).launch_persistent_context(other, viewport={"width": 412, "height": 915})
+                tab = linked.pages[0] if linked.pages else linked.new_page()
+                tab.goto(args.base + f"/about?offline_key={args.key}")
+                tab.locator("#offline-card").get_by_role("button", name="Download").wait_for(timeout=180000)
+                check("offline_key" not in tab.url, "the link with the key unlocks the card and the key leaves the address")
+                linked.close()
+            # ...and a visitor without it sees one quiet line, where the key can also be typed
+            # (an installed home-screen app has no address bar).
             page.goto(args.base + "/about")
             page.wait_for_load_state("networkidle")
-            check(page.locator("#offline-card").is_hidden(), "without the key About shows no offline card")
-        page.goto(args.base + "/about" + (f"?offline_key={args.key}" if args.key else ""))
+            quiet = page.locator("#offline-card")
+            check(quiet.inner_text().strip() == "Offline copy", "without the key About shows only a quiet 'Offline copy' line")
+            quiet.get_by_role("button", name="Offline copy").click()
+            quiet.locator("input[type=password]").fill("not-the-key")
+            quiet.get_by_role("button", name="Unlock").click()
+            quiet.get_by_text("That key was not accepted").wait_for(timeout=60000)
+            check(quiet.get_by_role("button", name="Download").count() == 0, "a wrong key is refused")
+            quiet.locator("input[type=password]").fill(args.key)
+            quiet.get_by_role("button", name="Unlock").click()
+        else:
+            page.goto(args.base + "/about")
         page.wait_for_function("navigator.serviceWorker.controller !== null", timeout=30000)
         card = page.locator("#offline-card")
         card.get_by_role("button", name="Download").wait_for(timeout=180000)

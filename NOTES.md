@@ -408,8 +408,10 @@ device keeps the database and runs the site's own code on it.
   `OFFLINE_KEY` (in `.env` beside docker-compose.yml, not in git; sent as `X-Offline-Key`).
   Without the variable the three routes answer 404 and About shows no card. A device gets
   the key once from `https://baseball.asir.dev/about?offline_key=<key>` (kept in
-  localStorage, removed from the address). Other visitors see no card. If the key is
-  changed, the card on a device with the old one asks for the new one.
+  localStorage, removed from the address). Other visitors see one quiet "Offline copy"
+  line on About; opening it gives a key field, which is how an installed home-screen app
+  (no address bar) is unlocked. If the key is changed, the card on a device with the old
+  one asks for the new one.
 - Device, `web/static/offline/` (same files on basketball):
   - `ui.js`: the "Offline copy" card on About (Download, Pause, Update, Remove) and a check
     on every other page at most every 20 minutes. An update under 40 MB, or any update on a
@@ -437,6 +439,10 @@ device keeps the database and runs the site's own code on it.
   a sync access handle until the next launch (501 MB shown for 138 MB). `sync.js` writes
   with `createWritable()` where it exists (162 MB shown) and falls back to the handle.
   A private window in Safari has no file storage; the card says so.
+- Updates: the updater rebuilds the whole database once a day even in November, but the
+  build is repeatable. A rebuild from the same files differed from production's in 1 of
+  424 pieces (the build time), and one with 40 players' 2026 WAR and Offense changed
+  differed in 7 (1.1 MB to download). So a daily refresh costs a device about 1 MB.
 - Speed, measured on this server: first page with no connection 8 to 17 s (Python starting),
   then 0.1 to 2.6 s per page. The all-time career table takes about 6 s.
 - Stays online only: nothing on this site. A photo of a player who did not play this
@@ -446,6 +452,10 @@ device keeps the database and runs the site's own code on it.
   through `tests/test_offline.mjs` under Node), `tests/test_sw.js` (the worker's routing).
   `tools/offline_browser.py <url> --key K --browser chromium|firefox|webkit` downloads the
   copy in a real browser, cuts the connection with a relay it controls and uses the site:
-  29 of 29 checks in each of the three browsers. Not tested on the real phone or iPad.
+  31 of 31 checks in each of the three browsers. Not tested on the real phone or iPad.
+- Live since 2026-11-22 18:52 UTC (commit bc167f6). On https://baseball.asir.dev in Chromium
+  and on the production container in Firefox and WebKit the browser check passed 29 of 29.
+  The quiet "Offline copy" line with the key field came after that (31 of 31 against a
+  local server in Chromium) and is not deployed yet.
 - Rollback image: `baseball-site:pre-offline-20261122`. Removing `OFFLINE_KEY` from `.env`
   and recreating the container switches the feature off without a rollback.

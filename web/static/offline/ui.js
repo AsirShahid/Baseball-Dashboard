@@ -100,7 +100,6 @@
   }
 
   // ---------------------------------------------------------------- the card on About
-  if (stranger) return;
   card.hidden = false;
   var title = document.createElement("h2"), text = document.createElement("p"), bar = document.createElement("progress");
   var buttons = document.createElement("div"), form = document.createElement("form");
@@ -116,6 +115,22 @@
     note.className = "sub offline-limit";
     note.textContent = card.dataset.note;
     card.appendChild(note);
+  }
+  if (stranger) {
+    // A visitor without the key sees one quiet line. The owner opens it to enter the key:
+    // an installed home-screen app has no address bar for the ?offline_key= link.
+    var parts = Array.prototype.slice.call(card.children), opener = document.createElement("button");
+    parts.forEach(function (part) { part.style.display = "none"; });
+    opener.type = "button"; opener.className = "offline-open"; opener.textContent = "Offline copy";
+    card.classList.add("quiet");
+    card.appendChild(opener);
+    opener.addEventListener("click", function () {
+      opener.remove();
+      card.classList.remove("quiet");
+      parts.forEach(function (part) { part.style.display = ""; });
+      show({ state: "locked" });
+      form.elements[0].focus();
+    });
   }
 
   function button(label, action, plain) {
@@ -147,7 +162,8 @@
         break;
       case "locked":
         if (access === "key") {
-          text.textContent = "That key was not accepted. Enter the current one to unlock the offline copy on this device.";
+          text.textContent = store.get("key") ? "That key was not accepted. Enter the current one to unlock the offline copy on this device."
+            : "Enter the key to unlock the offline copy on this device.";
           form.hidden = false;
         } else {
           text.textContent = "The offline copy is not available right now.";
@@ -212,6 +228,7 @@
   });
 
   // Start: what is here, then (online) what the server has.
+  if (stranger) return;
   run({ cmd: "status" }, function (state) {
     show(state);
     if (framed || !navigator.onLine) return;
