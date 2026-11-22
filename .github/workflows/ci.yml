@@ -17,6 +17,11 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # The offline copy's tests start Pyodide under Node (tests/test_offline.mjs).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
