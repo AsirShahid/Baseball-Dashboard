@@ -351,6 +351,7 @@ def run(args):
         fresh.wait_for_function("p => document.getElementById('view').contentWindow.location.pathname === p",
                                 arg=site["image_page"], timeout=60000)
         check(True, "Back returns to the previous page")
+        current().wait_for_load_state("networkidle")        # its images, before the next page cancels them
         open_in_frame(site["pages"][2])
         fresh.reload()
         fresh.frame_locator("#view").locator("main.page").wait_for(timeout=180000)
