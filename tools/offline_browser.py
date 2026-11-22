@@ -1,7 +1,7 @@
 """Browser check of the full offline copy against a running site.
 
     python offline_browser.py http://127.0.0.1:8061 [--key KEY] [--browser chromium|firefox|webkit]
-                              [--site baseball|basketball] [--shots DIR]
+                              [--site baseball|basketball] [--shots DIR] [--direct]
 
 Downloads the copy through the About card, cuts the connection, and uses the site:
 cold open, links, search, filters, charts, images, back, reload, then back online.
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import socket
 import struct
 import sys
@@ -44,6 +45,9 @@ SITES = {
         "image": "img[src^='/static/logos/'], img[src^='/img/player/']",
         "filter": ("/players", "select[data-nav='team']", "NYK", "team=NYK"),
         "photo": "/player/3934672",
+        # Left out of the copy on purpose (watch.json: stream ids, and the links need a
+        # connection): the game log's Watch column and its footnote.
+        "left_out": [r"\u25b6 Watch", r"Watch opens the recording of that game\.", r"(?<=Result) Watch"],
     },
 }
 checks: list[tuple[bool, str]] = []
@@ -118,19 +122,29 @@ def check(ok, text):
     print(("ok   " if ok else "FAIL ") + text, flush=True)
 
 
-def main_text(target):
-    """The page's main content as text, without the offline banner and the offline card."""
-    return target.evaluate("""() => {
+def main_text(target, left_out=()):
+    """The page's main content as text, without the offline banner, the offline card and
+    what the site's copy leaves out on purpose."""
+    text = target.evaluate("""() => {
         const main = document.querySelector('main.page').cloneNode(true);
         main.querySelectorAll('.offline-note, #offline-card').forEach(node => node.remove());
         return main.innerText.replace(/\\s+/g, ' ').trim();
     }""")
+    for pattern in left_out:
+        text = re.sub(pattern, "", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def run(args):
     site = SITES[args.site]
-    link = Link(args.base)
-    args.base = link.base
+    # --direct: the address as given (an https site behind its proxy), with the browser's
+    # own offline emulation only. Not for Firefox, whose emulation skips the service worker.
+    link = None if args.direct else Link(args.base)
+    if link:
+        args.base = link.base
+    elif args.browser == "firefox":
+        raise SystemExit("--direct needs chromium or webkit")
+    args.base = args.base.rstrip("/")
 
     with sync_playwright() as p, tempfile.TemporaryDirectory() as profile:
         # A profile on disk, as on a real device: WebKit gives a throwaway one no file storage.
@@ -146,7 +160,8 @@ def run(args):
             # ever in. There the relay alone is cut (connected, but the site unreachable).
             if args.browser != "firefox":
                 context.set_offline(down)
-            link.cut(down)
+            if link:
+                link.cut(down)
         page.on("pageerror", lambda error: problems.append(f"[after check {len(checks)}] pageerror: {error}"))
         page.on("console", lambda m: problems.append(f"[after check {len(checks)}] console {m.type}: {m.text}") if m.type == "error" else None)
 
@@ -157,7 +172,7 @@ def run(args):
         reference = plain.new_context(viewport={"width": 412, "height": 915}, service_workers="block").new_page()
         for path in site["pages"]:
             reference.goto(args.base + path)
-            expect[path] = main_text(reference)
+            expect[path] = main_text(reference, site.get("left_out", ()))
         plain.close()
         if args.key:                        # a public site: nothing is shown to a visitor without the key
             page.goto(args.base + "/about")
@@ -245,7 +260,7 @@ def run(args):
             began = time.time()
             open_in_frame(path)
             took = time.time() - began
-            same = main_text(current()) == expect[path]
+            same = main_text(current(), site.get("left_out", ())) == expect[path]
             on_device = current().evaluate("document.documentElement.hasAttribute('data-local')")
             check(same and on_device, f"{path} is rendered on the device and matches the server's page ({took:.2f} s)")
             if not same and args.shots:
@@ -357,4 +372,5 @@ if __name__ == "__main__":
     parser.add_argument("--browser", default="chromium", choices=["chromium", "firefox", "webkit"])
     parser.add_argument("--site", default="baseball", choices=list(SITES))
     parser.add_argument("--shots", default="")
+    parser.add_argument("--direct", action="store_true", help="no relay: use the address as given")
     sys.exit(run(parser.parse_args()))
