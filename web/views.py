@@ -250,6 +250,14 @@ def chart_data():
     return jsonify(charts.cached_payload(tuple((k, request.args.get(k, "")) for k in keys)))
 
 
+@bp.route("/api/chart/find")
+def chart_find():
+    latest, first = queries.latest_season(), db.first_season()
+    lo = charts._int(request.args, "season", latest, first, latest)
+    lo, hi = queries.span(lo, charts._int(request.args, "to", lo, first, latest))
+    return jsonify({"players": queries.chart_find(request.args.get("q", "")[:60], lo, hi)})
+
+
 @bp.route("/api/search")
 def search():
     return jsonify(queries.search(request.args.get("q", "")[:60]))

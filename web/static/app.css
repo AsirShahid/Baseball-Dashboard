@@ -320,6 +320,8 @@ a.game:hover { border-color: #3a475d; color: inherit; }
 .stats td.lead { font-weight: 700; color: #fff; }
 .qmark { display: inline-block; margin-left: 5px; padding: 0 4px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 700; line-height: 15px; vertical-align: 1px; }
 .spanpick { display: inline-flex; align-items: center; gap: 6px; }
+.find-note { color: var(--dim); font-size: 12.5px; line-height: 1.4; }
+.find-note button { margin-left: 6px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
 .chart.sbars { height: auto; }
 .chart.sbars .hitbox:hover { fill: rgba(255, 255, 255, 0.06); }
 .profile .photo { object-position: center top; }

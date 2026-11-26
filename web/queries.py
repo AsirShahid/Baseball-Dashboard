@@ -606,6 +606,31 @@ def search(q: str, limit: int = 12) -> list[dict]:
     return out[:limit + 3]
 
 
+def chart_find(text: str, lo: int, hi: int, limit: int = 5) -> list[dict]:
+    """Players whose name matches, with the clubs they played for in lo..hi
+    ([season, code, franchise id]): a team chart lights those clubs up when no
+    team name matches. A traded player's season counts each club (his stints)."""
+    key = search_key(text)
+    if len(key) < 3:
+        return []
+    names, _teams = _search_index()
+    found = [p for k, p in names if k.startswith(key) or any(w.startswith(key) for w in k.split())][:40]
+    if not found:
+        return []
+    marks = ",".join("?" * len(found))
+    stints: dict = {}
+    for r in db.rows(f"SELECT pid, season, team, teamid FROM rows WHERE kind IN ('bat', 'pit', 'sbat', 'spit')"
+                     f" AND season BETWEEN ? AND ? AND pid IN ({marks}) ORDER BY season",
+                     lo, hi, *[p["pid"] for p in found]):
+        if r["team"] and r["team"] != T.MULTI_TEAM:
+            mine = stints.setdefault(r["pid"], [])
+            if [r["season"], r["team"], r["teamid"]] not in mine:
+                mine.append([r["season"], r["team"], r["teamid"]])
+    out = [{"pid": p["pid"], "name": p["name"], "stints": stints.get(p["pid"], [])} for p in found]
+    out.sort(key=lambda p: not p["stints"])     # who played in these seasons first, by career WAR
+    return out[:limit]
+
+
 def logo_url(code, season=None):
     path = T.logo(code, season)
     return f"/logos/{path}" if path else None

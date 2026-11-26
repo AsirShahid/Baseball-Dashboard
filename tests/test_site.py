@@ -782,3 +782,15 @@ def test_installable_and_ready_for_offline(client):
     assert "self.addEventListener(\"fetch\"" in rest
     for url in config["static"] + config["pages"]:
         assert client.get(url).status_code == 200, url
+
+
+def test_team_chart_find_lights_up_a_players_clubs(client):
+    """Teams view, a player's name: his clubs, by season and by franchise."""
+    found = client.get("/api/chart/find?q=judge&season=2024").get_json()["players"]
+    judge = next(p for p in found if p["pid"] == JUDGE)
+    assert [s[:2] for s in judge["stints"]] == [[2024, "NYY"]] and isinstance(judge["stints"][0][2], int)
+    teams = client.get("/api/chart?view=team&x=bat:wRC%2B&y=pit:ERA%2B&season=2024").get_json()
+    nyy = next(r for r in teams["rows"] if r[2] == "NYY")
+    assert nyy[0] == "NYY" and nyy[3] == 2024        # single season: matched by season and code
+    assert client.get("/api/chart/find?q=ju&season=2024").get_json()["players"] == []   # too short
+    assert 'id="c-find-note"' in client.get("/chart").get_data(as_text=True)

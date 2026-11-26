@@ -33,6 +33,8 @@
     find: init.find || "", labels: init.labels || "standouts"
   };
   var data = null, shown = [], pinned = null, hovered = null, loads = 0;
+  // Team charts: players whose name matches Find, and the clubs they played for.
+  var finder = { key: "", players: null }, finds = 0, findFetch = null;
   var rot = { yaw: -0.6, pitch: 0.35, zoom: 1 };
   // Zoom: a 2D window in data units ({x: [lo, hi], y: [lo, hi]}) or null for
   // everything; geo is the last 2D geometry, for turning screen points into data.
@@ -286,8 +288,17 @@
     shown.forEach(function (r) {
       r._hit = !!needle && fold(r.name + " " + r.team + (r.season ? " " + r.season : "")).indexOf(needle) !== -1;
     });
+    // A team chart and a player's name: no club is called that, so light up his clubs.
+    var via = null;
+    if (!players && needle && !shown.some(function (r) { return r._hit; })) {
+      via = playerClubs(needle);
+      if (via) shown.forEach(function (r) {
+        r._hit = r.season ? !!via.seasons[r.season + ":" + r.team] : !!via.franchises[r.id];
+      });
+    }
     if (az) draw3d(width, height, narrow); else draw2d(width, height, narrow, players, needle);
     drawBoard(players);
+    findNote(players, via);
     var zoomed = az ? rot.zoom !== 1 : !!zoom;
     $("zreset").classList.toggle("on", zoomed);
     $("zmode").hidden = !!az;
@@ -295,6 +306,75 @@
       ? "Drag to rotate \u00b7 pinch, Ctrl + scroll or +/\u2212 to zoom \u00b7 double-tap to reset"
       : (dragMode === "box" ? "Drag a box to zoom" : "Drag to pan") +
         " \u00b7 pinch or Ctrl + scroll to zoom \u00b7 double-tap to reset \u00b7 tap a dot for details";
+  }
+
+  // ------------------------------------------------------------- find
+  // Team charts: the clubs of the players whose name matches, from /api/chart/find.
+  function playerClubs(needle) {
+    var key = needle + "|" + data.lo + "|" + data.hi;
+    if (finder.key !== key) {
+      finder = { key: key, players: null };
+      if (needle.length >= 3) {
+        var ticket = ++finds;
+        clearTimeout(findFetch);
+        findFetch = setTimeout(function () {
+          fetch("/api/chart/find?q=" + encodeURIComponent(needle) + "&season=" + data.lo + "&to=" + data.hi)
+            .then(function (r) { return r.json(); })
+            .then(function (payload) {
+              if (ticket !== finds || finder.key !== key) return;
+              finder.players = payload.players || [];
+              schedule();
+            }).catch(function () { if (ticket === finds) { finder.players = []; schedule(); } });
+        }, 120);
+      }
+      return null;
+    }
+    if (!finder.players) return null;
+    var played = finder.players.filter(function (p) { return p.stints.length; });
+    if (!played.length) return { players: [], also: [], others: finder.players, seasons: {}, franchises: {} };
+    // The best-known match only: "Soto" lighting three players' clubs would light half the league.
+    var use = played.slice(0, 1), seasons = {}, franchises = {};
+    use.forEach(function (p) { p.stints.forEach(function (s) { seasons[s[0] + ":" + s[1]] = true; franchises[s[2]] = true; }); });
+    return { players: use, also: played.slice(1, 4), others: [], seasons: seasons, franchises: franchises };
+  }
+  // One line under the Find box, so a search that lights nothing up says why
+  // (on a phone the chart is a screen above the box).
+  function findNote(players, via) {
+    var note = $("find-note"), typed = state.find.trim();
+    note.textContent = "";
+    if (!typed) { note.hidden = true; return; }
+    var hits = shown.filter(function (r) { return r._hit; });
+    var say = function (text) { note.appendChild(document.createTextNode(text)); };
+    if (!players && via) {
+      if (via.players.length) {
+        say(via.players.map(function (p) {
+          var clubs = [];
+          p.stints.forEach(function (s) { if (clubs.indexOf(s[1]) === -1) clubs.push(s[1]); });
+          return p.name + ": " + clubs.join(", ");
+        }).join("; ") + "." + (via.also.length ? " Also " + via.also.map(function (p) { return p.name; }).join(", ") +
+          ": type more of the name." : ""));
+        var button = document.createElement("button");
+        button.type = "button"; button.textContent = "Show players";
+        button.addEventListener("click", function () {
+          state.view = "player"; state.x = DEFAULTS[key()][0]; state.y = DEFAULTS[key()][1]; state.z = "";
+          fillStats(); syncControls(); load();
+        });
+        note.appendChild(button);
+      } else if (via.others.length) {
+        say(via.others[0].name + " did not play in " + data.label + ".");
+      } else {
+        say("No team or player matches \u201c" + typed + "\u201d.");
+      }
+    } else if (!players && !hits.length) {
+      say(fold(typed).length < 3 ? "Type at least 3 letters to find a player\u2019s team." : "Looking for a player\u2026");
+    } else if (players && !hits.length) {
+      say("No one on this chart matches \u201c" + typed + "\u201d. The minimum or a filter may leave him out.");
+    } else if (!data.axes.z && !hits.some(function (r) { return r._in !== false; })) {
+      say("Outside the zoomed area: tap Reset to see " + (hits.length === 1 ? "it" : "them") + ".");
+    } else {
+      note.hidden = true; return;
+    }
+    note.hidden = false;
   }
 
   function seasonTag(r) { return r.season ? " \u2019" + String(r.season).slice(2) : ""; }

@@ -462,3 +462,25 @@ device keeps the database and runs the site's own code on it.
 - Rollback images: `baseball-site:pre-offline-20261122` (before the feature) and
   `baseball-site:offline-20261122-first` (the first deploy, without the key field). Removing `OFFLINE_KEY` from `.env`
   and recreating the container switches the feature off without a rollback.
+
+## 2026-11-26: Find in Teams view finds a player's clubs (parity with basketball.asir.dev)
+
+Asir's basketball report (Teams chart, "Brunson" in Find: every logo faded, no word why) applied
+here too: "Judge" in the Teams view faded all 30 clubs.
+
+- `queries.chart_find` + `/api/chart/find?q=&season=&to=`: players whose name matches (search
+  index order, career WAR), with their clubs in the span as `[season, code, franchise id]` from
+  `rows` (kinds bat, pit, sbat, spit; a traded season counts each club, e.g. Soto 2022 WSN and
+  SDP). 23 ms on the live data.
+- `chart.js`: when no club name matches, the best-known match who played in the span lights his
+  clubs (one season: season and code; a span: franchise id; season by season: each team-season).
+  A line under Find says what was found ("Juan Soto: WSN, SDP, NYY, NYM. Also Gregory Soto, ...:
+  type more of the name.") with "Show players"; in Players view it says when no one on the
+  chart matches (the minimum or a filter), or when the matches are outside the zoom.
+- Test: `test_team_chart_find_lights_up_a_players_clubs`; `pytest tests -q`: 86 passed
+  (`uv run --no-project --with-requirements requirements.txt --with pytest python -m pytest tests -q`).
+- Checked on a candidate on the live data at 412, 450 and 1440 px: Judge lights NYY; Soto over
+  2020-2026 lights WSN, SDP, NYY, NYM; season by season the eight exact team-seasons; no console
+  errors or sideways scroll.
+- Rollback: tag `baseball-site:pre-findnote-20261126` as `baseball-site:latest`, then
+  `docker compose up -d --no-deps --no-build baseball-dashboard` from `vps-infra/stacks/baseball-dashboard`.
