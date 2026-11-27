@@ -564,6 +564,6 @@ description. 350 of 579 distinct columns had no words (`catalog.describe` fell b
   with no description, so a column FanGraphs adds later is flagged instead of shown twice.
 - `web/static/app.css`: picker rows stack (code and group on one line, explanation wrapped beneath); the
   one-line ellipsis cut every explanation at about 30 characters on a phone.
-- `tests/test_catalog.py` + `tests/fixtures/stat_codes.txt` (the 579 columns). `pytest tests -q`: see below.
+- `tests/test_catalog.py` + `tests/fixtures/stat_codes.txt` (the 579 columns). `pytest tests -q`: 94 passed. Deployed 2026-11-27 (live image holds this commit); checked on the public site at 412 px and 1104 px in Chromium.
 - Rollback: `docker tag baseball-site:pre-describe-20261127 baseball-site:latest`, then `docker compose up -d
   --no-deps --no-build baseball-dashboard` from `vps-infra/stacks/baseball-dashboard`.
