@@ -499,3 +499,13 @@ on "Starting the site...". Baseball has no gateway, but `web/sw.js` and
 - Tests: `tests/test_sw.js`; `tools/shell_signin_browser.py .` (real Chromium with a fake gateway
   that refuses frames: passes here, fails on the old files). `pytest tests -q`: 86 passed.
 - basketball's NOTES.md (same date) has the cause from the server logs.
+- Deployed 2026-11-27 17:15:06 UTC (12:15 PM ET): `docker compose build baseball-dashboard`, then `up -d --no-deps
+  --no-build baseball-dashboard` from `vps-infra/stacks/baseball-dashboard`; the updater was left running.
+  Public https://baseball.asir.dev serves the new `/sw.js` and `shell.js`.
+- Rollback: `docker tag baseball-site:pre-shellfix-20261127 baseball-site:latest`, then `docker compose up -d --no-deps --no-build
+  baseball-dashboard` from the same folder.
+- On the public site after the deploy: `tools/offline_browser.py https://baseball.asir.dev --direct
+  --key <OFFLINE_KEY> --site baseball --browser chromium`, 31 of 31. The public https address needs
+  `--direct`: without it the relay speaks plain TCP to port 80 and the first reference page has no
+  `main.page`. `tools/offline_browser.py` also no longer fails when About is not network-idle in 15 s
+  (same file as basketball).

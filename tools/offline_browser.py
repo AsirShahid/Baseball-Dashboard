@@ -21,7 +21,7 @@ import threading
 import time
 from urllib.parse import urlsplit
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeout, sync_playwright
 
 SITES = {
     "baseball": {
@@ -243,7 +243,12 @@ def run(args):
             time.sleep(0.5)
 
         # -- no connection: a cold open of the home page
-        page.wait_for_load_state("networkidle")
+        try:
+            page.wait_for_load_state("networkidle", timeout=15000)
+        except PlaywrightTimeout:
+            # Some runs never go idle here, on the deployed image as on a candidate
+            # (2026-11-27); the checks below do not depend on it.
+            print("note: About was not network-idle after 15 s; going on", flush=True)
         offline(True)
         fresh = context.new_page()
         fresh.on("pageerror", lambda error: problems.append(f"[after check {len(checks)}] pageerror: {error}"))
