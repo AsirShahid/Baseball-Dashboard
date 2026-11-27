@@ -45,7 +45,8 @@ def test_rule_violation_and_challenge_examples():
     d = catalog.describe
     assert d("rPPTV").startswith("Pitcher pitch timer violation runs")
     assert d("DSV").startswith("Defensive shift violations")
-    assert d("AsCReview").endswith("while catching")
+    assert d("AsCReview").startswith("ABS challenges this player made as a catcher")
+    assert "Total Balls by Violation" in d("EBV") and "shift" in d("EBV")
 
 
 def test_stuff_and_pitchingbot_examples():
