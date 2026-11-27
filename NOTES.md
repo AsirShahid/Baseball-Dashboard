@@ -545,3 +545,25 @@ before the first also swapped the two (`queries.span`).
 - Deployed 2026-11-27 18:07:25 UTC (12:07 PM CT); on the public site picking 2021 now gives 2021 to 2026.
   Rollback: `docker tag baseball-site:pre-spanfix-20261127 baseball-site:latest`, then `docker compose up -d
   --no-deps --no-build baseball-dashboard` from `vps-infra/stacks/baseball-dashboard`. Pushed (CI green on 91451d9).
+
+## 2026-11-27: stat picker explains every column (not the code twice)
+
+Asir: many picker entries (`pfxKN-Z pfxKN-Z`, `rBTV rBTV`, `piwFS piwFS`) repeated the acronym as their
+description. 350 of 579 distinct columns had no words (`catalog.describe` fell back to the code).
+- `pipeline/catalog.py`: `describe` now covers all 579. Code-pattern families are generated in
+  `_family` (PITCHf/x `pfx` and Pitch Info `pi` usage, movement, velocity, arm angle, spin, pitch value; Statcast
+  `sc` zones H/S/SI/SO/C/W/Z/O; Stuff+ `sp_`, PitchingBot `pb_`); one-offs are in `EXTRA` (rule violations,
+  2026 ABS challenges, bat tracking, batted-ball counts). `EXTRA` outranks `NAMES`.
+- Meanings are from FanGraphs' rule-violation post (2023-04-13), the Stuff+/Location+/Pitching+ primer, MLB's
+  Statcast glossary (attack direction, tilt, ideal attack angle, swords) and Baseball Savant's bat-tracking page
+  (competitive swings), plus the stored data: CU% = CUO% + CV%, SL% = SLO% + ST% (CV is a slurve, ST a sweeper),
+  scH + scS + scC + scW = 100%, scS = scSI + scSO, rTV = rBTeamV + rFTeamV, ESV = BPTV + BTV, `aa` is arm angle
+  (nonzero from 2020, submariner Tyler Rogers -64), `sp` is spin rpm. Not documented by FanGraphs, so inferred:
+  CV = slurve, EBV/ESV, XBR (baserunning, from 2016), the sign wording of rXTV and wXReview.
+- `web/queries.column` reads `describe` (no rebuild needed); `pipeline/build.py` logs any column that ends up
+  with no description, so a column FanGraphs adds later is flagged instead of shown twice.
+- `web/static/app.css`: picker rows stack (code and group on one line, explanation wrapped beneath); the
+  one-line ellipsis cut every explanation at about 30 characters on a phone.
+- `tests/test_catalog.py` + `tests/fixtures/stat_codes.txt` (the 579 columns). `pytest tests -q`: see below.
+- Rollback: `docker tag baseball-site:pre-describe-20261127 baseball-site:latest`, then `docker compose up -d
+  --no-deps --no-build baseball-dashboard` from `vps-infra/stacks/baseball-dashboard`.

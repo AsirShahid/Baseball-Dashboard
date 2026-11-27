@@ -297,9 +297,205 @@ def head(stat: str) -> str:
     return HEADS.get(stat, stat)
 
 
+# ---------- descriptions for the columns NAMES does not list ----------
+# Every FanGraphs column needs words, not a repeat of its code. The stat picker
+# shows one nowrap line that ends in an ellipsis, so each text opens with the
+# meaning and keeps source and caveats for the tail. The pitch-type families
+# (pfx, pi, sp_, pb_) and the Statcast zone columns are generated from their code
+# patterns; one-offs are in EXTRA. Meanings were checked against FanGraphs' library
+# and blog posts, MLB's Statcast glossary and the stored data (CU% = CUO% + CV%,
+# SL% = SLO% + ST%, scH + scS + scC + scW = 100%, rTV = rBTeamV + rFTeamV).
+
+# Pitch codes: (label, what a pitch of that type is called in "share of ..."). pfx =
+# MLB's pitch classification (the PITCHf/x-era codes); pi = Pitch Info's.
+PFX_TYPES = {
+    "FA": ("Four-seam fastball", "four-seam fastballs"), "SI": ("Sinker", "sinkers"),
+    "FC": ("Cutter", "cutters"), "FS": ("Splitter", "splitters"), "FO": ("Forkball", "forkballs"),
+    "SL": ("Slider incl. sweepers", "sliders and sweepers"),
+    "SLO": ("Slider excl. sweepers", "sliders other than sweepers"),
+    "ST": ("Sweeper", "sweepers"),
+    "CU": ("Curveball incl. slurves", "curveballs and slurves"),
+    "CUO": ("Curveball excl. slurves", "curveballs other than slurves"),
+    "CV": ("Slurve", "slurves"),
+    "KC": ("Knuckle curve", "knuckle curves"), "CH": ("Changeup", "changeups"),
+    "EP": ("Eephus", "eephus pitches"), "SC": ("Screwball", "screwballs"),
+    "KN": ("Knuckleball", "knuckleballs"), "UN": ("Unidentified type", "unidentified pitches"),
+}
+PI_TYPES = {
+    "FA": ("Fastball", "fastballs"), "SI": ("Sinker", "sinkers"), "FC": ("Cutter", "cutters"),
+    "SL": ("Slider", "sliders"), "CU": ("Curveball", "curveballs"),
+    "CS": ("Slow curve", "slow curves"), "SB": ("Screwball", "screwballs"),
+    "FS": ("Splitter", "splitters"), "CH": ("Changeup", "changeups"),
+    "KN": ("Knuckleball", "knuckleballs"), "XX": ("Unidentified type", "unidentified pitches"),
+}
+# Stuff+ / PitchingBot pitch codes (FF is the four-seamer).
+SP_TYPES = {
+    "FF": "Four-seam fastball", "SI": "Sinker", "FC": "Cutter", "FS": "Splitter", "FO": "Forkball",
+    "SL": "Slider", "CU": "Curveball", "KC": "Knuckle curve", "CH": "Changeup",
+}
+_PFX_DISC = {
+    "Swing%": "Swing rate: share of pitches swung at",
+    "Contact%": "Contact rate: share of swings that made contact",
+    "Zone%": "Zone rate: share of pitches in the strike zone",
+    "O-Swing%": "Swing rate at pitches outside the zone",
+    "Z-Swing%": "Swing rate at pitches in the zone",
+    "O-Contact%": "Contact rate on swings outside the zone",
+    "Z-Contact%": "Contact rate on swings in the zone",
+}
+_SRC = {"pfx": "PITCHf/x", "pi": "Pitch Info"}
+
+# Statcast attack zones, from the pitch's location.
+_SC_ZONES = {
+    "H": ("Heart", "down the middle of the zone"),
+    "S": ("Shadow", "on the edges of the zone, inside or out"),
+    "SI": ("Shadow-in", "on the inside edge of the strike zone"),
+    "SO": ("Shadow-out", "just off the edge of the strike zone"),
+    "C": ("Chase", "off the plate, beyond the shadow"),
+    "W": ("Waste", "far outside the zone"),
+    "Z": ("In-zone", "inside the strike zone"),
+    "O": ("Out-of-zone", "outside the strike zone"),
+}
+
+EXTRA = {
+    # Rule violations (FanGraphs tracks the pitch clock and the other 2023 rule changes).
+    "PPTV": "Pitcher pitch timer violations: too slow to start the delivery (automatic ball)",
+    "CPTV": "Catcher pitch timer violations: catcher not set in time (automatic ball)",
+    "BPTV": "Batter pitch timer violations: not ready in the box in time (automatic strike)",
+    "BTV": "Batter timeout violations: too many timeouts in a plate appearance (automatic strike)",
+    "DGV": "Disengagement violations: too many pickoff throws or step-offs (a balk)",
+    "DSV": "Defensive shift violations: fielders illegally positioned for the pitch",
+    "EBV": "Extra balls: automatic balls from pitcher and catcher pitch timer violations",
+    "ESV": "Extra strikes: automatic strikes from batter pitch timer and timeout violations",
+    "rPPTV": "Pitcher pitch timer violation runs: run value to this player, positive helps him",
+    "rCPTV": "Catcher pitch timer violation runs: run value to this player, positive helps him",
+    "rBPTV": "Batter pitch timer violation runs: run value to this player, positive helps him",
+    "rBTV": "Batter timeout violation runs: run value to this player, positive helps him",
+    "rDGV": "Disengagement violation runs: run value to this player, positive helps him",
+    "rDSV": "Defensive shift violation runs: run value to this player, positive helps him",
+    "rFTeamV": "Fielding-team violation runs: pitcher and catcher timer, disengagement and shift, valued for this player",
+    "rBTeamV": "Batting-team violation runs: batter timer and timeout violations, valued for this player",
+    "rTV": "Total violation runs: fielding-team plus batting-team violations, valued for this player",
+    # 2026 ABS (automated ball-strike) challenges.
+    "BReview": "Batter ABS challenges: ball-strike challenges by the hitter (against him when he pitches)",
+    "PReview": "Pitcher ABS challenges: ball-strike challenges by the pitcher (against him when he bats)",
+    "CReview": "Catcher ABS challenges: ball-strike challenges by the catcher (against him when he bats)",
+    "AsCReview": "ABS challenges this player made while catching",
+    "BOverturned": "Batter ABS challenges that overturned the call",
+    "POverturned": "Pitcher ABS challenges that overturned the call",
+    "COverturned": "Catcher ABS challenges that overturned the call",
+    "AsCOverturned": "ABS challenges this player won while catching",
+    "BCorrect%": "Batter ABS challenge success rate: share that overturned the call",
+    "PCorrect%": "Pitcher ABS challenge success rate: share that overturned the call",
+    "CCorrect%": "Catcher ABS challenge success rate: share that overturned the call",
+    "AsCCorrect%": "ABS challenge success rate while catching: share that overturned the call",
+    "wBReview": "Batter challenge runs: run value of batter ABS challenges won, negative if against the player",
+    "wPReview": "Pitcher challenge runs: run value of pitcher ABS challenges won, negative if against the player",
+    "wCReview": "Catcher challenge runs: run value of catcher ABS challenges won, negative if against the player",
+    "wAsCReview": "Challenge runs while catching: run value of his own ABS challenges won as a catcher",
+    # Statcast bat tracking and positioning (MLB's Statcast glossary).
+    "AttackAngle": "Attack angle: vertical angle of the bat's path at contact, in degrees (Statcast)",
+    "AttackDirection": "Attack direction: horizontal angle of the bat's path at contact, degrees from straight to center (Statcast)",
+    "IdealAttackAngle%": "Ideal attack angle rate: share of competitive swings at 5 to 20 degrees (Statcast)",
+    "Tilt": "Swing tilt: vertical angle of the bat path vs the ground, degrees (0 flat, 90 vertical; Statcast)",
+    "DepthInBox": "Depth in box: how far forward or back in the batter's box he stands, inches (Statcast)",
+    "DistanceOffPlate": "Distance off plate: how far from the plate he stands, inches (Statcast)",
+    "Swords": "Swords: awkward whiffs, slow incomplete swings by a fooled hitter (Statcast)",
+    "CompetitiveSwings": "Competitive swings: his fastest 90% of swings plus 60+ mph swings with 90+ mph exit velocity (Statcast)",
+    "Barrels": "Barrels: batted balls with the exit velocity and launch angle that usually give a .500 average and 1.500 slugging (Statcast)",
+    # Batted-ball counts and rate variants.
+    "Pull": "Pulled batted balls (count)", "Cent": "Batted balls hit to center (count)",
+    "Oppo": "Batted balls hit to the opposite field (count)", "Soft": "Soft-contact batted balls (count)",
+    "Med": "Medium-contact batted balls (count)", "Hard": "Hard-contact batted balls (count)",
+    "bipCount": "Balls in play: the batted balls behind the batted-ball rates",
+    "HRFB%+": "Home runs per fly ball, indexed to the league (100 is average)",
+    "PO%": "Pitchout rate: share of pitches that were pitchouts",
+    "XX%": "Unidentified-pitch rate: share of pitches with no pitch type",
+    # Value, usage and bookkeeping columns.
+    "Age": "Age during the season",
+    "Pitches": "Pitches seen by a hitter or thrown by a pitcher",
+    "Balls": "Pitches that were balls", "Strikes": "Pitches that were strikes (called, swinging, fouled or in play)",
+    "PH": "Pinch-hit appearances",
+    "XBR": "Extra-base running runs: run value of extra bases taken on hits (baserunning, from 2016)",
+    "WAROld": "Old WAR: FanGraphs' previous WAR calculation, kept next to the current fWAR",
+    "Games": "Games pitched: the sample behind gmLI (leverage entering games)",
+    "Pulls": "Times pulled from a game: the sample behind exLI (leverage when exiting)",
+    "pfxPace": "Pace: average seconds between pitches (PITCHf/x)",
+    "piPace": "Pace: average seconds between pitches (Pitch Info)",
+    # Stuff+ and PitchingBot (FanGraphs library: Stuff+, Location+, Pitching+ primer).
+    "sp_stuff": "Stuff+: pitch quality from release point, velocity, movement and spin alone (100 is average)",
+    "sp_location": "Location+: pitch quality from location, adjusted for count and pitch type (100 is average)",
+    "sp_pitching": "Pitching+: Stuff+ and Location+ combined (100 is average)",
+    "pb_overall": "PitchingBot overall grade: stuff and command together (20-80, 50 is average)",
+    "pb_stuff": "PitchingBot stuff grade: movement and velocity of the pitch (20-80, 50 is average)",
+    "pb_command": "PitchingBot command grade: where the pitch was placed (20-80, 50 is average)",
+}
+
+
+def _family(stat: str) -> str | None:
+    """Words for the code-pattern columns: pitch types, Statcast zones, Stuff+."""
+    m = re.fullmatch(r"(pfx|pi)(.+)", stat)
+    if m:
+        pre, rest = m.groups()
+        src = _SRC[pre]
+        types = PFX_TYPES if pre == "pfx" else PI_TYPES
+        if rest in _PFX_DISC:
+            return f"{_PFX_DISC[rest]} ({src})"
+        t = r"(" + "|".join(sorted(types, key=len, reverse=True)) + r")"
+        hit = re.fullmatch(t + r"(%|-X|-Z)", rest)
+        if hit:
+            code, suffix = hit.groups()
+            label, many = types[code]
+            if suffix == "%":
+                return f"{label} usage: share of pitches that were {many} ({src})"
+            if suffix == "-X":
+                return f"{label} horizontal movement: inches of sideways break ({src})"
+            return f"{label} vertical movement: inches of rise against a spinless pitch ({src})"
+        hit = re.fullmatch(r"(aa|sp|v|w)" + t + r"(/C)?", rest)
+        if hit:
+            kind, code, per = hit.groups()
+            label, many = types[code]
+            if kind == "v":
+                return f"{label} velocity: average speed in mph ({src})"
+            if kind == "aa":
+                return f"{label} arm angle: degrees at release, 0 sidearm to 90 overhead (from 2020)"
+            if kind == "sp":
+                return f"{label} spin rate: average rpm (MLB tracking)"
+            if per:
+                return f"{label} pitch value per 100: runs above average per 100 pitches ({src})"
+            return f"{label} pitch value: runs above average on {many} ({src})"
+        return None
+    m = re.fullmatch(r"sc(H|SI|SO|S|C|W|Z|O)-(Zone%|Swing%|Contact%)", stat)
+    if m:
+        zone, metric = m.groups()
+        title, area = _SC_ZONES[zone]
+        if metric == "Zone%":
+            return f"{title} rate: share of pitches thrown {area} (Statcast)"
+        if metric == "Swing%":
+            return f"{title} swing rate: swings at pitches {area} (Statcast)"
+        return f"{title} contact rate: contact on swings at pitches {area} (Statcast)"
+    m = re.fullmatch(r"sp_([slp])_(\w+)", stat)
+    if m and m.group(2) in SP_TYPES:
+        which = {"s": "Stuff+", "l": "Location+", "p": "Pitching+"}[m.group(1)]
+        what = {"Stuff+": "physical quality of this pitch type", "Location+": "placement quality of this pitch type",
+                "Pitching+": "Stuff+ and Location+ combined for this pitch type"}[which]
+        return f"{SP_TYPES[m.group(2)]} {which}: {what} (100 is average)"
+    m = re.fullmatch(r"pb_([sco])_(\w+)", stat)
+    if m and m.group(2) in SP_TYPES:
+        which = {"s": "stuff", "c": "command", "o": "overall"}[m.group(1)]
+        return f"PitchingBot {SP_TYPES[m.group(2)].lower()} {which} grade (20-80, 50 is average)"
+    return None
+
+
 def describe(stat: str) -> str:
+    """One line of words for a column. EXTRA outranks NAMES (it replaces the bare
+    restatements such as "Barrels": "Barrels"); the code-pattern families come last."""
+    if stat in EXTRA:
+        return EXTRA[stat]
     if stat in NAMES:
         return NAMES[stat]
+    words = _family(stat)
+    if words:
+        return words
     if stat.endswith("+") and stat[:-1] in NAMES:
         return f"{NAMES[stat[:-1]]}, indexed (100 is league average)"
     return stat

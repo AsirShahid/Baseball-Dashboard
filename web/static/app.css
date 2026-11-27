@@ -392,10 +392,12 @@ a.game:hover { border-color: #3a475d; color: inherit; }
   position: sticky; top: 0; z-index: 1; padding: 8px 8px 4px; background: var(--raised); color: var(--muted);
   font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
 }
-.sp-opt { display: flex; align-items: baseline; padding: 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
-.sp-opt b { flex: none; }
-.sp-opt .sp-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.sp-opt .sp-grp { flex: none; margin-left: auto; padding-left: 10px; color: var(--muted); font-size: 11px; }
+.sp-opt { display: flex; flex-wrap: wrap; align-items: baseline; padding: 8px; border-radius: 6px; cursor: pointer; }
+.sp-opt b { flex: none; white-space: nowrap; }
+/* The panel is only 300-460 px wide (statpick.js place), so each row stacks: the code
+   and its group on one line, the explanation wrapped under it, never cut by an ellipsis. */
+.sp-opt .sp-name { order: 3; flex: 1 0 100%; min-width: 0; margin: 2px 0 0; line-height: 1.35; }
+.sp-opt .sp-grp { flex: none; margin-left: auto; padding-left: 10px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .sp-opt.active { background: rgba(255, 255, 255, 0.08); }
 @media (hover: hover) { .sp-opt:hover { background: rgba(255, 255, 255, 0.05); } }
 .sp-opt.sel b { color: var(--accent); }

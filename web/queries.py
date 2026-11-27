@@ -144,9 +144,11 @@ def column(kind: str, stat: str) -> dict | None:
     info = db.catalog(kind).get(stat)
     if info is None:
         return None
-    # Descriptions come from the code when it has one, so wording fixes show
-    # without a rebuild; the built catalog covers the rest.
-    name = cat.NAMES[stat] if stat in cat.NAMES else info["name"]
+    # Descriptions come from the code when it has one (NAMES, EXTRA or a code-pattern
+    # family), so wording fixes show without a rebuild; the built catalog covers the rest.
+    name = cat.describe(stat)
+    if name == stat:
+        name = info["name"]
     return {"key": stat, "head": cat.head(stat), "name": name, "fmt": "ip" if stat == "IP" else info["fmt"],
             "better": not info["lower"], "rule": rule_of(stat, kind), "group": info["grp"]}
 

@@ -566,6 +566,9 @@ def build(csv_root: Path, stints_root: Path, output: Path, bwar_root: Path | Non
              int(catalog.lower_is_better(stat, pitching)), int(catalog.is_counting(stat)),
              catalog.weight(stat, pitching), first, last, len(years))
             for stat, (first, last, years) in stats.items()])
+        bare = sorted(s for s in stats if catalog.describe(s) == s)
+        if bare:    # a new FanGraphs column: add words to catalog.EXTRA or a family in catalog._family
+            log.warning("%s columns with no description (the picker would repeat the code): %s", base, bare)
     # Players.
     con.executemany("INSERT INTO players VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", [
         (pid, p["name"], search_key(p["name"]), p["mlbam"], p["bats"], p["throws"], p["first"],
