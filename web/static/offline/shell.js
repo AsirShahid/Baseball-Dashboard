@@ -22,6 +22,8 @@
     var message = event.data || {};
     if (message.type === "progress") {
       step.textContent = message.text + "...";
+    } else if (message.type === "ready") {
+      step.textContent = "Opening the page...";
     } else if (message.type === "failed") {
       step.textContent = message.error;
       boot.classList.add("failed");
@@ -64,9 +66,11 @@
     try {
       doc = view.contentDocument;
       at = view.contentWindow.location;
-      if (!doc || at.href === "about:blank") return;
+      if (!doc) throw new Error("not this site's page");
+      if (at.href === "about:blank") return;
     } catch (error) {
-      return;                       // another site's page: nothing to read
+      left();
+      return;
     }
     boot.hidden = true;
     if (doc.title) document.title = doc.title;
@@ -77,6 +81,28 @@
       var link = event.target && event.target.closest && event.target.closest("a[href]");
       if (link && link.origin !== location.origin && !link.target) link.target = "_blank";
     }, true);
+  }
+
+  // The frame shows a page the shell cannot read: another site (links to other sites open
+  // a new window, so this is a sign-in page) or the browser's error page for one that
+  // refuses frames. Spinning on would be for ever: load this address in the window once,
+  // and if that brings the shell straight back, say so with a link instead of looping.
+  function left() {
+    var key = "offline-shell-left", last = 0;
+    try { last = Number(sessionStorage.getItem(key)) || 0; } catch (error) { /* no storage */ }
+    if (Date.now() - last > 60000) {
+      try { sessionStorage.setItem(key, String(Date.now())); } catch (error) { /* no storage */ }
+      location.replace(location.href);
+      return;
+    }
+    var again = document.createElement("a");
+    again.href = location.href;
+    again.textContent = "Try again";
+    again.style.color = "#f97316";
+    step.textContent = "This page could not open in the offline copy. ";
+    step.appendChild(again);
+    boot.classList.add("failed");
+    boot.hidden = false;
   }
   view.addEventListener("load", follow);
   view.src = location.pathname + location.search + location.hash;

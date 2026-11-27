@@ -107,7 +107,7 @@ function fakeCaches() {
   return { open, keys: async () => Array.from(stores.keys()), delete: async name => stores.delete(name) };
 }
 
-function world({ online, shellAnswer }) {
+function world({ online, shellAnswer, server }) {
   const listeners = {}, sent = [], asked = [];
   const caches = fakeCaches();
   const shell = {
@@ -127,7 +127,7 @@ function world({ online, shellAnswer }) {
       addEventListener: (type, fn) => { listeners[type] = fn; },
       clients: { get: async id => (id === shell.id ? shell : undefined), matchAll: async () => [plain, shell] },
     },
-    fetch: async request => { sent.push(request); if (!online) throw new TypeError("offline"); return new Response("from the server", { headers: { "content-type": "text/html" } }); },
+    fetch: async request => { sent.push(request); if (!online) throw new TypeError("offline"); return server ? server(request) : new Response("from the server", { headers: { "content-type": "text/html" } }); },
     caches, URL, Promise, setTimeout, clearTimeout, Response, Headers, MessageChannel, TextDecoder, Date, console,
   };
   vm.createContext(sandbox);
@@ -212,6 +212,24 @@ async function offlineCopyTests() {
   await holdCopy(w.caches, "2026-11-22T16:00:00Z");
   r = await w.request("https://site.test/scores", { destination: "iframe" });
   assert.equal(await r.text(), "from the server");
+
+  // Online, the server sends the frame to sign in (the gateway's 302 to id.asir.dev, which
+  // refuses frames). The frame does not follow it: its page sends the whole window to the
+  // address, and the shell's worker is not asked (2026-11-27: the shell spun for ever).
+  w = world({ online: true, shellAnswer: () => html("<html>on the device</html>"),
+    server: () => new Response(null, { status: 302, headers: { location: "https://id.test/authorize" } }) });
+  await holdCopy(w.caches, "2026-11-22T16:00:00Z");
+  r = await w.request("https://site.test/players?mode=pergame", { destination: "iframe" });
+  body = await r.text();
+  assert.equal(r.status, 200);
+  assert.match(body, /top\.location\.replace\("https:\/\/site\.test\/players\?mode=pergame"\)/, "the window goes to the page itself");
+  assert.equal(w.asked.length, 0, "the device is not asked");
+  // The window's own request that follows waits for the server, even if the browser
+  // briefly reports no connection, instead of opening the shell again.
+  w.sandbox.self.navigator.onLine = false;
+  r = await w.request("https://site.test/players?mode=pergame");
+  assert.equal(r.status, 302, "the top-level page gets the server's sign-in redirect");
+  assert.equal(r.headers.get("location"), "https://id.test/authorize");
 
   // Search and chart data fall back to the device when the server cannot be reached.
   const data = () => ({ status: 200, headers: [["Content-Type", "application/json"]], body: new TextEncoder().encode('[{"label":"device"}]').buffer });

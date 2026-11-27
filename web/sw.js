@@ -16,6 +16,8 @@
  * shell (shellPage) whose worker runs that code; the site runs in a frame inside it, and
  * every request the frame makes that the server cannot answer is passed to the shell
  * (local). A page saved from the server after the copy was last confirmed current is still preferred.
+ * A redirect for the frame (the sign-in gateway) is not followed there: sign-in pages refuse
+ * to open in a frame, so the whole window loads the address instead (leaveShell).
  * The same file runs on basketball.asir.dev and baseball.asir.dev.
  */
 "use strict";
@@ -36,6 +38,7 @@ const WARM_EVERY = 60 * 60 * 1000;
 const SKIP = ["/oauth2/", "/healthz", "/sw.js", "/manifest.webmanifest", "/offline/manifest.json", "/offline/chunk/"];
 let netDown = 0;                       // when the server last failed to answer a framed page
 let shellId = "";                      // the window that is the offline shell, once found
+let leftShell = 0;                     // when a framed page last sent its window back to the server
 
 self.addEventListener("install", event => {
   event.waitUntil((async () => {
@@ -143,7 +146,10 @@ async function page(event) {
   const saved = await cache.match(key, { ignoreVary: true });
   const copy = await offlineCopy();
   const preload = event.preloadResponse || Promise.resolve(undefined);
-  if (!self.navigator.onLine && (saved || copy)) {
+  // The shell just handed this window back (leaveShell): the server answered a moment
+  // ago, so wait for it rather than open the shell again.
+  const patient = Date.now() - leftShell < NET_REST;
+  if (!self.navigator.onLine && (saved || copy) && !patient) {
     event.waitUntil(preload.catch(() => undefined));
     return copy ? shellPage() : savedCopy(saved);
   }
@@ -151,7 +157,8 @@ async function page(event) {
   event.waitUntil(network.then(response => isPage(response) ? savePage(cache, key, response.clone()) : undefined)
     .catch(() => undefined));
   try {
-    const response = saved || copy ? await withTimeout(network, copy ? LOCAL_TIMEOUT : NAV_TIMEOUT) : await network;
+    const response = (saved || copy) && !patient
+      ? await withTimeout(network, copy ? LOCAL_TIMEOUT : NAV_TIMEOUT) : await network;
     if (response.status >= 500 && (saved || copy)) return saved ? savedCopy(saved) : shellPage();
     return response;
   } catch (error) {
@@ -259,6 +266,10 @@ async function framed(event) {
       .catch(() => undefined));
     try {
       const response = await withTimeout(network, LOCAL_TIMEOUT);
+      // A redirect is the sign-in gateway (or the site's own). A sign-in page refuses to
+      // open in a frame (id.asir.dev: frame-ancestors 'none'), and the shell cannot read
+      // another site's page, so the shell would wait for ever: the window goes itself.
+      if (isRedirect(response)) return leaveShell(request.url);
       if (response.status < 500) return response;
     } catch (error) { /* fall through to this device's copy */ }
     netDown = Date.now();
@@ -270,6 +281,20 @@ async function framed(event) {
   const copy = await offlineCopy();
   if (saved && copy && Date.parse(saved.headers.get("x-saved") || "") > copy.checked) return savedCopy(saved);
   return (await local(request)) || (saved ? savedCopy(saved) : offlinePage(request.url));
+}
+
+function isRedirect(response) {
+  return response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400);
+}
+
+// A page for the shell's frame that loads its address in the whole window instead, out
+// of the shell and back to the server (page() then waits for the server's answer).
+function leaveShell(href) {
+  leftShell = Date.now();
+  const target = JSON.stringify(href).replace(/</g, "\\u003c");
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(CONFIG.site)}</title>
+<script>top.location.replace(${target});</script></head><body style="background:#0a0e15"></body></html>`;
+  return new Response(html, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
 // Pyodide and its wheels: from the cache sync.js filled, so the engine starts with no connection.

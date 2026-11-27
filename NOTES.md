@@ -484,3 +484,18 @@ here too: "Judge" in the Teams view faded all 30 clubs.
   errors or sideways scroll.
 - Rollback: tag `baseball-site:pre-findnote-20261126` as `baseball-site:latest`, then
   `docker compose up -d --no-deps --no-build baseball-dashboard` from `vps-infra/stacks/baseball-dashboard`.
+
+## 2026-11-27: offline shell no longer spins for ever when its frame is sent elsewhere (parity with basketball)
+
+Found on basketball.asir.dev (phone report): with the gateway session expired, the shell's frame
+followed the sign-in redirect to id.asir.dev, which refuses frames, and the shell waited for ever
+on "Starting the site...". Baseball has no gateway, but `web/sw.js` and
+`web/static/offline/shell.js` are the same files on both sites, so the change is here too:
+- `framed()`: a redirect for the frame while online is not followed in the frame; the frame gets
+  a page that loads the address in the whole window (`leaveShell`). `page()` then waits for the
+  server for 30 s instead of opening the shell again.
+- `shell.js`: a frame on a page the shell cannot read reloads the window once, then says so with
+  Try again instead of looping.
+- Tests: `tests/test_sw.js`; `tools/shell_signin_browser.py .` (real Chromium with a fake gateway
+  that refuses frames: passes here, fails on the old files). `pytest tests -q`: 86 passed.
+- basketball's NOTES.md (same date) has the cause from the server logs.
