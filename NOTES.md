@@ -567,3 +567,17 @@ description. 350 of 579 distinct columns had no words (`catalog.describe` fell b
 - `tests/test_catalog.py` + `tests/fixtures/stat_codes.txt` (the 579 columns). `pytest tests -q`: 94 passed. Deployed 2026-11-27 (live image holds this commit); checked on the public site at 412 px and 1104 px in Chromium.
 - Rollback: `docker tag baseball-site:pre-describe-20261127 baseball-site:latest`, then `docker compose up -d
   --no-deps --no-build baseball-dashboard` from `vps-infra/stacks/baseball-dashboard`.
+
+### Follow-up, same day: checked against FanGraphs' own glossary
+Asir cleared the Cloudflare check on the Accounts screen, so FanGraphs' leaderboard glossary boxes could be read
+(views 48 rule violations and 49 ABS reviews are the ones that have a box; the rest show headers only).
+- Confirmed: ESV = Total Strikes by Violation (= BPTV + BTV), ABS review wording (B-Rvw, B-OvrTrn, wB-Rvw ...,
+  "run value = original call outcome minus overturned call outcome"; `BCorrect%` = overturned / reviews, 0 of 1,354 rows off).
+- Corrected: EBV is Total Balls by Violation and equals PPTV + CPTV + DSV in every season 2023-2026 (shift violations
+  also award a ball); the first version left DSV out.
+- FanGraphs displays w-names where the API (and our columns) use r-names: rPPTV is wPPTV, rBTeamV is wOppTeamV on pitchers
+  and wTeamV on hitters, rFTeamV the reverse, rTV is wNetPitV/wNetBatV. The picker text now carries the FanGraphs name.
+- Still inferred (no FanGraphs text): CV = slurve, SLO/CUO = the slider/curve rows left after the sweeper/slurve split,
+  XBR, `aa` arm angle. Don't hammer FanGraphs: 122 quick fetches from the browser got a 429 and a fresh challenge.
+- Deployed from a clean checkout of HEAD (5bca941) because another session had uncommitted Players-table work
+  (web/tables.py, 1,000-row cap) in this tree; that work is NOT in the live image. Rollback image `pre-fgglossary-20261127`.
