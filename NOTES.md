@@ -542,3 +542,6 @@ before the first also swapped the two (`queries.span`).
 - Checked in Chromium at 412 px: on the live site picking 2021 as the first year showed 2021 to
   2021; on the fix 2021 to 2026, then the second year changes alone, then a first year past the
   second moves it along, on all three pages and the chart. `pytest tests -q`: 88 passed.
+- Deployed 2026-11-27 18:07:25 UTC (12:07 PM CT); on the public site picking 2021 now gives 2021 to 2026.
+  Rollback: `docker tag baseball-site:pre-spanfix-20261127 baseball-site:latest`, then `docker compose up -d
+  --no-deps --no-build baseball-dashboard` from `vps-infra/stacks/baseball-dashboard`. Pushed (CI green on 91451d9).
