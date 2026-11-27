@@ -581,3 +581,16 @@ Asir cleared the Cloudflare check on the Accounts screen, so FanGraphs' leaderbo
   XBR, `aa` arm angle. Don't hammer FanGraphs: 122 quick fetches from the browser got a 429 and a fresh challenge.
 - Deployed from a clean checkout of HEAD (5bca941) because another session had uncommitted Players-table work
   (web/tables.py, 1,000-row cap) in this tree; that work is NOT in the live image. Rollback image `pre-fgglossary-20261127`.
+
+
+## Pages of 200 rows and Season | Range (2026-11-27)
+- The earlier note's "other session's uncommitted Players-table work (web/tables.py)" is this change, now committed
+  (8c0ff35, on top of 5914a31) and live. Players and Teams show 200 rows a page (`web/tables.py`, shared with
+  basketball: `?page=`, `?per=` 50-1000, `?sort=&dir=`, `?find=`), replacing the 1,500-row cut-off. More than one
+  page: header taps and Enter in Find work across every page on the server; one page stays in-browser.
+- Season menus (tables and Charts) open on Season (one menu); Range shows both ends, which move independently.
+- Tests 95 passed. Browser check 114 of 114 (candidates and production). The live image includes the FanGraphs
+  glossary work (`pipeline/catalog.py` with wPPTV checked in the container).
+- Deployed 2026-11-27 18:50:24 UTC (12:50 PM CT). Rollback image `baseball-site:pre-pages-20261127` (the 18:38 UTC
+  glossary deploy): `docker tag baseball-site:pre-pages-20261127 baseball-site:latest`, then
+  `docker compose up -d --no-deps --no-build baseball-dashboard` from `vps-infra/stacks/baseball-dashboard`.
