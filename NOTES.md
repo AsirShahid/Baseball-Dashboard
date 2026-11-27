@@ -509,3 +509,22 @@ on "Starting the site...". Baseball has no gateway, but `web/sw.js` and
   `--direct`: without it the relay speaks plain TCP to port 80 and the first reference page has no
   `main.page`. `tools/offline_browser.py` also no longer fails when About is not network-idle in 15 s
   (same file as basketball).
+
+## 2026-11-27: stat ranges on Players and Teams (parity with basketball.asir.dev)
+
+Asir asked for basketball's "at least / at most / between" filter here too, on both tables.
+- `?f=stat:lo:hi,...` (e.g. `/players?f=HR:30:,K%25::20`, `/players?kind=pit&f=ERA::3,IP:150:`,
+  `/teams?f=pct:.55:`), `web/ranges.py`. Any catalog stat for that kind (462 batting, 533
+  pitching); on Teams only stats the team lines have (`_team_stats`: every stat stored for
+  `tbat`/`tpit`, which leaves out Savant's per-player Chase%, Whiff%, xwOBAcon...), plus W, L, PCT.
+- Values in the table's units and rounding: K% 24.3, AVG .300, ERA 3.25; IP as box scores write
+  it (150.1 = 150 1/3, `ranges.innings`). Chips read "HR ≥ 30", "AVG .270–.300".
+- A stat the view lacks becomes a column (and gets its league-average cell). Under Qualified a
+  rate stat in a range also needs the player qualified. Switching Batting/Pitching drops the ranges
+  (the same key means different things, e.g. K%). Ranges survive span, team, league, position.
+- `queries.player_table` / `team_table` take `cols` and `keep`; UI is basketball's (macro
+  `m.stat_ranges`, app.js block with baseball's number hints, CSS block). The picker lists every
+  stat, which adds about 34 KB to the Players page (186 to 220 KB uncompressed).
+- Tests: `test_stat_ranges_on_players`, `test_stat_ranges_on_teams`; `pytest tests -q`: 88 passed.
+  Playwright on a candidate with the live data, batting, pitching (ERA at most) and Teams at 412 and
+  1440 px: 60 of 60.

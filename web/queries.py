@@ -242,14 +242,17 @@ def _short_pos(position: str) -> str:
     return (position or "").split("/")[0]
 
 
-def player_table(kind, lo, hi, mode, min_mode, min_value, team, league, pos, sort):
-    cols = columns(kind, mode)
+def player_table(kind, lo, hi, mode, min_mode, min_value, team, league, pos, sort, cols=None, keep=None):
+    """cols: the view's columns (with any stat ranges' columns added); keep: a row test (ranges)."""
+    cols = cols or columns(kind, mode)
     stats = tuple(c["key"] for c in cols) + ("WAR",)
     lines, info = lines_for(kind, lo, hi, stats, min_mode=min_mode, min_value=min_value,
                             team=team, league=league, pos=pos,
                             rule_stats=tuple(c["key"] for c in cols))
     if min_mode == "q":
         lines = [l for l in lines if l["qualified"] or not any(c["rule"] for c in cols)]
+    if keep:
+        lines = [l for l in lines if keep(l)]
     sort = sort if any(c["key"] == sort for c in cols) or sort in ("WAR",) else ("WAR" if "WAR" in stats else cols[0]["key"])
     better = next((c["better"] for c in cols if c["key"] == sort), True)
     lines.sort(key=lambda l: _sort_key(l.get(sort), better, l["fails"] and sort_rule(cols, sort)))
@@ -519,8 +522,8 @@ def team_key(r) -> object:
 TEAM_MODES = {kind: {k: v for k, v in modes.items() if k != "savant"} for kind, modes in MODES.items()}
 
 
-def team_table(kind, lo, hi, mode, league, sort):
-    cols = columns(kind, mode)
+def team_table(kind, lo, hi, mode, league, sort, cols=None, keep=None):
+    cols = cols or columns(kind, mode)
     stats = tuple(c["key"] for c in cols) + ("WAR",)
     t = db.table(TEAM_KIND[kind], lo, hi, tuple(dict.fromkeys(stats)), league)   # only its seasons in the league
     # Baseball Savant's stats are per player (a traded player's season is not split
@@ -541,6 +544,8 @@ def team_table(kind, lo, hi, mode, league, sort):
         rec = _record(r.get("teamid"), code, lo, hi, league)
         line.update(rec)
         lines.append(line)
+    if keep:
+        lines = [l for l in lines if keep(l)]
     sort = sort if any(c["key"] == sort for c in cols) or sort in ("WAR", "w", "pct") else "WAR"
     better = next((c["better"] for c in cols if c["key"] == sort), True)
     lines.sort(key=lambda l: _sort_key(l.get(sort), better))

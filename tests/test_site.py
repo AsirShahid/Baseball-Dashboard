@@ -794,3 +794,51 @@ def test_team_chart_find_lights_up_a_players_clubs(client):
     assert nyy[0] == "NYY" and nyy[3] == 2024        # single season: matched by season and code
     assert client.get("/api/chart/find?q=ju&season=2024").get_json()["players"] == []   # too short
     assert 'id="c-find-note"' in client.get("/chart").get_data(as_text=True)
+
+
+def test_stat_ranges_on_players(client, app):
+    """?f=stat:lo:hi keeps players whose value, as the table shows it, is inside the range."""
+    from web import queries, ranges
+    with app.app_context():
+        everyone, cols, _, _ = queries.player_table("bat", 2024, 2024, "standard", "n", 0, "", "", "", "")
+        quals = queries.player_table("bat", 2024, 2024, "advanced", "q", 0, "", "", "", "")[0]   # Advanced shows K%
+        quals_hr = {l["pid"]: l for l in queries.player_table("bat", 2024, 2024, "standard", "q", 0, "", "", "", "")[0]}
+        pitchers = queries.player_table("pit", 2024, 2024, "standard", "n", 0, "", "", "", "")[0]
+    hr = [l for l in everyone if (l.get("HR") or 0) >= 30]
+    html = page(client, "/players?season=2024&min=0&f=HR:30:")
+    assert rows(html) == len(hr) > 0 and "HR \u2265 30" in html and "+ Stat range" in html
+    # K% is typed as the table shows it (24.3, not .243); a stat the view lacks becomes a column.
+    k = [l for l in quals if l.get("K%") is not None and round(l["K%"] * 100, 1) <= 15]
+    html = page(client, "/players?season=2024&f=K%25::15")
+    assert rows(html) == len(k) > 0 and '<th data-key="K%"' in html and "K% \u2264 15" in html
+    # Two ranges at once, and a range with both ends.
+    both = [l for l in quals_hr.values() if (l.get("HR") or 0) >= 20 and l.get("AVG") is not None and .270 <= round(l["AVG"], 3) <= .300]
+    html = page(client, "/players?season=2024&f=HR:20:,AVG:.27:.3")
+    assert rows(html) == len(both) and "AVG .270\u2013.300" in html and "Clear all" in html
+    # Innings as box scores write them: 150.1 is 150 1/3.
+    ip = [l for l in pitchers if l.get("IP") is not None and round(l["IP"] * 3) >= 451]
+    assert rows(page(client, "/players?kind=pit&season=2024&min=0&f=IP:150.1:")) == len(ip) > 0
+    assert ranges.innings(150.1) == 150 + 1 / 3 and ranges.innings(150.2) == 150 + 2 / 3
+    # Bad parts are ignored; switching Batting/Pitching drops the ranges (the stats differ).
+    assert rows(page(client, "/players?season=2024&min=0&f=nope:1:2,HR:x:")) == len(everyone)
+    html = page(client, "/players?season=2024&f=HR:30:")
+    assert 'href="/players?season=2024&amp;kind=pit"' in html
+    assert "Widen or remove a stat range." in page(client, "/players?season=2024&f=HR:500:")
+
+
+def test_stat_ranges_on_teams(client, app):
+    from web import queries, ranges
+    with app.app_context():
+        clubs = queries.team_table("bat", 2024, 2024, "standard", "", "")[0]
+        iso = {t["team"]: t.get("ISO") for t in queries.team_table("bat", 2024, 2024, "advanced", "", "")[0]}
+        offered = ranges.columns_for("bat", team=True)
+        assert "pct" in offered and "HR" in offered and not {"xwOBAcon", "Chase%", "Whiff%"} & set(offered)
+    winners = [t for t in clubs if t["pct"] is not None and round(t["pct"], 3) >= .55]
+    html = page(client, "/teams?season=2024&f=pct:.55:")
+    assert rows(html) == len(winners) > 0 and "PCT \u2265 .550" in html
+    assert html.count('data-key="pct"') == 1          # the record column is not added twice
+    power = [t for t in clubs if (t.get("HR") or 0) >= 200 and iso.get(t["team"]) is not None
+             and round(iso[t["team"]], 3) >= .17]
+    html = page(client, "/teams?season=2024&f=HR:200:,ISO:.17:")
+    assert rows(html) == len(power) and '<th data-key="ISO"' in html
+    assert "No teams match these ranges." in page(client, "/teams?season=2024&f=HR:999:")

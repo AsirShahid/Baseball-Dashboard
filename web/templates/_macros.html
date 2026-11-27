@@ -91,3 +91,18 @@
 </table>
 </div>
 {%- endmacro %}
+
+{% macro stat_ranges(filters, groups, default) -%}
+<div class="toolbar statfilter" id="statfilter" data-filters="{{ filters|map(attribute='part')|join(',') }}" data-default="{{ default }}">
+  {% for flt in filters %}<span class="chip sf-chip"><button type="button" data-edit="{{ flt.key }}" title="Change this range">{{ flt.text }}</button><a href="{{ url_with(f=flt.rest or None) }}" aria-label="Remove {{ flt.text }}" title="Remove">&times;</a></span>{% endfor %}
+  <button type="button" class="btn sf-add">+ Stat range</button>
+  {% if filters|length > 1 %}<a class="sf-clear" href="{{ url_with(f=None) }}">Clear all</a>{% endif %}
+  <form class="sf-form" hidden>
+    <label class="field sf-stat"><span>Stat</span><select data-statpick>{% for title, group in groups %}<optgroup label="{{ title }}">{% for c in group %}<option value="{{ c.key }}" data-fmt="{{ c.fmt }}">{{ c.head }} · {{ c.name }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+    <label class="field"><span>At least</span><input type="number" step="any" name="lo" placeholder="No minimum" autocomplete="off"></label>
+    <label class="field"><span>At most</span><input type="number" step="any" name="hi" placeholder="No maximum" autocomplete="off"></label>
+    <div class="sf-actions"><button class="btn primary" type="submit">Apply</button><button class="btn" type="button" data-cancel>Cancel</button></div>
+    <p class="sf-hint" aria-live="polite"></p>
+  </form>
+</div>
+{%- endmacro %}

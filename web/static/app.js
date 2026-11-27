@@ -206,6 +206,69 @@
     input.addEventListener("blur", function () { setTimeout(close, 120); });
   });
 
+  // Players and Teams: stat ranges (?f=HR:30:,K%::20), as on basketball.asir.dev. The server filters the table; this
+  // opens the form (a chip opens its own range) and writes the parameter.
+  var ranges = document.getElementById("statfilter");
+  if (ranges) {
+    var form = ranges.querySelector(".sf-form"), add = ranges.querySelector(".sf-add");
+    var stat = form.querySelector("select"), lo = form.querySelector('[name="lo"]'), hi = form.querySelector('[name="hi"]');
+    var hintLine = form.querySelector(".sf-hint"), editing = "";
+    var parts = (ranges.dataset.filters || "").split(",").filter(Boolean).map(function (part) {
+      var bits = part.split(":");
+      return { key: bits[0], lo: bits[1], hi: bits[2], part: part };
+    });
+    var HINTS = {
+      pct1: "In percent, as the table shows it: 24.3 means 24.3%.",
+      avg: "As the table shows it: .300.",
+      p3: "As the table shows it: .550.",
+      ip: "Innings as box scores write them: 150.1 is 150\u2153, 150.2 is 150\u2154.",
+      s1: "Negative numbers work: -2 for a minus.",
+      s0: "Negative numbers work: -2 for a minus.",
+    };
+    var hint = function () {
+      var option = stat.options[stat.selectedIndex];
+      hintLine.textContent = HINTS[option && option.dataset.fmt] || "";
+    };
+    var openForm = function (key, low, high) {
+      editing = key;
+      stat.value = key;
+      if (stat.selectedIndex < 0) stat.selectedIndex = 0;
+      stat.dispatchEvent(new Event("change"));
+      lo.value = low || "";
+      hi.value = high || "";
+      form.hidden = false;
+      add.hidden = true;
+      hint();
+      if (window.matchMedia("(pointer: fine)").matches) lo.focus();
+    };
+    add.addEventListener("click", function () { openForm(ranges.dataset.default, "", ""); });
+    ranges.querySelectorAll("[data-edit]").forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        var found = parts.filter(function (p) { return p.key === chip.dataset.edit; })[0];
+        if (found) openForm(found.key, found.lo, found.hi);
+      });
+    });
+    form.querySelector("[data-cancel]").addEventListener("click", function () {
+      form.hidden = true;
+      add.hidden = false;
+      editing = "";
+    });
+    stat.addEventListener("change", hint);
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var low = lo.value.trim(), high = hi.value.trim();
+      if ((low === "" && high === "") || !lo.checkValidity() || !hi.checkValidity()) {
+        hintLine.textContent = "Type a number in At least, At most or both.";
+        return;
+      }
+      var keep = parts.filter(function (p) { return p.key !== stat.value && p.key !== editing; })
+        .map(function (p) { return p.part; });
+      keep.push(stat.value + ":" + low + ":" + high);
+      var url = setParam("f", keep.join(","));
+      window.location.href = url.pathname + url.search.replace(/%2C/g, ",").replace(/%3A/g, ":");
+    });
+  }
+
   // "/" focuses the main search.
   document.addEventListener("keydown", function (event) {
     var main = document.getElementById("search");

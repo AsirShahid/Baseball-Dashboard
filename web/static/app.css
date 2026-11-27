@@ -436,3 +436,26 @@ sup.cov { color: var(--accent); font-size: 9px; margin-left: 1px; vertical-align
 .offline-card .offline-limit { margin-top: 10px; }
 .offline-card.quiet { margin: 8px 0 0; padding: 0; border: 0; background: none; }
 .offline-open { padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+
+/* Players and Teams: stat ranges (same as basketball.asir.dev) (chips, + Stat range, the form) */
+.statfilter { margin-top: -2px; }
+.statfilter .sf-chip { display: inline-flex; align-items: center; padding: 0; font-size: 13px; font-weight: 600; letter-spacing: 0; background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.statfilter .sf-chip button { background: none; border: 0; color: inherit; font: inherit; padding: 5px 4px 5px 11px; cursor: pointer; white-space: nowrap; }
+.statfilter .sf-chip a { color: inherit; opacity: 0.7; padding: 3px 9px 3px 5px; font-size: 16px; line-height: 1; }
+.statfilter .sf-chip a:hover { opacity: 1; color: var(--bad); }
+.statfilter .sf-add[hidden] { display: none; }
+.statfilter .sf-clear { color: var(--muted); font-size: 12px; }
+.statfilter .sf-clear:hover { color: var(--text); }
+.sf-form { flex: 1 1 100%; display: grid; grid-template-columns: minmax(220px, 2fr) minmax(110px, 1fr) minmax(110px, 1fr) auto; gap: 10px; align-items: end; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.sf-form[hidden] { display: none; }
+.statfilter .sf-form .field { display: grid; align-items: stretch; gap: 4px; }
+.sf-form .sp { width: 100%; }
+.sf-form input { width: 100%; background: var(--bg); }
+.sf-actions { display: flex; gap: 8px; }
+.sf-hint { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; }
+.sf-hint:empty { display: none; }
+@media (max-width: 640px) {
+  .sf-form { grid-template-columns: 1fr 1fr; }
+  .sf-form .sf-stat, .sf-actions { grid-column: 1 / -1; }
+  .sf-actions .btn { flex: 1; }
+}

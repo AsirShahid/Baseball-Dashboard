@@ -7,11 +7,12 @@
   <div class="toolbar" style="margin:0">{{ m.span_picker(lo, hi) }}</div>
 </div>
 <div class="toolbar">
-  {{ m.seg('kind', kinds.items(), kind, ('sort', 'mode')) }}
+  {{ m.seg('kind', kinds.items(), kind, ('sort', 'mode', 'f')) }}
   {{ m.mode_seg(modes, mode) }}
   {{ m.seg('league', [('', 'MLB'), ('AL', 'AL'), ('NL', 'NL')], league) }}
   <span class="count">{{ lines|length }} teams</span>
 </div>
+{{ m.stat_ranges(filters, filter_groups, filter_default) }}
 <div class="table-wrap">
 <table class="stats sortable" id="teams">
 <thead><tr><th class="rank">#</th><th class="t" data-key="name" data-type="text" data-dir="asc">Team</th><th data-key="w">W</th><th data-key="l" data-dir="asc">L</th><th data-key="pct">PCT</th>{{ m.heads(cols, sort) }}</tr></thead>
@@ -28,5 +29,7 @@
 </tbody>
 </table>
 </div>
-<p class="sub">Team lines are FanGraphs' own team totals, so traded players count for each club they played for.{% if kind == 'bat' %} wRC+ counts pitchers' hitting, which FanGraphs leaves out of its 100, so clubs whose pitchers batted (everyone before 1973, the NL until 2022) sit near 94; the average row is the average club.{% endif %}</p>
+{% if not lines %}<div class="card empty">No teams match these ranges. Widen or remove one.</div>{% endif %}
+<p class="sub">{% if filters %}A stat range compares the number as the table shows it. {% endif %}Team lines are FanGraphs' own team totals, so traded players count for each club they played for.{% if kind == 'bat' %} wRC+ counts pitchers' hitting, which FanGraphs leaves out of its 100, so clubs whose pitchers batted (everyone before 1973, the NL until 2022) sit near 94; the average row is the average club.{% endif %}</p>
 {% endblock %}
+{% block scripts %}<script src="{{ asset('statpick.js') }}" defer></script>{% endblock %}

@@ -7,7 +7,7 @@
   <div class="toolbar" style="margin:0">{{ m.span_picker(lo, hi) }}</div>
 </div>
 <div class="toolbar">
-  {{ m.seg('kind', kinds.items(), kind, ('sort', 'mode', 'pos', 'min')) }}
+  {{ m.seg('kind', kinds.items(), kind, ('sort', 'mode', 'pos', 'min', 'f')) }}
   {{ m.mode_seg(modes, mode) }}
 </div>
 <div class="toolbar">
@@ -24,6 +24,7 @@
   <input type="search" placeholder="Find a player" data-filter="#players" data-count="#shown" aria-label="Find a player in this table" style="width:170px">
   <span class="count"><span id="shown">{{ lines|length }}</span> players</span>
 </div>
+{{ m.stat_ranges(filters, filter_groups, filter_default) }}
 <p class="sub hint">{% if min_mode == 'q' %}Qualified{% if lo != hi %} over {{ lo }}&ndash;{{ hi }}{% endif %}: {{ '{:,}'.format(info.need|int) }}+ {{ info.unit }}{% if lo == hi %} ({{ '3.1 per team game' if kind == 'bat' else '1 per team game' }}){% else %} total{% endif %}.{% else %}At least {{ '{:,}'.format(min_value) }} {{ info.unit }}{% if lo != hi %} over {{ lo }}&ndash;{{ hi }}{% endif %}.{% endif %} {{ '{:,}'.format(lines|length) }} players.</p>
 <div class="table-wrap">
 <table class="stats sortable" id="players">
@@ -43,6 +44,7 @@
 </table>
 </div>
 {% if lines|length > 1500 %}<p class="sub">Showing the top 1,500 of {{ lines|length }}. Raise the minimum or pick a team to narrow it.</p>{% endif %}
-{% if not lines %}<div class="card empty">No players match these filters.{% if min_mode == 'q' %} Pick a number under Min {{ info.unit }} to see everyone.{% endif %}</div>{% endif %}
-<p class="sub">Click a column to sort; hover a header for its definition.{% if min_mode == 'q' %} <b>Qualified</b>: rate stats need {{ '3.1 plate appearances' if kind == 'bat' else '1 inning pitched' }} per team game ({{ '{:,}'.format(info.need|int) }} {{ info.unit }}{% if lo != hi %} over these seasons, FanGraphs' multi-season cut{% endif %}). Counting stats have no minimum: pick a number under Min {{ info.unit }} to see everyone.{% endif %}{% if lo != hi %} Over a span, counts add up and AVG, OBP, SLG, K%, BB%, ERA and WHIP are rebuilt from the totals; other rates are averaged by {{ 'plate appearances' if kind == 'bat' else 'innings' }}, pitches or batted balls.{% endif %}</p>
+{% if not lines %}<div class="card empty">No players match these filters.{% if filters %} Widen or remove a stat range.{% elif min_mode == 'q' %} Pick a number under Min {{ info.unit }} to see everyone.{% endif %}</div>{% endif %}
+<p class="sub">Click a column to sort; hover a header for its definition.{% if filters %} A stat range compares the number as the table shows it (K% 24.3, AVG .300, IP 150.1 for 150&#8531;){% if min_mode == 'q' %}; under Qualified a rate stat also needs him qualified{% endif %}.{% endif %}{% if min_mode == 'q' %} <b>Qualified</b>: rate stats need {{ '3.1 plate appearances' if kind == 'bat' else '1 inning pitched' }} per team game ({{ '{:,}'.format(info.need|int) }} {{ info.unit }}{% if lo != hi %} over these seasons, FanGraphs' multi-season cut{% endif %}). Counting stats have no minimum: pick a number under Min {{ info.unit }} to see everyone.{% endif %}{% if lo != hi %} Over a span, counts add up and AVG, OBP, SLG, K%, BB%, ERA and WHIP are rebuilt from the totals; other rates are averaged by {{ 'plate appearances' if kind == 'bat' else 'innings' }}, pitches or batted balls.{% endif %}</p>
 {% endblock %}
+{% block scripts %}<script src="{{ asset('statpick.js') }}" defer></script>{% endblock %}
