@@ -29,6 +29,25 @@
     });
   });
 
+  // Season range (.spanpick: ?season=&to=). Changing one end keeps the other where it
+  // is; only a pick past the other end moves it along. (The first menu used to set just
+  // ?season=, and with one season shown the second end followed it.)
+  document.querySelectorAll(".spanpick[data-lo]").forEach(function (box) {
+    var lo = +box.dataset.lo, hi = +box.dataset.hi;
+    box.querySelectorAll("select[data-end]").forEach(function (select) {
+      select.addEventListener("change", function () {
+        var value = +select.value, first = lo, last = hi;
+        if (select.dataset.end === "first") { first = value; if (first > last) last = first; }
+        else { last = value; if (last < first) first = last; }
+        var url = new URL(window.location.href);
+        url.searchParams.set("season", first);
+        url.searchParams.set("to", last);
+        url.searchParams.delete("span");
+        window.location.href = url.pathname + url.search.replace(/%2C/g, ",").replace(/%3A/g, ":");
+      });
+    });
+  });
+
   // <select data-append="t"> adds its value to a comma-separated parameter.
   document.querySelectorAll("select[data-append]").forEach(function (select) {
     select.addEventListener("change", function () {

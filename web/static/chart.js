@@ -1034,8 +1034,11 @@
   });
   ["season", "to"].forEach(function (id) {
     $(id).addEventListener("change", function () {
-      state[id] = this.value;
-      if (+state.to < +state.season) { var t = state.to; state.to = state.season; state.season = t; }
+      // One end changes and the other stays, unless the pick passes it (app.js, .spanpick).
+      var value = +this.value, first = +(state.season || value), last = +(state.to || state.season || value);
+      if (id === "season") { first = value; if (first > last) last = first; }
+      else { last = value; if (last < first) first = last; }
+      state.season = String(first); state.to = String(last);
       if (state.to === state.season) { state.split = false; state.path = false; }
       if (state.min !== "q" && +state.min >= 1000 && state.to === state.season) state.min = "q";
       syncControls(); load();

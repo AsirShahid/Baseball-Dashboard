@@ -528,3 +528,17 @@ Asir asked for basketball's "at least / at most / between" filter here too, on b
 - Tests: `test_stat_ranges_on_players`, `test_stat_ranges_on_teams`; `pytest tests -q`: 88 passed.
   Playwright on a candidate with the live data, batting, pitching (ERA at most) and Teams at 412 and
   1440 px: 60 of 60.
+
+## 2026-11-27: season range menus no longer move the other year (phone report)
+
+Asir: changing the first year of the range moved the second year too. Cause: `m.span_picker`'s
+first menu set only `?season=`; with one season shown there is no `?to=`, so `_span()` took the
+second year from the first (2026 to 2026, pick 2021 as first: 2021 to 2021). Picking a last year
+before the first also swapped the two (`queries.span`).
+- Now each menu writes both years (`.spanpick[data-lo]` in app.js): the other end stays where it
+  is, and only a pick past it moves it along (first 2026 with 2015-2020 shown gives 2026 to 2026).
+  Players, Teams and Compare use the macro. The chart's menus follow the same rule (they swapped
+  the ends when a pick crossed).
+- Checked in Chromium at 412 px: on the live site picking 2021 as the first year showed 2021 to
+  2021; on the fix 2021 to 2026, then the second year changes alone, then a first year past the
+  second moves it along, on all three pages and the chart. `pytest tests -q`: 88 passed.

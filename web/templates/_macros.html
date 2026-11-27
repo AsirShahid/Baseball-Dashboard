@@ -22,8 +22,8 @@
 {%- endmacro %}
 
 {% macro span_picker(lo, hi) -%}
-<span class="spanpick">{{ season_select(lo, 'season') }}<span class="muted">to</span>
-<select data-nav="to" aria-label="Through season">{% for s in seasons %}<option value="{{ s }}"{{ ' selected' if s == hi }}>{{ s }}</option>{% endfor %}</select></span>
+<span class="spanpick" data-lo="{{ lo }}" data-hi="{{ hi }}"><select data-end="first" aria-label="First season">{% for s in seasons %}<option value="{{ s }}"{{ ' selected' if s == lo }}>{{ s }}</option>{% endfor %}</select><span class="muted">to</span>
+<select data-end="last" aria-label="Through season">{% for s in seasons %}<option value="{{ s }}"{{ ' selected' if s == hi }}>{{ s }}</option>{% endfor %}</select></span>
 <div class="seg">
   <a class="{{ 'on' if lo == hi and hi == latest }}" href="{{ url_with(season=latest, to=None, span=None) }}">{{ latest }}</a>
   <a class="{{ 'on' if lo == latest - 4 and hi == latest }}" href="{{ url_with(season=latest - 4, to=latest, span=None) }}">Last 5</a>
