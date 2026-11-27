@@ -461,3 +461,17 @@ sup.cov { color: var(--accent); font-size: 9px; margin-left: 1px; vertical-align
   .sf-form .sf-stat, .sf-actions { grid-column: 1 / -1; }
   .sf-actions .btn { flex: 1; }
 }
+
+/* Season or range (span picker and the chart's menus) */
+.spanpick { flex-wrap: wrap; }
+.spanmode button { padding: 4px 9px; font-size: 12px; }
+.spanpick[data-mode="one"] .span-to, .spanpick[data-mode="one"] select[data-end="last"],
+.spanpick[data-mode="one"] #c-to { display: none; }
+
+/* Pages of a long table (tables.py) */
+.pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0; color: var(--muted); font-size: 13px; }
+.pager.top { margin: 0 0 8px; }
+.pager-nav { display: inline-flex; align-items: center; gap: 8px; }
+.pager .btn { height: 30px; font-size: 13px; color: var(--text); }
+.pager .btn.off { opacity: 0.35; cursor: default; }
+.pager-per { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12px; }

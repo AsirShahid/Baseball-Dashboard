@@ -5,7 +5,7 @@ from flask import Blueprint, abort, current_app, jsonify, redirect, render_templ
 
 from pipeline import teams as T
 
-from . import charts, db, queries, ranges
+from . import charts, db, queries, ranges, tables
 
 bp = Blueprint("site", __name__)
 KINDS = {"bat": "Batting", "pit": "Pitching"}
@@ -110,12 +110,24 @@ def players():
     keep = (lambda line: all(ranges.passes(line, flt, min_mode == "q") for flt in filters)) if filters else None
     lines, cols, sort, info = queries.player_table(kind, lo, hi, mode, min_mode, min_value, team, league,
                                                    pos, request.args.get("sort", ""), cols=cols, keep=keep)
+    # Sorted again here so ?dir= and the name, team and age columns sort every page (tables.py).
+    asked = request.args.get("sort", "")
+    extra = {"name", "team", "age" if lo == hi else "first"}
+    if asked in extra:
+        sort = asked
+    desc = tables.direction(next((c["better"] for c in cols if c["key"] == sort), sort not in extra))
+    rule = queries.sort_rule(cols, sort)
+    lines = tables.ordered(lines, sort, desc, lambda line: bool(line["fails"]) and bool(rule),
+                           text=sort in ("name", "team"))
+    lines, find = tables.find(lines)
+    pg = tables.page(lines)
     shown = int(min_value) if min_mode == "n" and float(min_value).is_integer() else min_value
     options = min_options(kind, lo != hi, shown if min_mode == "n" else None)
     clubs = sorted({(code, r["name"]) for s in range(lo, hi + 1)
                     for code, r in queries.team_seasons(s).items()}, key=lambda x: x[1])
     return render_template("players.html", kind=kind, lo=lo, hi=hi, mode=mode, modes=queries.MODES[kind],
-                           lines=lines, cols=cols, sort=sort, info=info, min_mode=min_mode,
+                           lines=pg["rows"], pg=pg, find=find, asc=not desc, cols=cols, sort=sort, info=info,
+                           min_mode=min_mode,
                            min_value=min_value, min_options=options, team=team, league=league, pos=pos,
                            positions=queries.POSITIONS if kind == "bat" else queries.ROLES, clubs=clubs,
                            kinds=KINDS, lg=queries.league_range(kind, lo, hi, tuple(c["key"] for c in cols), league),
@@ -133,8 +145,16 @@ def teams():
     keep = (lambda line: all(ranges.passes(line, flt) for flt in filters)) if filters else None
     lines, cols, sort = queries.team_table(kind, lo, hi, mode, league, request.args.get("sort", ""),
                                            cols=cols, keep=keep)
+    if request.args.get("sort") in ("name", "l"):
+        sort = request.args["sort"]
+    better = next((c["better"] for c in cols if c["key"] == sort), sort not in ("name", "l"))
+    desc = tables.direction(better)
+    lines = tables.ordered(lines, sort, desc, text=sort == "name")
+    lines, find = tables.find(lines)
+    pg = tables.page(lines)
     return render_template("teams.html", kind=kind, lo=lo, hi=hi, mode=mode, modes=queries.TEAM_MODES[kind],
-                           lines=lines, cols=cols, sort=sort, league=league, kinds=KINDS,
+                           lines=pg["rows"], pg=pg, find=find, asc=not desc, cols=cols, sort=sort,
+                           league=league, kinds=KINDS,
                            lg=queries.team_league_row(kind, lo, hi, tuple(c["key"] for c in cols), league),
                            filters=filters, filter_groups=ranges.groups_for(kind, team=True),
                            filter_default=sort if sort in ranges.columns_for(kind, team=True) else "WAR")

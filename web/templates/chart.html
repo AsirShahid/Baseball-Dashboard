@@ -6,7 +6,7 @@
   <div class="toolbar" style="margin:0">
     <div class="seg" id="c-view"><button type="button" data-v="team">Teams</button><button type="button" data-v="player">Players</button></div>
     <div class="seg" id="c-kind"><button type="button" data-v="bat">Hitters</button><button type="button" data-v="pit">Pitchers</button></div>
-    <span class="spanpick"><select id="c-season" aria-label="First season">{% for s in seasons %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select><span class="muted">to</span><select id="c-to" aria-label="Last season">{% for s in seasons %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></span>
+    <span class="spanpick" id="c-span" data-mode="one"><span class="seg spanmode"><button type="button" data-set="one" class="on">Season</button><button type="button" data-set="range">Range</button></span><select id="c-season" aria-label="First season">{% for s in seasons %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select><span class="muted span-to">to</span><select id="c-to" aria-label="Last season">{% for s in seasons %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></span>
   </div>
 </div>
 <div class="explorer" id="explorer" data-latest="{{ latest }}" data-colors="{{ colors|tojson|forceescape }}">

@@ -22,7 +22,7 @@
 {%- endmacro %}
 
 {% macro span_picker(lo, hi) -%}
-<span class="spanpick" data-lo="{{ lo }}" data-hi="{{ hi }}"><select data-end="first" aria-label="First season">{% for s in seasons %}<option value="{{ s }}"{{ ' selected' if s == lo }}>{{ s }}</option>{% endfor %}</select><span class="muted">to</span>
+<span class="spanpick" data-lo="{{ lo }}" data-hi="{{ hi }}" data-mode="{{ 'range' if lo != hi else 'one' }}"><span class="seg spanmode"><button type="button" data-set="one" class="{{ 'on' if lo == hi }}">Season</button><button type="button" data-set="range" class="{{ 'on' if lo != hi }}">Range</button></span><select data-end="first" aria-label="First season">{% for s in seasons %}<option value="{{ s }}"{{ ' selected' if s == lo }}>{{ s }}</option>{% endfor %}</select><span class="muted span-to">to</span>
 <select data-end="last" aria-label="Through season">{% for s in seasons %}<option value="{{ s }}"{{ ' selected' if s == hi }}>{{ s }}</option>{% endfor %}</select></span>
 <div class="seg">
   <a class="{{ 'on' if lo == hi and hi == latest }}" href="{{ url_with(season=latest, to=None, span=None) }}">{{ latest }}</a>
@@ -35,8 +35,8 @@
 <div class="seg">{% for key, pair in modes.items() %}<a class="{{ 'on' if key == mode }}" href="{{ url_with(**{param: key, 'sort': None}) }}">{{ pair[0] }}</a>{% endfor %}</div>
 {%- endmacro %}
 
-{% macro heads(columns, sort=None) -%}
-{% for c in columns %}<th data-key="{{ c.key }}" data-dir="{{ 'desc' if c.better else 'asc' }}" title="{{ c.name }}" class="{{ 'sorted' if c.key == sort }}{{ ' asc' if c.key == sort and not c.better }}">{{ c.head }}</th>{% endfor %}
+{% macro heads(columns, sort=None, asc=None) -%}
+{% for c in columns %}<th data-key="{{ c.key }}" data-dir="{{ 'desc' if c.better else 'asc' }}" title="{{ c.name }}" class="{{ 'sorted' if c.key == sort }}{{ ' asc' if c.key == sort and ((not c.better) if asc is none else asc) }}">{{ c.head }}</th>{% endfor %}
 {%- endmacro %}
 
 {# cover: {stat: "2002–04"} for a career or span value that covers only those seasons (marked †). #}
@@ -105,4 +105,18 @@
     <p class="sf-hint" aria-live="polite"></p>
   </form>
 </div>
+{%- endmacro %}
+
+{% macro pager(pg, noun, top=False) -%}
+{% if pg.total and (pg.pages > 1 or not top) %}
+<div class="pager{{ ' top' if top }}">
+  <span class="pager-count">{{ '{:,}'.format(pg.start + 1) }}&ndash;{{ '{:,}'.format(pg.start + pg.rows|length) }} of {{ '{:,}'.format(pg.total) }} {{ noun }}</span>
+  {% if pg.pages > 1 %}<span class="pager-nav">{% if pg.page > 1 %}<a class="btn" href="{{ url_with(page=pg.page - 1 if pg.page > 2 else None) }}" rel="prev">&lsaquo; Prev</a>{% else %}<span class="btn off">&lsaquo; Prev</span>{% endif %}<span class="pager-at">Page {{ pg.page }} of {{ pg.pages }}</span>{% if pg.page < pg.pages %}<a class="btn" href="{{ url_with(page=pg.page + 1) }}" rel="next">Next &rsaquo;</a>{% else %}<span class="btn off">Next &rsaquo;</span>{% endif %}</span>{% endif %}
+  {% if not top %}<label class="pager-per">Per page <select data-nav="per">{% for n in pg.options %}<option value="{{ n }}"{{ ' selected' if n == pg.per }}>{{ n }}</option>{% endfor %}</select></label>{% endif %}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro find_box(find, table, paged, label='Find a player') -%}
+<input type="search" placeholder="{{ label }}" value="{{ find }}" data-filter="{{ table }}" data-find{% if not paged %} data-count="#shown"{% endif %} enterkeyhint="search" title="Filters this page as you type; Enter searches every page" aria-label="{{ label }}" style="width:170px">
 {%- endmacro %}

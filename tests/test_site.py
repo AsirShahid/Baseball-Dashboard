@@ -7,6 +7,7 @@ from __future__ import annotations
 import gzip
 import math
 import re
+from html import unescape
 import sqlite3
 import sys
 from pathlib import Path
@@ -50,6 +51,8 @@ def con(data_root):
 
 
 def page(client, url, status=200):
+    if url.startswith(("/players", "/teams")) and "per=" not in url:   # every row on one page
+        url += ("&" if "?" in url else "?") + "per=1000"
     response = client.get(url)
     assert response.status_code == status, (url, response.status_code)
     return response.get_data(as_text=True)
@@ -820,9 +823,9 @@ def test_stat_ranges_on_players(client, app):
     assert rows(page(client, "/players?kind=pit&season=2024&min=0&f=IP:150.1:")) == len(ip) > 0
     assert ranges.innings(150.1) == 150 + 1 / 3 and ranges.innings(150.2) == 150 + 2 / 3
     # Bad parts are ignored; switching Batting/Pitching drops the ranges (the stats differ).
-    assert rows(page(client, "/players?season=2024&min=0&f=nope:1:2,HR:x:")) == len(everyone)
+    assert f"of {len(everyone):,} players" in page(client, "/players?season=2024&min=0&f=nope:1:2,HR:x:")
     html = page(client, "/players?season=2024&f=HR:30:")
-    assert 'href="/players?season=2024&amp;kind=pit"' in html
+    assert 'href="/players?season=2024&amp;per=1000&amp;kind=pit"' in html
     assert "Widen or remove a stat range." in page(client, "/players?season=2024&f=HR:500:")
 
 
@@ -842,3 +845,26 @@ def test_stat_ranges_on_teams(client, app):
     html = page(client, "/teams?season=2024&f=HR:200:,ISO:.17:")
     assert rows(html) == len(power) and '<th data-key="ISO"' in html
     assert "No teams match these ranges." in page(client, "/teams?season=2024&f=HR:999:")
+
+
+
+def test_long_tables_come_a_page_at_a_time(client, app):
+    """200 rows a page by default (?per=), Prev/Next; sorting and Find cover every page."""
+    from web import queries
+    with app.app_context():
+        everyone = queries.player_table("bat", 2024, 2024, "standard", "n", 0, "", "", "", "")[0]
+    assert len(everyone) > 400
+    html = client.get("/players?season=2024&min=0").get_data(as_text=True)
+    assert rows(html) == 200 and "data-server-sort" in html and 'rel="next"' in html
+    assert f"1&ndash;200 of {len(everyone):,} players" in html
+    second = client.get("/players?season=2024&min=0&page=2").get_data(as_text=True)
+    assert rows(second) == 200 and '<td class="rank">201</td>' in second
+    # A column sorted the other way, across all pages: the fewest home runs first.
+    low = client.get("/players?season=2024&min=0&sort=HR&dir=asc").get_data(as_text=True)
+    least = min(l["HR"] for l in everyone if l.get("HR") is not None)
+    first = re.search(r'<tr data-name="([^"]+)"', low).group(1)
+    assert next(l for l in everyone if l["name"] == unescape(first))["HR"] == least
+    # Find covers every page.
+    found = client.get("/players?season=2024&min=0&find=judge").get_data(as_text=True)
+    assert 'data-name="Aaron Judge"' in found and "data-server-sort" not in found
+    assert rows(client.get("/players?season=2024&min=0&per=50").get_data(as_text=True)) == 50

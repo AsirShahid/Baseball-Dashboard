@@ -10,17 +10,19 @@
   {{ m.seg('kind', kinds.items(), kind, ('sort', 'mode', 'f')) }}
   {{ m.mode_seg(modes, mode) }}
   {{ m.seg('league', [('', 'MLB'), ('AL', 'AL'), ('NL', 'NL')], league) }}
-  <span class="count">{{ lines|length }} teams</span>
+  {% if pg.total > 30 %}{{ m.find_box(find, '#teams', pg.pages > 1, 'Find a team') }}{% endif %}
+  <span class="count"><span id="shown">{{ '{:,}'.format(pg.total) }}</span> teams</span>
 </div>
 {{ m.stat_ranges(filters, filter_groups, filter_default) }}
+{% if pg.pages > 1 %}{{ m.pager(pg, 'teams', top=True) }}{% endif %}
 <div class="table-wrap">
-<table class="stats sortable" id="teams">
-<thead><tr><th class="rank">#</th><th class="t" data-key="name" data-type="text" data-dir="asc">Team</th><th data-key="w">W</th><th data-key="l" data-dir="asc">L</th><th data-key="pct">PCT</th>{{ m.heads(cols, sort) }}</tr></thead>
+<table class="stats sortable" id="teams"{% if pg.pages > 1 %} data-server-sort{% endif %}>
+<thead><tr><th class="rank">#</th><th class="t{{ ' sorted' if sort == 'name' }}{{ ' asc' if sort == 'name' and asc }}" data-key="name" data-type="text" data-dir="asc">Team</th><th class="{{ ' sorted' if sort == 'w' }}{{ ' asc' if sort == 'w' and asc }}" data-key="w">W</th><th class="{{ ' sorted' if sort == 'l' }}{{ ' asc' if sort == 'l' and asc }}" data-key="l" data-dir="asc">L</th><th class="{{ ' sorted' if sort == 'pct' }}{{ ' asc' if sort == 'pct' and asc }}" data-key="pct">PCT</th>{{ m.heads(cols, sort, asc) }}</tr></thead>
 {% if lg %}<tbody class="lgbody"><tr class="lgrow fixed"><td class="rank"></td><td class="t name" title="{{ lg._name }}{% if lg._name == 'MLB' %}: the AL and NL{% endif %}, {{ lo }}{% if hi != lo %}&ndash;{{ hi }}{% endif %}">{{ lg._label }} average</td><td></td><td></td><td></td>{{ m.lg_cells(lg, cols, sort) }}</tr></tbody>{% endif %}
 <tbody>
 {% for t in lines %}
 <tr data-name="{{ t.name }}"{{ ' class="me"'|safe if t.team == favorite }}>
-  <td class="rank">{{ loop.index }}</td>
+  <td class="rank">{{ pg.start + loop.index }}</td>
   <td class="name" data-v="{{ t.name }}">{{ m.team(t.team, t.season, t.name) }}</td>
   <td data-v="{{ t.w }}">{{ t.w if t.w is not none }}</td><td data-v="{{ t.l }}">{{ t.l if t.l is not none }}</td><td data-v="{{ t.pct|sv }}">{{ t.pct|f('p3') }}</td>
   {{ m.cells(t, cols, sort) }}
@@ -29,6 +31,7 @@
 </tbody>
 </table>
 </div>
+{% if pg.pages > 1 %}{{ m.pager(pg, 'teams') }}{% endif %}
 {% if not lines %}<div class="card empty">No teams match these ranges. Widen or remove one.</div>{% endif %}
 <p class="sub">{% if filters %}A stat range compares the number as the table shows it. {% endif %}Team lines are FanGraphs' own team totals, so traded players count for each club they played for.{% if kind == 'bat' %} wRC+ counts pitchers' hitting, which FanGraphs leaves out of its 100, so clubs whose pitchers batted (everyone before 1973, the NL until 2022) sit near 94; the average row is the average club.{% endif %}</p>
 {% endblock %}

@@ -10,6 +10,7 @@
   var plot = document.getElementById("plot");
   var tip = document.getElementById("tip");
   var $ = function (id) { return document.getElementById("c-" + id); };
+  var ranged = false;        // Range shows both season menus; Season one (#c-span)
   var MENUS = JSON.parse(document.getElementById("c-menus").textContent);
   var PRESETS = JSON.parse(document.getElementById("c-presets-data").textContent);
   var init = JSON.parse(document.getElementById("c-state").textContent);
@@ -160,6 +161,11 @@
     $("team-field").hidden = !players;
     $("logos-row").hidden = players;
     $("season").value = state.season; $("to").value = state.to;
+    if (state.to !== state.season) ranged = true;
+    $("span").dataset.mode = ranged ? "range" : "one";
+    Array.prototype.forEach.call($("span").querySelectorAll("[data-set]"), function (b) {
+      b.classList.toggle("on", (b.dataset.set === "range") === ranged);
+    });
     var unit = state.kind === "pit" ? "IP" : "PA";
     $("min-label").textContent = "Min " + unit;
     var span = +state.to !== +state.season;
@@ -1032,11 +1038,22 @@
     state.kind = v; state.x = DEFAULTS[v][0]; state.y = DEFAULTS[v][1]; state.z = ""; state.pos = ""; state.min = "q";
     fillStats(); syncControls(); load();
   });
+  $("span").addEventListener("click", function (event) {
+    var button = event.target.closest("[data-set]");
+    if (!button) return;
+    if (button.dataset.set === "range") { ranged = true; syncControls(); return; }
+    if (!ranged) return;
+    ranged = false;
+    state.season = state.to;                                    // the range's last season on its own
+    state.split = false; state.path = false;
+    if (state.min !== "q" && +state.min >= 1000) state.min = "q";
+    syncControls(); load();
+  });
   ["season", "to"].forEach(function (id) {
     $(id).addEventListener("change", function () {
       // One end changes and the other stays, unless the pick passes it (app.js, .spanpick).
       var value = +this.value, first = +(state.season || value), last = +(state.to || state.season || value);
-      if (id === "season") { first = value; if (first > last) last = first; }
+      if (id === "season") { first = value; if (!ranged || first > last) last = first; }
       else { last = value; if (last < first) first = last; }
       state.season = String(first); state.to = String(last);
       if (state.to === state.season) { state.split = false; state.path = false; }

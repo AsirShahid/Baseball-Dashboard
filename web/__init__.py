@@ -46,6 +46,7 @@ def create_app(data_root=None) -> Flask:
     def url_with(**changes) -> str:
         """The current URL with some query parameters replaced or removed."""
         args = {key: value for key, value in request.args.items()}
+        args.pop("page", None)        # a changed view starts at page 1 unless the link names a page
         for key, value in changes.items():
             if value is None or value == "":
                 args.pop(key, None)

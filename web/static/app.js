@@ -22,6 +22,7 @@
         value = String(Math.round(n));
       }
       var url = setParam(control.dataset.nav, value);
+      url.searchParams.delete("page");             // a new filter starts again at page 1
       (control.dataset.drop || "").split(",").forEach(function (name) {
         if (name) url.searchParams.delete(name);
       });
@@ -29,22 +30,38 @@
     });
   });
 
-  // Season range (.spanpick: ?season=&to=). Changing one end keeps the other where it
-  // is; only a pick past the other end moves it along. (The first menu used to set just
-  // ?season=, and with one season shown the second end followed it.)
+  // Season or range (.spanpick: ?season=&to=). Season shows one menu: a pick shows that
+  // season. Range shows both ends: changing one keeps the other, and only a pick past it
+  // moves it along. Range on a single season shows the second menu, then either end is picked.
   document.querySelectorAll(".spanpick[data-lo]").forEach(function (box) {
     var lo = +box.dataset.lo, hi = +box.dataset.hi;
-    box.querySelectorAll("select[data-end]").forEach(function (select) {
-      select.addEventListener("change", function () {
-        var value = +select.value, first = lo, last = hi;
-        if (select.dataset.end === "first") { first = value; if (first > last) last = first; }
-        else { last = value; if (last < first) first = last; }
-        var url = new URL(window.location.href);
-        url.searchParams.set("season", first);
-        url.searchParams.set("to", last);
-        url.searchParams.delete("span");
-        window.location.href = url.pathname + url.search.replace(/%2C/g, ",").replace(/%3A/g, ":");
+    var first = box.querySelector('select[data-end="first"]'), last = box.querySelector('select[data-end="last"]');
+    function go(a, b) {
+      var url = new URL(window.location.href);
+      url.searchParams.set("season", a);
+      if (a === b) url.searchParams.delete("to"); else url.searchParams.set("to", b);
+      ["span", "page"].forEach(function (name) { url.searchParams.delete(name); });
+      window.location.href = url.pathname + url.search.replace(/%2C/g, ",").replace(/%3A/g, ":");
+    }
+    box.querySelectorAll("[data-set]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        if (button.dataset.set === "one") {
+          if (box.dataset.mode !== "one") go(hi, hi);          // the range's last season on its own
+          return;
+        }
+        box.dataset.mode = "range";
+        box.querySelectorAll("[data-set]").forEach(function (b) { b.classList.toggle("on", b === button); });
+        last.value = String(hi);
       });
+    });
+    first.addEventListener("change", function () {
+      var value = +first.value;
+      if (box.dataset.mode === "one") go(value, value);
+      else go(value, Math.max(value, hi));
+    });
+    last.addEventListener("change", function () {
+      var value = +last.value;
+      go(Math.min(lo, value), value);
     });
   });
 
@@ -70,6 +87,14 @@
         var dir = cell.classList.contains("sorted")
           ? (cell.classList.contains("asc") ? "desc" : "asc")
           : (cell.dataset.dir || "desc");
+        if (table.hasAttribute("data-server-sort")) {
+          // More rows than one page (tables.py): the server sorts all of them.
+          var url = setParam("sort", cell.dataset.key);
+          url.searchParams.set("dir", dir);
+          url.searchParams.delete("page");
+          window.location.href = url.pathname + url.search.replace(/%2C/g, ",").replace(/%3A/g, ":");
+          return;
+        }
         sortTable(table, index, dir, cell.dataset.type === "text");
         Array.prototype.forEach.call(head.cells, function (other) {
           other.classList.remove("sorted", "asc");
@@ -124,6 +149,14 @@
     var table = document.querySelector(input.dataset.filter);
     var count = document.querySelector(input.dataset.count || "#nothing");
     if (!table) return;
+    // data-find: Enter searches every page of the table on the server (?find=).
+    if (input.hasAttribute("data-find")) input.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      var url = setParam("find", input.value.trim());
+      url.searchParams.delete("page");
+      window.location.href = url.pathname + url.search.replace(/%2C/g, ",").replace(/%3A/g, ":");
+    });
     input.addEventListener("input", function () {
       var needle = fold(input.value);
       var shown = 0;
