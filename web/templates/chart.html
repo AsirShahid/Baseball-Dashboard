@@ -2,7 +2,7 @@
 {% block title %}Charts{% endblock %}
 {% block main %}
 <div class="head">
-  <div><h1>Charts</h1><div class="sub" id="c-sub">Any two stats against each other, for every team or player, in a season or over many.</div></div>
+  <div><h1>Charts</h1><div class="sub" id="c-sub">Any two stats against each other, with an optional depth stat, for every team or player, in a season or over many.</div></div>
   <div class="toolbar" style="margin:0">
     <div class="seg" id="c-view"><button type="button" data-v="team">Teams</button><button type="button" data-v="player">Players</button></div>
     <div class="seg" id="c-kind"><button type="button" data-v="bat">Hitters</button><button type="button" data-v="pit">Pitchers</button></div>
@@ -59,7 +59,7 @@
     <div class="card" style="margin-top:14px">
       <h3 style="margin-bottom:8px" id="c-board-title">Best on both axes</h3>
       <div class="board" style="grid-template-columns:1fr"><ol id="c-board" class="wide"></ol></div>
-      <div class="sub">Average of the percentiles on each axis, counting "lower is better" stats (ERA, K% for hitters) the right way round.</div>
+      <div class="sub" id="c-board-note">Average of the two axis percentiles, counting "lower is better" stats (ERA, K% for hitters) the right way round.</div>
     </div>
   </div>
 </div>

@@ -594,3 +594,23 @@ Asir cleared the Cloudflare check on the Accounts screen, so FanGraphs' leaderbo
 - Deployed 2026-11-27 18:50:24 UTC (12:50 PM CT). Rollback image `baseball-site:pre-pages-20261127` (the 18:38 UTC
   glossary deploy): `docker tag baseball-site:pre-pages-20261127 baseball-site:latest`, then
   `docker compose up -d --no-deps --no-build baseball-dashboard` from `vps-infra/stacks/baseball-dashboard`.
+
+## 2026-11-28: the best list's labels name the stats it ranks
+
+Asir asked whether the baseball board ranks a third stat the way basketball's now does. It
+already did: with a Depth (Z) stat set, `_score` is the mean of the three percentiles
+(`chart.js`, `_score = az ? (px+py+pz)/3 : (px+py)/2`), the title switches to "Best on all three
+axes", and `/api/chart` drops every row missing z (`charts.py`, the rows filter), so the simple
+score is safe here. Only the copy was stale: the page subtitle said "any two stats" and the line
+under the list said "on each axis" whether or not a depth stat was set.
+
+- `chart.html`: the subtitle says the depth stat is optional; the line under the list is
+  `#c-board-note`, set from the chart in `drawBoard` ("Average of the two axis percentiles..." or
+  "Average of the three axis percentiles (depth included)...").
+- No ranking change. Verified on the built image (Playwright, 1280 px): two axes Dodgers 97,
+  Brewers 93, Rays 81, Cubs 81; z = OBP gives Dodgers 95, Brewers 95, Cubs 86, Rays 83 and the
+  all-three text; clearing z restores 97/93. No console errors; `pytest tests -q`: 95 passed.
+- Deployed 2026-11-28 04:06 UTC (11:06 PM ET Nov 27). Rollback:
+  `docker tag baseball-site:pre-boardnote-20261128 baseball-site:latest`, then
+  `docker compose up -d --no-deps --no-build baseball-dashboard` from
+  `vps-infra/stacks/baseball-dashboard`.

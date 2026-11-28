@@ -754,6 +754,9 @@
     var board = $("board");
     board.textContent = "";
     $("board-title").textContent = data.axes.z ? "Best on all three axes" : "Best on both axes";
+    $("board-note").textContent = data.axes.z
+      ? "Average of the three axis percentiles (depth included), counting \"lower is better\" stats (ERA, K% for hitters) the right way round."
+      : "Average of the two axis percentiles, counting \"lower is better\" stats (ERA, K% for hitters) the right way round.";
     shown.slice().sort(function (a, b) { return b._score - a._score; }).slice(0, 10).forEach(function (r, i) {
       var item = document.createElement("li");
       var rank = document.createElement("i"); rank.textContent = i + 1;
