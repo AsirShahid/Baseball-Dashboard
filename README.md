@@ -31,6 +31,13 @@ the season minimums. Checked against FanGraphs' own qualified lists for every se
 1871-2026: identical in 142 of 156 hitting seasons and 153 of 156 pitching seasons, 18
 player-seasons different in all (FanGraphs edge cases with traded players).
 
+Each rate stat takes the qualifier of the site it comes from (`web/queries.py`: `RULES`, `rule_of`). The
+Baseball Savant stats use Savant's own, lower bar: 2.1 PA (hitters) or 1.25 batters faced (pitchers) per
+team game, counted against the schedule (162, 60 in 2020) and rounded up. Checked against Savant's
+percentile-rank qualified lists for 2015-2025: 2,746 hitter-seasons and 3,937 pitcher-seasons, no
+differences. Tables list a player who meets the bar of any rate stat shown and grey out the others; a
+chart dot needs the bar of every rate stat on its axes.
+
 ## Data
 
 `pipeline/` fetches FanGraphs leaderboards into season CSVs (`all_batting_stats/`,

@@ -36,7 +36,7 @@
 {%- endmacro %}
 
 {% macro heads(columns, sort=None, asc=None) -%}
-{% for c in columns %}<th data-key="{{ c.key }}" data-dir="{{ 'desc' if c.better else 'asc' }}" title="{{ c.name }}" class="{{ 'sorted' if c.key == sort }}{{ ' asc' if c.key == sort and ((not c.better) if asc is none else asc) }}">{{ c.head }}</th>{% endfor %}
+{% for c in columns %}<th data-key="{{ c.key }}" data-dir="{{ 'desc' if c.better else 'asc' }}" title="{{ c.name }}{{ ' (qualifier: Baseball Savant\'s)' if c.rule == 's' }}" class="{{ 'sorted' if c.key == sort }}{{ ' asc' if c.key == sort and ((not c.better) if asc is none else asc) }}">{{ c.head }}</th>{% endfor %}
 {%- endmacro %}
 
 {# cover: {stat: "2002–04"} for a career or span value that covers only those seasons (marked †). #}

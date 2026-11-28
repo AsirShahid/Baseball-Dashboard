@@ -23,7 +23,7 @@
 {% endfor %}
 </tbody>
 {% if span %}{% set sp = span_rows.get(kind) %}
-<tbody><tr class="total spanrow fixed"><td class="t">{{ span[0] }}{% if span[1] != span[0] %}&ndash;{{ span[1] }}{% endif %}</td><td class="t muted">{% if sp %}{{ sp.n }} season{{ 's' if sp.n != 1 }}{% else %}None{% endif %} &middot; <a href="{{ url_with(**{'from': None, 'to': None, 'pseason': None}) }}#t-{{ kind }}">Clear</a></td><td></td>{% if sp %}{{ m.cells(sp['values'], data.cols, fails={} if sp.qualified else {'q': 'Not qualified over the span'}, cover=sp.cover) }}{% else %}{% for c in data.cols %}<td></td>{% endfor %}{% endif %}</tr>
+<tbody><tr class="total spanrow fixed"><td class="t">{{ span[0] }}{% if span[1] != span[0] %}&ndash;{{ span[1] }}{% endif %}</td><td class="t muted">{% if sp %}{{ sp.n }} season{{ 's' if sp.n != 1 }}{% else %}None{% endif %} &middot; <a href="{{ url_with(**{'from': None, 'to': None, 'pseason': None}) }}#t-{{ kind }}">Clear</a></td><td></td>{% if sp %}{{ m.cells(sp['values'], data.cols, fails=sp.fails, cover=sp.cover) }}{% else %}{% for c in data.cols %}<td></td>{% endfor %}{% endif %}</tr>
 {% if sp and sp.league %}<tr class="lgrow fixed"><td class="t" title="The league over the same seasons">{{ data.lg_label }}</td><td class="t muted">same seasons</td><td></td>{{ m.lg_cells(sp.league, data.cols, cover=sp.cover) }}</tr>{% endif %}</tbody>
 {% endif %}
 {% if data.career and data.rows|length > 1 %}
@@ -80,10 +80,11 @@
   </div>
   {% if pct.label %}
   <p class="sub" style="margin-bottom:0">{{ pct.label }}{% if pct.label == 'Career' %} ({{ pct.lo }}&ndash;{{ pct.hi }}){% endif %}: his line over those seasons against the {{ pct.pool }} {{ pct.group }} {{ 'hitters' if pkind == 'bat' else 'pitchers' }} with a qualified line over the same seasons ({{ '{:,}'.format(pct.need|int) }} {{ 'PA' if pkind == 'bat' else 'IP' }}, FanGraphs' multi-season cut), so everyone is measured over the same years. 100 is best; lower-is-better stats count the right way round.{% if not pct.qualified %} His own line falls short of that cut.{% endif %}</p>
-  {% for n in pct.cover_notes %}<p class="sub covnote">{{ n.heads|join(', ') }} {{ 'has' if n.heads|length == 1 else 'have' }} data from {{ n.first }} on, so {{ 'it covers' if n.heads|length == 1 else 'they cover' }} his {{ n.label }} only, ranked against the {{ n.pool }} {{ pct.group }} {{ 'hitters' if pkind == 'bat' else 'pitchers' }} qualified over those seasons ({{ '{:,}'.format(n.need|int) }} {{ 'PA' if pkind == 'bat' else 'IP' }}).{% if not n.qualified %} His own line falls short of that cut.{% endif %}</p>{% endfor %}
+  {% for n in pct.cover_notes %}<p class="sub covnote">{{ n.heads|join(', ') }} {{ 'has' if n.heads|length == 1 else 'have' }} data from {{ n.first }} on, so {{ 'it covers' if n.heads|length == 1 else 'they cover' }} his {{ n.label }} only, ranked against the {{ n.pool }} {{ pct.group }} {{ 'hitters' if pkind == 'bat' else 'pitchers' }} qualified over those seasons ({{ '{:,}'.format(n.need|int) }} {{ n.unit }}{% if n.rule == 's' %}, Baseball Savant's qualifier{% endif %}).{% if not n.qualified %} His own line falls short of that cut.{% endif %}</p>{% endfor %}
   {% else %}
   <p class="sub" style="margin-bottom:0">Against the {{ pct.pool }} qualified {{ pct.group }} {{ 'hitters' if pkind == 'bat' else 'pitchers' }} in {{ pct.season }}; 100 is best, and lower-is-better stats (K% for hitters, ERA for pitchers) count the right way round.{% if not pct.qualified %} He was not qualified that season, so his numbers come from fewer {{ 'plate appearances' if pkind == 'bat' else 'innings' }}.{% endif %}</p>
   {% endif %}
+  {% if pct.savant %}<p class="sub covnote">{{ pct.savant.heads|join(', ') }} {{ 'is a Baseball Savant stat' if pct.savant.heads|length == 1 else 'are Baseball Savant stats' }}, ranked as Savant ranks them: against the {{ pct.savant.pool }} {{ pct.group }} {{ 'hitters' if pkind == 'bat' else 'pitchers' }} with {{ '{:,}'.format(pct.savant.need|int) }}+ {{ pct.savant.unit }} ({{ '2.1 plate appearances' if pkind == 'bat' else '1.25 batters faced' }} per team game{% if pct.lo != pct.hi %}, scaled for a span{% endif %}).{% if not pct.savant.qualified %} His own line falls short of that cut.{% endif %}</p>{% endif %}
 </section>
 {% endif %}
 

@@ -614,3 +614,54 @@ under the list said "on each axis" whether or not a depth stat was set.
   `docker tag baseball-site:pre-boardnote-20261128 baseball-site:latest`, then
   `docker compose up -d --no-deps --no-build baseball-dashboard` from
   `vps-infra/stacks/baseball-dashboard`.
+
+## 2026-11-28: qualification per stat (Baseball Savant's bar for Savant's stats)
+
+Asir asked for the basketball site's per-stat qualification here too. Basketball gives every stat
+the minimum NBA.com gives it (games, makes, minutes). Baseball's official rule has only two
+playing-time bars (MLB 9.22: 3.1 PA for batting rates, 1 IP for ERA and its family), so the real
+per-stat difference is the source: Baseball Savant, whose stats make up the Statcast and Savant
+discipline views, qualifies at a lower bar than FanGraphs. Before this, the chart and tables held
+every rate to FanGraphs' 3.1 PA / 1 IP, whichever site it came from.
+
+- **Rules** (`queries.RULES`, `rule_of`): `q` FanGraphs/MLB, 3.1 PA or 1 IP per team game, rounded
+  half up (502 PA / 162 IP; unchanged). `s` Baseball Savant, 2.1 PA per team game for hitters and
+  1.25 batters faced (TBF) for pitchers: the "Qualifiers" line on Savant's percentile-rank and
+  Statcast leaderboards (read from the live pages, 2026-11-28). Exact, rounded up (341 PA, 203 BF at
+  162), and counted against the **schedule** (`queries.scheduled_games`: the game count most clubs
+  played, 162 or 60 in 2020), not a club's own games. `s` covers `pipeline.savant.SHOWN` (Sweet-Spot%,
+  xwOBAcon, svZone%, svZ-Swing%, svZ-Contact%, Chase%, ChaseContact%, Edge%, svSwing%, Whiff%,
+  Meatball%, MeatballSwing%, Sprint) and, for pitchers only, xAVG, xSLG, xwOBA. Hitters' xAVG, xSLG,
+  xwOBA and the FanGraphs Statcast columns (EV, Barrel%, HardHit%, LA, maxEV) stay `q`: their numbers
+  are FanGraphs'. Counts have no rule.
+- **Checked against Savant's own lists**: for 2015-2025 the `s` rule gives the same players as
+  Savant's percentile-rank qualified lists (downloaded as CSV, players with an xwOBA percentile):
+  hitters 2,746 of 2,746 and pitchers 3,937 of 3,937, no extras and no misses. Using a club's own
+  games instead of the schedule had let in 3 extra (Kyle Tucker 2024: 339 PA, Houston played 161;
+  Harrison Bader 2020; Adam Conley 2018), which is how the schedule rule was found. Test fixture:
+  `tests/fixtures/savant_qualified/2024.*.ids.gz` (251 hitters, 366 pitchers).
+- **Where it applies**: tables (a player is listed when he meets the bar of any rate stat shown; a
+  column whose bar he misses is greyed with the reason and sorts last; `fails` is keyed by rule, so
+  `fails["s"]` and `fails["q"]` are separate), stat ranges, the percentile panel on player pages
+  (each stat ranked among the players who meet its own bar; a Savant note under the panel), era-adjusted
+  pools (`season_pools`, per stat), `season_best`, leader boards, the player page's span row, and
+  charts. **A chart dot needs the bar of every rate stat on an axis** (x, y and z), as a basketball
+  dot needs each axis's rule. Exception kept on purpose: a chart of counts alone still uses `q`, or
+  bWAR against fWAR draws every hitter-season again (the 24,168-point bug of 2026-11-12). A Savant
+  stat beside a count uses Savant's bar (xwOBA against saves for pitchers: 349 in 2025, was 52).
+- **Over a span**: FanGraphs' cut is 1,000 PA or 300 IP; `s` gets the same share of it, scaled by the
+  per-game rates (677 PA, 375 batters faced), and the sum of the schedule minimums when that is lower.
+  That is a site choice (Savant publishes no multi-season rule; its custom leaderboard takes a flat
+  minimum). Sprint's own Savant minimum is 10 competitive runs; we store no run count (`svSpW` is a PA
+  weight), so Sprint uses the hitters' `s` bar.
+- **Unchanged**: every FanGraphs-rule view. Compared production against the candidate on 13 chart
+  queries (single season, span, split, era, teams, counts, pitchers): rows and need text identical; 30 of
+  42 table pages (every mode but Statcast and Savant) identical. The 12 that differ list more players,
+  never fewer (2025 hitters 145 -> 251, pitchers 52 -> 349).
+- **Numbers (2025)**: Whiff% against Chase% hitters 251, pitchers 349 (batters faced 203 per season);
+  2015-2025 season by season 2,746 hitter-seasons (equals Savant's total); combined 751 hitters at 677
+  PA. Tests: `pytest tests -q`: 101 passed (6 new). Browser check at 820 and 412 px on the built image:
+  tables, hint line, header notes, player page, chart, no console errors.
+- Deployed 2026-11-28 04:30 UTC (11:30 PM ET Nov 27). Rollback: `docker tag
+  baseball-site:pre-perstat-20261128 baseball-site:latest`, then `docker compose up -d --no-deps --no-build
+  baseball-dashboard` from `vps-infra/stacks/baseball-dashboard`.

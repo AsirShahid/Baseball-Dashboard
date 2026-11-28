@@ -8,6 +8,7 @@ import numpy as np
 
 from pipeline import aggregate
 from pipeline import catalog as cat
+from pipeline import savant
 from pipeline import teams as T
 from pipeline.text import search_key
 
@@ -16,6 +17,17 @@ from . import db
 BAT, PIT = "bat", "pit"
 PA_RATE, IP_RATE = 3.1, 1.0            # MLB rule 9.22: per game scheduled for his team
 SPAN_CUT = {BAT: 1000, PIT: 300}       # FanGraphs' multi-season "qualified" (see NOTES.md)
+# Every rate stat has the qualifier of the site it comes from, as every basketball stat has its NBA.com
+# minimum; counts have none (NOTES.md, 2026-11-28).
+#   q  MLB rule 9.22 as FanGraphs applies it: 3.1 PA (hitters) or 1 IP (pitchers) per team game.
+#   s  Baseball Savant's own: 2.1 PA per team game for hitters, 1.25 batters faced for pitchers (the
+#      "Qualifiers" line of Savant's percentile-rank and Statcast leaderboards).
+# rule -> kind -> (what is counted, per team game)
+RULES = {"q": {BAT: ("PA", PA_RATE), PIT: ("IP", IP_RATE)},
+         "s": {BAT: ("PA", 2.1), PIT: ("TBF", 1.25)}}
+UNITS = {"q": {BAT: "PA", PIT: "IP"}, "s": {BAT: "PA", PIT: "batters faced"}}
+# The stats built from Savant's own data (pipeline/savant.py). Hitters' xAVG, xSLG and xwOBA are FanGraphs'.
+SAVANT_STATS = {BAT: frozenset(savant.SHOWN), PIT: frozenset(savant.SHOWN + savant.PITCHER_SHOWN) - {"Sprint"}}
 MODES = {BAT: {k: (title, cols) for k, title, cols in cat.BAT_GROUPS},
          PIT: {k: (title, cols) for k, title, cols in cat.PIT_GROUPS}}
 POSITIONS = [("", "All"), ("C", "C"), ("1B", "1B"), ("2B", "2B"), ("3B", "3B"), ("SS", "SS"),
@@ -50,6 +62,16 @@ def season_games(season: int) -> int:
     return int(db.scalar("SELECT MAX(g) FROM team_seasons WHERE season = ?", season) or 0)
 
 
+@db.cached
+def scheduled_games(season: int) -> int:
+    """The length of that season's schedule: the number of games most clubs played (162 though a
+    rainout left one club at 161 and a tiebreaker gave two clubs 163; 60 in 2020). Baseball Savant
+    prorates by this, not by a club's own games."""
+    rows = db.rows("SELECT g, COUNT(*) AS n FROM team_seasons WHERE season = ? AND g IS NOT NULL "
+                   "GROUP BY g ORDER BY n DESC, g DESC", season)
+    return int(rows[0]["g"]) if rows else season_games(season)
+
+
 def span(lo: int, hi: int) -> tuple:
     lo, hi = int(lo), int(hi)
     return (min(lo, hi), max(lo, hi))
@@ -66,33 +88,52 @@ def span_label(lo: int, hi: int) -> str:
 # ---------- qualifying ----------
 
 def rule_of(stat: str, kind: str):
-    """'q' when the stat needs a qualified player (a rate), None for counts."""
+    """The qualifier a stat needs: 'q' (FanGraphs' and MLB's) or 's' (Baseball Savant's) for a rate,
+    None for counts."""
     info = db.catalog(kind).get(stat)
     if info is None or info["counting"] or stat in ("PA", "IP", "Age", "TBF"):
         return None
-    return "q"
+    return "s" if stat in SAVANT_STATS.get(kind, ()) else "q"
 
 
-def need_for(kind: str, lo: int, hi: int, tg=None) -> float:
-    """PA (or IP) a player needs to qualify."""
-    rate = PA_RATE if kind == BAT else IP_RATE
+def _round_need(rule: str, value: float) -> int:
+    """'q' rounds half up, as FanGraphs' lists do (502 PA of 162 games); 's' is exact, as Savant's
+    (PA >= 2.1 x games, so 341 of 162), which rounds up. The 6 digits keep 2.1 x 100 from being
+    210.00000000000003."""
+    return math.floor(value + 0.5) if rule == "q" else math.ceil(round(value, 6))
+
+
+def need_for(kind: str, lo: int, hi: int, tg=None, rule: str = "q") -> float:
+    """PA, IP or batters faced a player needs to qualify under a rule."""
+    rate = RULES[rule][kind][1]
     if lo == hi:
-        games = tg if tg else season_games(lo)
-        return math.floor(rate * games + 0.5)   # 502 of 162; matches FanGraphs' lists
-    total = sum(season_games(s) for s in range(lo, hi + 1))
-    return min(SPAN_CUT[kind], math.floor(rate * total + 0.5))
+        # FanGraphs prorates by his own club's games; Savant by the schedule (a club that played 161
+        # of 162 does not lower its players' bar).
+        games = (tg if tg else season_games(lo)) if rule == "q" else scheduled_games(lo)
+        return _round_need(rule, rate * games)
+    total = sum((season_games if rule == "q" else scheduled_games)(s) for s in range(lo, hi + 1))
+    # Over a span FanGraphs cuts at 1,000 PA or 300 IP. A rule with a lower season floor gets the
+    # same share of that cut (Savant's 677 PA and 375 batters faced), so a span is not stricter
+    # than a season under it.
+    cap = round(SPAN_CUT[kind] * rate / RULES["q"][kind][1])
+    return min(cap, _round_need(rule, rate * total))
 
 
-def qualifying(kind: str, t: db.Table) -> tuple:
+def qualifying(kind: str, t: db.Table, rule: str = "q") -> tuple:
     """(needed, have, ok) arrays for a table from db.table."""
-    weight = t.cols["PA" if kind == BAT else "IP"]
-    have = np.nan_to_num(weight)
+    have = np.nan_to_num(t.cols[RULES[rule][kind][0]])
     lo, hi = t.seasons
     if lo == hi:
-        need = np.array([need_for(kind, lo, hi, r.get("tg")) for r in t.ident], dtype=float)
+        need = np.array([need_for(kind, lo, hi, r.get("tg"), rule) for r in t.ident], dtype=float)
     else:
-        need = np.full(len(t), float(need_for(kind, lo, hi)))
+        need = np.full(len(t), float(need_for(kind, lo, hi, None, rule)))
     return need, have, have >= need
+
+
+def fail_text(rule: str, kind: str, have: float, need: float) -> str:
+    unit = UNITS[rule][kind]
+    return (f"Not qualified{' for Savant stats' if rule == 's' else ''}: {_amount(have, unit)} of "
+            f"{_amount(need, unit)} {unit}")
 
 
 # ---------- percentile pools ----------
@@ -121,10 +162,13 @@ def player_groups(kind: str, season: int) -> dict:
 
 def season_pools(kind: str, season: int, stats: tuple) -> dict:
     """{group: {stat: sorted values}} of the qualified players in each league group
-    that season, ignoring any display filter (a group with nobody qualified uses
-    everyone who played)."""
+    that season, ignoring any display filter. Each stat is ranked among the players who meet
+    its own qualifier (a count, among those qualified the usual way); a group with nobody
+    qualified uses everyone who played."""
     t = db.table(kind, season, season, stats)
-    _need, have, ok = qualifying(kind, t)
+    _need, have, _ok = qualifying(kind, t)
+    rule_of_stat = {s: rule_of(s, kind) or "q" for s in stats}
+    oks = {r: qualifying(kind, t, r)[2] for r in set(rule_of_stat.values())}
     groups = player_groups(kind, season)
     member: dict = {}
     for i, r in enumerate(t.ident):
@@ -133,8 +177,14 @@ def season_pools(kind: str, season: int, stats: tuple) -> dict:
     out = {}
     for g, idx in member.items():
         idx = np.array(idx)
-        use = idx[ok[idx]] if ok[idx].any() else idx
-        out[g] = {s: np.sort(t.cols[s][use][~np.isnan(t.cols[s][use])]) for s in stats if s in t.cols}
+        pools = {}
+        for s in stats:
+            if s not in t.cols:
+                continue
+            ok = oks[rule_of_stat[s]]
+            use = idx[ok[idx]] if ok[idx].any() else idx
+            pools[s] = np.sort(t.cols[s][use][~np.isnan(t.cols[s][use])])
+        out[g] = pools
     return out
 
 
@@ -197,6 +247,9 @@ def lines_for(kind: str, lo: int, hi: int, stats: tuple, *, min_mode="q", min_va
     names = people()
     unit = "PA" if kind == BAT else "IP"
     ruled = [s for s in (rule_stats if rule_stats is not None else stats) if rule_of(s, kind)]
+    rules = {r for r in (rule_of(s, kind) for s in ruled) if r}
+    # Where he stands against each qualifier in play ('q' always: it is what "qualified" means on his page).
+    standing = {"q": (need, have, ok), **{r: qualifying(kind, t, r) for r in rules - {"q"}}}
     lines = []
     for i, r in enumerate(t.ident):
         p = names.get(r["pid"])
@@ -217,15 +270,20 @@ def lines_for(kind: str, lo: int, hi: int, stats: tuple, *, min_mode="q", min_va
         line = {"pid": r["pid"], "name": p["name"], "team": code, "age": r.get("age"),
                 "pos": role or _short_pos(position), "first": r.get("first", lo), "last": r.get("last", hi),
                 "seasons_n": r.get("n", 1), "season": season, "need": need[i], "have": have[i],
-                "qualified": bool(ok[i]), "fails": {}}
+                "qualified": bool(ok[i]), "fails": {},
+                "ok": {rule: bool(o[i]) for rule, (_n, _h, o) in standing.items()},
+                "have_by": {rule: float(h[i]) for rule, (_n, h, _o) in standing.items()}}
         for s in t.cols:
             v = t.cols[s][i]
             line[s] = None if np.isnan(v) else float(v)
-        if not ok[i] and ruled:   # rates need him qualified; counts alone do not
-            line["fails"]["q"] = (f"Not qualified: {_amount(have[i], unit)} of "
-                                  f"{_amount(need[i], unit)} {unit}")
+        for rule in rules:   # rates need him qualified under their rule; counts alone do not
+            n_r, h_r, o_r = standing[rule]
+            if not o_r[i]:
+                line["fails"][rule] = fail_text(rule, kind, h_r[i], n_r[i])
         lines.append(line)
-    info = {"unit": unit, "need": need_for(kind, lo, hi) if len(t) else 0, "total": len(lines)}
+    info = {"unit": unit, "need": need_for(kind, lo, hi) if len(t) else 0, "total": len(lines),
+            "rules": {r: {"need": need_for(kind, lo, hi, None, r), "unit": UNITS[r][kind]} for r in rules}
+            if len(t) else {}}
     return lines, info
 
 
@@ -252,12 +310,16 @@ def player_table(kind, lo, hi, mode, min_mode, min_value, team, league, pos, sor
                             team=team, league=league, pos=pos,
                             rule_stats=tuple(c["key"] for c in cols))
     if min_mode == "q":
-        lines = [l for l in lines if l["qualified"] or not any(c["rule"] for c in cols)]
+        # A player is listed when he meets the qualifier of any rate stat on show (or none is);
+        # a column whose qualifier he misses is greyed out and sorts last.
+        rules = {c["rule"] for c in cols if c["rule"]}
+        lines = [l for l in lines if not rules or any(l["ok"].get(r) for r in rules)]
     if keep:
         lines = [l for l in lines if keep(l)]
     sort = sort if any(c["key"] == sort for c in cols) or sort in ("WAR",) else ("WAR" if "WAR" in stats else cols[0]["key"])
     better = next((c["better"] for c in cols if c["key"] == sort), True)
-    lines.sort(key=lambda l: _sort_key(l.get(sort), better, l["fails"] and sort_rule(cols, sort)))
+    sorted_by = sort_rule(cols, sort)
+    lines.sort(key=lambda l: _sort_key(l.get(sort), better, bool(sorted_by) and sorted_by in l["fails"]))
     return lines, cols, sort, info
 
 
@@ -401,7 +463,7 @@ def leaders(season: int, lo: int | None = None, top: int = 5) -> dict:
             c = column(kind, stat)
             if c is None:
                 continue
-            pool = [l for l in lines if l.get(stat) is not None and (not c["rule"] or l["qualified"])]
+            pool = [l for l in lines if l.get(stat) is not None and (not c["rule"] or l["ok"].get(c["rule"], l["qualified"]))]
             pool.sort(key=lambda l: -l[stat] if c["better"] else l[stat])
             if pool:
                 result.append({"stat": stat, "title": title, "col": c, "rows": pool[:top],
@@ -707,7 +769,7 @@ def season_best(kind: str, season: int, stat: str):
     values = col.copy()
     if c["rule"]:
         t = db.table(kind, season, season, (stat,))
-        _need, _have, ok = qualifying(kind, t)
+        _need, _have, ok = qualifying(kind, t, c["rule"])
         values = np.where(ok, values, np.nan)
     if np.isnan(values).all():
         return None
@@ -717,8 +779,11 @@ def season_best(kind: str, season: int, stat: str):
 @db.cached
 def player(pid: int, kind: str, mode: str) -> dict | None:
     cols = columns(kind, mode)
-    # G and PA/IP always, so the summary line has them in every table mode.
-    stats = tuple(dict.fromkeys(tuple(c["key"] for c in cols) + ("WAR", "G", "PA" if kind == BAT else "IP")))
+    # G and PA/IP always, so the summary line has them in every table mode; the count each rule
+    # measures (batters faced for Savant's pitching rule) when a column needs it.
+    rules = {c["rule"] for c in cols if c["rule"]}
+    counted = tuple(RULES[r][kind][0] for r in sorted(rules | {"q"}))
+    stats = tuple(dict.fromkeys(tuple(c["key"] for c in cols) + ("WAR", "G", "PA" if kind == BAT else "IP") + counted))
     found = db.rows("SELECT kind, season, i, team, age, pos, tg FROM rows WHERE pid = ? AND kind IN (?, ?) "
                     "ORDER BY season, kind", pid, kind, "s" + kind)
     if not found:
@@ -738,11 +803,14 @@ def player(pid: int, kind: str, mode: str) -> dict | None:
         t = db.table(kind, r["season"], r["season"], ("PA" if kind == BAT else "IP",))
         need = need_for(kind, r["season"], r["season"], r["tg"])
         have = values.get("PA" if kind == BAT else "IP") or 0
+        # Does he meet each rule his columns use ('q' always: the mark beside the season)?
+        meets = {rule: (values.get(RULES[rule][kind][0]) or 0) >= need_for(kind, r["season"], r["season"], r["tg"], rule)
+                 for rule in rules | {"q"}}
         row = {"season": r["season"], "team": r["team"], "age": r["age"], "pos": r["pos"],
-               "values": values, "qualified": have >= need, "need": need, "stints": [], "led": set()}
+               "values": values, "qualified": have >= need, "need": need, "stints": [], "led": set(), "ok": meets}
         for c in cols:
             v = values.get(c["key"])
-            if v is None or (c["rule"] and not row["qualified"]):
+            if v is None or (c["rule"] and not meets[c["rule"]]):
                 continue
             if not c["rule"] and not c["better"]:   # fewest caught stealing is not a lead
                 continue
@@ -785,18 +853,25 @@ def player_span(pid: int, kind: str, mode: str, lo: int, hi: int) -> dict | None
     ratios are rebuilt from the summed parts)."""
     cols = columns(kind, mode)
     weight = "PA" if kind == BAT else "IP"
-    stats = tuple(dict.fromkeys(tuple(c["key"] for c in cols) + ("WAR", "G", weight)))
+    rules = {c["rule"] for c in cols if c["rule"]}
+    counted = tuple(RULES[r][kind][0] for r in sorted(rules | {"q"}))
+    stats = tuple(dict.fromkeys(tuple(c["key"] for c in cols) + ("WAR", "G", weight) + counted))
     t = db.table(kind, lo, hi, stats)
     idx = next((i for i, r in enumerate(t.ident) if r["pid"] == pid), None)
     if idx is None:
         return None
     _need, have, ok = qualifying(kind, t)
+    fails = {}
+    for rule in rules:   # a rate column he misses the rule of is greyed out in the span row
+        n_r, h_r, o_r = (_need, have, ok) if rule == "q" else qualifying(kind, t, rule)
+        if not o_r[idx]:
+            fails[rule] = fail_text(rule, kind, h_r[idx], n_r[idx]).replace("Not qualified", "Not qualified over the span", 1)
     values = {s: (None if np.isnan(t.cols[s][idx]) else float(t.cols[s][idx])) for s in stats if s in t.cols}
     r = t.ident[idx]
     first, last = r.get("first", lo), r.get("last", hi)
     cover, notes = partial_notes(kind, tuple(c["key"] for c in cols), first, last, first)
     return {"lo": lo, "hi": hi, "values": values, "qualified": bool(ok[idx]), "have": float(have[idx]),
-            "first": first, "last": last, "n": r.get("n", 1), "cover": cover, "cover_notes": notes}
+            "fails": fails, "first": first, "last": last, "n": r.get("n", 1), "cover": cover, "cover_notes": notes}
 
 
 PCT_STATS = {
@@ -852,39 +927,46 @@ def percentiles(pid: int, kind: str, lo: int, hi: int | None = None) -> dict | N
     idx = next((i for i, r in enumerate(t.ident) if r["pid"] == pid), None)
     if idx is None:
         return None
-    def ranked(table, a, b):
-        """Who he is ranked against over seasons a..b: qualified, same league group."""
-        need, _have, ok = qualifying(kind, table)
+    def ranked(table, a, b, rule):
+        """Who he is ranked against over seasons a..b: qualified under the stat's rule, same league group."""
+        need, _have, ok = qualifying(kind, table, rule)
         group_of = range_groups(kind, a, b)
         mine = group_of.get(pid, "MLB")
         return need, ok & np.array([group_of.get(r["pid"], "MLB") == mine for r in table.ident]), mine
 
-    need, ok, mine = ranked(t, lo, hi)
+    # A stat is ranked among the players who meet its own qualifier: FanGraphs' for most, Baseball
+    # Savant's (2.1 PA, 1.25 batters faced per team game) for the stats built from Savant's data;
+    # a count, as before, among those qualified the usual way.
+    pool_rule = {s: rule_of(s, kind) or "q" for s in stats}
+    standing = {rule: ranked(t, lo, hi, rule) for rule in set(pool_rule.values()) | {"q"}}
+    need, ok, mine = standing["q"]
     # Stats whose data starts after lo (plate discipline in 2002, Statcast in 2015)
     # cover only the later seasons: rank his line over those seasons against
     # everyone's line over the same seasons.
     later = {}
     for stat, first in (partial(kind, stats, lo, hi) if hi > lo else {}).items():
-        later.setdefault(first, []).append(stat)
+        later.setdefault((first, pool_rule[stat]), []).append(stat)
     sub = {}
-    for first, group in later.items():
+    for (first, rule), group in later.items():
         t2 = db.table(kind, first, hi, tuple(group))
         i2 = next((i for i, r in enumerate(t2.ident) if r["pid"] == pid), None)
         if i2 is None:
             continue
-        need2, ok2, _m = ranked(t2, first, hi)
+        need2, ok2, _m = ranked(t2, first, hi, rule)
         r2 = t2.ident[i2]
         note = {"first": first, "label": years(max(first, r2.get("first", first)), min(hi, r2.get("last", hi))),
-                "pool": int(ok2.sum()), "need": float(need2[i2]), "qualified": bool(ok2[i2]), "heads": []}
+                "pool": int(ok2.sum()), "need": float(need2[i2]), "qualified": bool(ok2[i2]), "heads": [],
+                "rule": rule, "unit": UNITS[rule][kind]}
         for stat in group:
             sub[stat] = (t2, i2, ok2, note)
     notes = []
     groups = []
+    savant_heads = []
     for title, group in plan:
         rows_out = []
         for stat in group:
             c = column(kind, stat)
-            table, i, pool_ok, note = sub.get(stat, (t, idx, ok, None))
+            table, i, pool_ok, note = sub.get(stat, (t, idx, standing[pool_rule[stat]][1], None))
             col = table.cols.get(stat)
             if c is None or col is None or np.isnan(col[i]):
                 continue
@@ -896,17 +978,24 @@ def percentiles(pid: int, kind: str, lo: int, hi: int | None = None) -> dict | N
             below, same_v = (pool < v).sum(), (pool == v).sum()
             share = (below + max(same_v - mine_in, 0) / 2) / max(len(pool) - mine_in, 1)
             pct = round(100 * (share if c["better"] else 1 - share))
-            row = {"col": c, "value": float(v), "pct": max(0, min(100, pct))}
+            row = {"col": c, "value": float(v), "pct": max(0, min(100, pct)), "rule": pool_rule[stat]}
             if note is not None:
                 row["cover"] = note["label"]
                 note["heads"].append(c["head"])
                 if note not in notes:
                     notes.append(note)
+            elif pool_rule[stat] == "s":
+                savant_heads.append(c["head"])
             rows_out.append(row)
         if rows_out:
             groups.append({"title": title, "rows": rows_out})
+    sv = None
+    if savant_heads:
+        n_s, ok_s, _m = standing["s"]
+        sv = {"heads": savant_heads, "pool": int(ok_s.sum()), "need": float(n_s[idx]),
+              "unit": UNITS["s"][kind], "qualified": bool(ok_s[idx])}
     return {"season": lo if lo == hi else None, "lo": lo, "hi": hi, "qualified": bool(ok[idx]),
-            "pool": int(ok.sum()), "groups": groups, "need": float(need[idx]),
+            "pool": int(ok.sum()), "groups": groups, "need": float(need[idx]), "savant": sv,
             "group": "AL and NL" if mine == "MLB" else mine, "cover_notes": notes}
 
 

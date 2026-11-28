@@ -117,7 +117,7 @@ def players():
         sort = asked
     desc = tables.direction(next((c["better"] for c in cols if c["key"] == sort), sort not in extra))
     rule = queries.sort_rule(cols, sort)
-    lines = tables.ordered(lines, sort, desc, lambda line: bool(line["fails"]) and bool(rule),
+    lines = tables.ordered(lines, sort, desc, lambda line: bool(rule) and rule in line["fails"],
                            text=sort in ("name", "team"))
     lines, find = tables.find(lines)
     pg = tables.page(lines)

@@ -20,6 +20,7 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 sys.path.insert(0, str(ROOT))
 
 JUDGE, OHTANI, SOTO, CHISHOLM, SKUBAL = 15640, 19755, 20123, 20454, 22267
+TUCKER = 18345   # Kyle Tucker, 2024: 339 PA
 
 
 @pytest.fixture(scope="session")
@@ -133,6 +134,114 @@ def test_counts_have_no_minimum_but_rates_do(app):
         assert boards["HR"]["rows"][0]["pid"] == JUDGE and boards["HR"]["rows"][0]["HR"] == 58
         assert not boards["HR"]["qualified"] and boards["AVG"]["qualified"]
         assert all(l["qualified"] for l in boards["AVG"]["rows"])
+
+
+# ---------- per-stat qualifiers: FanGraphs' and Baseball Savant's ----------
+
+def savant_ids(kind, season):
+    """Players on Baseball Savant's percentile-rank list for a season (MLBAM ids, saved from the site:
+    its 'Qualifiers: 2.1 PA per team game for batters, 1.25 PA per team game for pitchers')."""
+    with gzip.open(FIXTURES / "savant_qualified" / f"{season}.{kind}.ids.gz", "rt") as h:
+        return {int(x) for x in h.read().split()}
+
+
+def test_savant_qualifier_matches_savants_list(app):
+    from web import db, queries
+    with app.app_context():
+        people = queries.people()
+        for kind, sv_kind in (("bat", "batter"), ("pit", "pitcher")):
+            t = db.table(kind, 2024, 2024, ("PA" if kind == "bat" else "IP",))
+            _need, _have, ok = queries.qualifying(kind, t, "s")
+            mine = {people[r["pid"]]["mlbam"] for i, r in enumerate(t.ident) if ok[i]}
+            assert mine == savant_ids(sv_kind, 2024), kind
+        # Kyle Tucker 2024: 339 PA, and his club's own 161 games would have let him in (2.1 x 161);
+        # Savant prorates by the 162-game schedule, as FanGraphs' own rule does not.
+        t = db.table("bat", 2024, 2024, ("PA",))
+        i = next(i for i, r in enumerate(t.ident) if r["pid"] == TUCKER)
+        assert t.cols["PA"][i] == 339 and not queries.qualifying("bat", t, "s")[2][i]
+
+
+def test_each_stat_takes_its_sites_qualifier(app):
+    from web import queries
+    with app.app_context():
+        rule = queries.rule_of
+        assert rule("HR", "bat") is None and rule("bWAR", "bat") is None and rule("SV", "pit") is None
+        assert rule("wRC+", "bat") == "q" and rule("EV", "bat") == "q" and rule("Barrel%", "pit") == "q"
+        assert rule("Whiff%", "bat") == "s" and rule("Sweet-Spot%", "bat") == "s" and rule("Sprint", "bat") == "s"
+        # xwOBA is FanGraphs' for hitters and Savant's for pitchers (pipeline/savant.PITCHER_SHOWN).
+        assert rule("xwOBA", "bat") == "q" and rule("xwOBA", "pit") == "s" and rule("Chase%", "pit") == "s"
+        # Savant prorates by the schedule, exactly: 341 PA and 203 batters faced of 162, 126 PA of 60.
+        assert queries.need_for("bat", 2024, 2024, 161, "s") == 341
+        assert queries.need_for("pit", 2024, 2024, 161, "s") == 203
+        assert queries.need_for("bat", 2024, 2024, 161, "q") == 499        # FanGraphs' own: his club's 161 games
+        assert queries.scheduled_games(2024) == 162
+        # Over a span the same share of FanGraphs' 1,000 PA / 300 IP cut as the season floor of that rule.
+        both = math.ceil(2.1 * (queries.scheduled_games(1955) + 162))
+        assert queries.need_for("bat", 1955, 2024, None, "s") == min(677, both)
+        assert queries.need_for("pit", 1955, 2024, None, "s") <= 375
+        assert queries._round_need("s", 2.1 * 100) == 210                   # not 211 from 210.00000000000003
+
+
+def test_chart_dot_needs_every_axis_qualifier(client):
+    bat = lambda **kw: client.get("/api/chart?" + "&".join(f"{k}={v}" for k, v in
+                                  dict(view="player", kind="bat", season=2024, **kw).items())).get_json()
+    q_count = len(ids("batting", 2024))
+    only_s = bat(x="Whiff%", y="Chase%")
+    assert only_s["axes"]["x"]["rule"] == "s" and only_s["count"] == len(savant_ids("batter", 2024))
+    assert only_s["need"].startswith("Qualified: 341 PA per season") and "Savant" in only_s["need"]
+    assert bat(x="wRC%2B", y="Whiff%")["count"] == q_count                  # one FanGraphs stat: the stricter bar governs
+    assert bat(x="Whiff%", y="HR")["count"] == only_s["count"]              # a count adds no bar of its own
+    assert bat(x="HR", y="SB")["count"] == q_count                          # counts alone: still qualified (Nov 12)
+    assert bat(x="Whiff%", y="Chase%", z="Sprint")["count"] == only_s["count"]   # the third stat is held to its rule too
+    pit = lambda **kw: client.get("/api/chart?" + "&".join(f"{k}={v}" for k, v in
+                                  dict(view="player", kind="pit", season=2024, **kw).items())).get_json()
+    relievers = pit(x="Whiff%", y="Chase%")
+    assert relievers["count"] == len(savant_ids("pitcher", 2024)) and "203 batters faced" in relievers["need"]
+    assert pit(x="FIP", y="ERA")["count"] == len(ids("pitching", 2024))
+    assert pit(x="xwOBA", y="ERA")["count"] == len(ids("pitching", 2024))   # Savant's xwOBA beside FanGraphs' ERA
+
+
+def test_era_percentile_of_a_savant_stat_is_ranked_among_savants_qualifiers(client, app):
+    from web import db, queries
+    rows = _chart(client, view="player", kind="bat", x="Chase%", y="Whiff%", season=2024, era=1)
+    assert len(rows) == len(savant_ids("batter", 2024))
+    judge = next(r for r in rows if r["id"] == JUDGE)
+    with app.app_context():
+        t = db.table("bat", 2024, 2024, ("Chase%", "PA"))
+        _n, _h, ok = queries.qualifying("bat", t, "s")
+        pool = np.sort(t.cols["Chase%"][ok & ~np.isnan(t.cols["Chase%"])])
+        mine = t.cols["Chase%"][next(i for i, r in enumerate(t.ident) if r["pid"] == JUDGE)]
+    below = 1 - (np.searchsorted(pool, mine, "left") + np.searchsorted(pool, mine, "right")) / 2 / len(pool)  # lower is better
+    assert math.isclose(judge["x"], below * 100, abs_tol=1e-3)
+
+
+def test_tables_follow_each_columns_qualifier(app):
+    from web import queries
+    with app.app_context():
+        lines, cols, _sort, info = queries.player_table("bat", 2024, 2024, "statcast", "q", 0, "", "", "", "Barrel%")
+        both = {c["rule"] for c in cols if c["rule"]}
+        assert both == {"q", "s"} and set(info["rules"]) == {"q", "s"}
+        assert len(lines) == len(savant_ids("batter", 2024))                 # listed when any rate stat's bar is met
+        short = [l for l in lines if "q" in l["fails"] and "s" not in l["fails"]]
+        assert short and all(not l["qualified"] and l["ok"]["s"] for l in short)
+        # sorted by a FanGraphs stat, those short of 502 PA go last whatever their value
+        order = [("q" in l["fails"]) for l in lines]
+        assert order == sorted(order)
+        # Savant discipline view: every rate column is Savant's, so the 3.1 bar never applies.
+        sv, _c, _s, _i = queries.player_table("bat", 2024, 2024, "savant", "q", 0, "", "", "", "Whiff%")
+        assert len(sv) == len(savant_ids("batter", 2024)) and all("q" not in l["fails"] for l in sv)
+
+
+def test_player_percentiles_rank_savant_stats_among_savants_qualifiers(app, client):
+    from web import queries
+    with app.app_context():
+        p = queries.percentiles(JUDGE, "bat", 2024)
+    assert p["pool"] == len(ids("batting", 2024))                           # FanGraphs' stats: 502 PA
+    assert p["savant"]["pool"] == len(savant_ids("batter", 2024)) and p["savant"]["need"] == 341
+    assert {"Chase%", "Whiff%", "Sweet-Spot%", "Sprint"} <= set(p["savant"]["heads"])
+    assert {r["col"]["key"]: r["rule"] for g in p["groups"] for r in g["rows"]}["wRC+"] == "q"
+    html = page(client, f"/player/{JUDGE}")
+    assert "ranked as Savant ranks them" in html and "2.1 plate appearances per team game" in html
 
 
 # ---------- spans ----------

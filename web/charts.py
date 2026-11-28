@@ -181,16 +181,27 @@ def chart_payload(args) -> dict:
             "rows": [[r.get(f) for f in fields] for r in rows], "count": len(rows),
             "label": queries.span_label(lo, hi), "notes": notes,
             "qualified": args.get("min", "q") == "q",
-            "need": _need_text(view, kind, lo, lo if split else hi, args)}
+            "need": _need_text(view, kind, lo, lo if split else hi, args, _rules(axes))}
 
 
-def _need_text(view, kind, lo, hi, args):
+def _rules(axes) -> set:
+    """The qualifiers a player chart needs: one per axis that is a rate (each stat has its own,
+    queries.RULES). A chart of counts alone still needs the usual one, or it would draw every
+    player who ever batted (24,168 points for bWAR against fWAR since 2000; NOTES.md, 2026-11-12)."""
+    return {c["rule"] for _k, _s, c in axes.values() if c["rule"]} or {"q"}
+
+
+def _need_text(view, kind, lo, hi, args, rules):
     if view == "team":
         return ""
     if args.get("min", "q") == "q":
-        n = queries.need_for(kind, lo, hi)
-        unit = "PA" if kind == "bat" else "IP"
-        return f"Qualified: {n:,} {unit}" + (" per season" if lo == hi else "")
+        rule = "q" if "q" in rules else "s"   # q is the stricter, so it governs a mixed chart
+        n = queries.need_for(kind, lo, hi, None, rule)
+        unit = queries.UNITS[rule][kind]
+        text = f"Qualified: {n:,} {unit}" + (" per season" if lo == hi else "")
+        if rule == "s":   # Savant's stats alone: say whose rule it is
+            text += f" (Savant's {queries.RULES['s'][kind][1]:g} per team game)"
+        return text
     return f"At least {args.get('min')} {'PA' if kind == 'bat' else 'IP'}"
 
 
@@ -205,9 +216,11 @@ def _player_rows(kind, axes, seasons_list, args, era):
     min_raw = args.get("min", "q")
     min_mode, min_value = ("q", 0) if min_raw == "q" else ("n", float(min_raw) if _num(min_raw) else 0)
     stats = tuple(dict.fromkeys(s for _k, s, _c in axes.values()))
-    # "Qualified" picks who is on the chart: the batting- or ERA-title playing time, whatever the
-    # two stats are (as the players table and FanGraphs do). Two counts once meant no minimum,
-    # so bWAR against fWAR drew every hitter-season, pitchers batting included (24,168 since 2000).
+    # "Qualified" is per stat: a dot needs the qualifier of every rate stat on an axis (FanGraphs'
+    # 3.1 PA or 1 IP per team game, or Baseball Savant's lower one for Savant's own stats), as a
+    # basketball dot needs each stat's minimum. Counts alone fall back to the first of them,
+    # or bWAR against fWAR drew every hitter-season, pitchers batting included (24,168 since 2000).
+    rules = _rules(axes)
     split = len(seasons_list) > 1 and args.get("split") == "season" or args.get("path") == "1"
     out = []
     for lo, hi in seasons_list:
@@ -229,14 +242,14 @@ def _player_rows(kind, axes, seasons_list, args, era):
                         l["_" + a] = None if np.isnan(p) else float(p)
         for l in lines:
             if min_mode == "q":
-                ok = l["qualified"]
+                ok = all(l["ok"].get(rule, l["qualified"]) for rule in rules)
             else:
                 ok = (l["have"] or 0) >= min_value
             if (not era or split or lo == hi and len(seasons_list) == 1) and not ok:
                 continue
             row = {"id": l["pid"], "name": l["name"], "team": l["team"], "season": lo if lo == hi else None,
                    "first": l.get("first"), "last": l.get("last"),
-                   "w": _clean(l.get("PA" if kind == "bat" else "IP")),
+                   "w": _clean(l.get("PA" if kind == "bat" else "IP")), "hv": l["have_by"],
                    "logo": queries.logo_url(l["team"], l.get("season")) if l["team"] != T.MULTI_TEAM else None}
             for a, (_k, stat, _c) in axes.items():
                 row[a] = _clean(l.get("_" + a) if era else l.get(stat))
@@ -245,8 +258,9 @@ def _player_rows(kind, axes, seasons_list, args, era):
         lo, hi = seasons_list[0][0], seasons_list[-1][1]
         out = _combine_era(out)
         if min_mode == "q":
-            need = queries.need_for(kind, lo, hi)
-            out = [r for r in out if (r.get("w") or 0) >= need]
+            out = [r for r in out
+                   if all((r.get("hv") or {}).get(rule, 0) >= queries.need_for(kind, lo, hi, None, rule)
+                          for rule in rules)]
         elif min_mode == "n":
             out = [r for r in out if (r.get("w") or 0) >= min_value]
     return out
@@ -302,8 +316,10 @@ def _combine_era(rows):
     """Season percentiles -> one point per player or team, weighted by PA (or IP)."""
     groups: dict = {}
     for r in rows:
-        g = groups.setdefault(r["id"], {**r, "_n": {}, "_d": {}, "first": r["season"], "last": r["season"]})
+        g = groups.setdefault(r["id"], {**r, "_n": {}, "_d": {}, "_hv": {}, "first": r["season"], "last": r["season"]})
         w = r.get("w") or 1.0
+        for rule, have in (r.get("hv") or {}).items():
+            g["_hv"][rule] = g["_hv"].get(rule, 0.0) + have
         for a in ("x", "y", "z"):
             if r.get(a) is not None:
                 g["_n"][a] = g["_n"].get(a, 0.0) + r[a] * w
@@ -319,6 +335,7 @@ def _combine_era(rows):
             row[a] = round(g["_n"][a] / g["_d"][a], 2) if g["_d"].get(a) else None
         row["season"] = None
         row["w"] = round(g.get("_w", 0.0), 1)
+        row["hv"] = g["_hv"]
         out.append(row)
     return out
 
